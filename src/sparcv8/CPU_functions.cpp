@@ -265,7 +265,9 @@ void CPU::WRWIM (pDecode_t d)
     if (d->p->s == 0)
         Trap (d, SPARC_PRIVILEGED_INSTRUCTION);
     else {
-        WIM = d->rs1_value ^ d->ev;
+        // Only allow WIM to be set up to number of windows
+        // Reference page 30
+        WIM = (d->rs1_value ^ d->ev) & (0x1 << (NWINDOWS))-1;
         d->PC = d->nPC;
         d->nPC += 4;
     }
