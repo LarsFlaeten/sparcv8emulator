@@ -1,0 +1,26 @@
+#!/bin/bash
+# -------------------------------------------------------------------
+# runtests
+#
+# Copyright (c) 2004 Simon Southwell. All rights reserved
+#
+# -------------------------------------------------------------------
+
+#
+
+testlist="fop"
+
+for testname in $testlist
+do
+    if [ "$1" != "nc" ] 
+    then
+        ./compile_c $testname nowarn
+    fi
+
+    if ../sparc_iss -f ${testname}.aout
+    then
+        echo "Test '$testname' passed."
+    else
+        echo "Test $testname failed! ***"
+    fi
+done

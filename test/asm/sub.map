@@ -1,0 +1,168 @@
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+rom              0x00000000         0x10000000
+ram              0x40000000         0x80000000
+*default*        0x00000000         0xffffffff
+
+Linker script and memory map
+
+Address of section .text set to 0x0
+Address of section .data set to 0x40000
+Address of section .bss set to 0x48000
+LOAD trap_table.o
+LOAD sub.o
+LOAD libsparc.o
+
+.text           0x00000000     0x14b0
+ CREATE_OBJECT_SYMBOLS
+ *(.text .text.*)
+ .text          0x00000000     0x1158 trap_table.o
+                0x00000000                _start
+                0x00000000                __trap_table
+                0x00001140                exit
+ .text          0x00001158      0x1fc sub.o
+                0x00001158                main
+ .text          0x00001354      0x140 libsparc.o
+                0x00001480                BadTrap
+                0x00001424                startup
+                0x0000146c                getc
+                0x00001434                fprintf
+                0x00001354                __lshrdi3
+                0x00001454                putc
+                0x00001494                etext = .
+                0x000014a0                . = ALIGN (0x10)
+ *fill*         0x00001494        0xc 00
+ *(.eh_frame)
+                0x000014a0                . = ALIGN (0x10)
+ *(.gnu.linkonce.t*)
+                0x000014a0                ___CTOR_LIST__ = .
+                0x000014a0        0x4 LONG 0x0 (((___CTOR_END__ - ___CTOR_LIST__) / 0x4) - 0x2)
+ *(SORT(.ctors.*))
+ *(.ctors)
+                0x000014a4        0x4 LONG 0x0
+                0x000014a8                ___CTOR_END__ = .
+                0x000014a8                ___DTOR_LIST__ = .
+                0x000014a8        0x4 LONG 0x0 (((___DTOR_END__ - ___DTOR_LIST__) / 0x4) - 0x2)
+ *(SORT(.dtors.*))
+ *(.dtors)
+                0x000014ac        0x4 LONG 0x0
+                0x000014b0                ___DTOR_END__ = .
+                0x000014b0                __leonbare_initcall_start = .
+ *(.initcall1.init)
+ *(.initcall2.init)
+ *(.initcall3.init)
+ *(.initcall4.init)
+ *(.initcall5.init)
+ *(.initcall6.init)
+ *(.initcall7.init)
+                0x000014b0                __leonbare_initcall_end = .
+                0x000014b0                _rodata_start = .
+ *(.rodata*)
+ *(.gnu.linkonce.r*)
+                0x000014b0                _erodata = ALIGN (0x10)
+ *(.gnu.linkonce*)
+ *(.init)
+ *(.fini)
+ *(.lit)
+ *(.shdata)
+                0x000014b0                . = ALIGN (0x10)
+                0x000014b0                etext = .
+
+.rela.dyn       0x00000000        0x0
+ .rela.text     0x00000000        0x0 trap_table.o
+
+.gcc_except_table
+ *(.gcc_except_table)
+
+.data           0x00040000     0x2000
+ *(.data .data.*)
+ .data          0x00040000     0x2000 trap_table.o
+                0x00040000                kernel_stack_base
+                0x00042000                kernel_stack_top
+ .data          0x00042000        0x0 sub.o
+ .data          0x00042000        0x0 libsparc.o
+                0x00042000                edata = .
+                0x00042000                _edata = .
+                0x00042000                __edata = .
+
+.bss            0x00048000        0x0
+                0x00048000                . = ALIGN (0x8)
+                0x00048000                bss_start = .
+                0x00048000                _bss_start = .
+                0x00048000                __bss_start = .
+ *(.bss .bss.*)
+ .bss           0x00048000        0x0 trap_table.o
+ .bss           0x00048000        0x0 sub.o
+ .bss           0x00048000        0x0 libsparc.o
+ *(COMMON)
+                0x00048000                . = ALIGN (0x8)
+                0x00048000                end = .
+                0x00048000                _end = .
+                0x00048000                __end = .
+                0x00048000                __heap1 = .
+
+.jcr
+ *(.jcr)
+
+.stab
+ *(.stab)
+
+.stabstr
+ *(.stabstr)
+
+.debug
+ *(.debug)
+
+.line
+ *(.line)
+
+.debug_srcinfo
+ *(.debug_srcinfo)
+
+.debug_sfnames
+ *(.debug_sfnames)
+
+.debug_aranges
+ *(.debug_aranges)
+
+.debug_pubnames
+ *(.debug_pubnames)
+
+.debug_info
+ *(.debug_info)
+
+.debug_abbrev
+ *(.debug_abbrev)
+
+.debug_line
+ *(.debug_line)
+
+.debug_frame
+ *(.debug_frame)
+
+.debug_str
+ *(.debug_str)
+
+.debug_loc
+ *(.debug_loc)
+
+.debug_macinfo
+ *(.debug_macinfo)
+
+.debug_weaknames
+ *(.debug_weaknames)
+
+.debug_funcnames
+ *(.debug_funcnames)
+
+.debug_typenames
+ *(.debug_typenames)
+
+.debug_varnames
+ *(.debug_varnames)
+OUTPUT(sub.aout elf32-sparc)
+
+.comment        0x00000000       0x27
+ .comment       0x00000000       0x27 libsparc.o

@@ -1,0 +1,34 @@
+cmake_minimum_required(VERSION 3.6)
+message(STATUS " ***** TEST ***** ")
+# We need thread support
+find_package(Threads REQUIRED)
+
+# Locate GTest
+#find_package(PkgConfig)
+#pkg_check_modules(GTEST REQUIRED gtest>=1.7.0)
+#pkg_check_modules(GMOCK REQUIRED gmock>=1.7.0)
+
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+)
+
+include_directories(
+    ${GTEST_INCLUDE_DIRS}
+    ${GMOCK_INCLUDE_DIRS}
+    ${PROJECT_SOURCE_DIR}/libraries
+)
+
+#link_directories(${PROJECT_SOURCE_DIR}/libraries ${PROJECT_SOURCE_DIR}/libraries/cspice)
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++20")
+message(STATUS "Using CXX flags: " ${CMAKE_CXX_FLAGS})
+
+# Link runTests with what we want to test and the GTest and pthread library
+file(GLOB SOURCE_FILES *.cpp)
+message(STATUS "Compiling testfiles: " ${SOURCE_FILES})
+add_executable(sparcv8_tests ${SOURCE_FILES})
+target_link_libraries(sparcv8_tests ${GTEST_LIBRARIES} sparcv8 peripherals gdbstub pthread )
+#add_test(NAME sparcv8_tests COMMAND sparcv8_tests)
+include(GoogleTest)
+gtest_discover_tests(sparcv8_tests)
