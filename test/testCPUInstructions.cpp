@@ -25,6 +25,36 @@ protected:
     CPU cpu;
     SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
 
+    void do_SAVE_instr(u32 rs1, u32 rs2, u32 rd) {
+        u32 op3 = 0b111100; // SAVE
+        do_op3_instr(2, op3, rs1, rs2, rd);
+    }
+ 
+    void do_RESTORE_instr(u32 rs1, u32 rs2, u32 rd) {
+        u32 op3 = 0b111101; // RESTORE
+        do_op3_instr(2, op3, rs1, rs2, rd);
+    }
+ 
+    void do_op3_instr(u32 op, u32 op3, u32 rs1, u32 rs2, u32 rd) {
+        DecodeStruct d;
+        d.opcode = ((op & LOBITS2) << FMTSTARTBIT) 
+            ^ ((rd & LOBITS5) << RDSTARTBIT)
+            ^ ((op3 & LOBITS6) << OP3STARTBIT)
+            ^ ((rs1) << RS1STARTBIT)
+            ^ (0x0 << ISTARTBIT)
+            ^ ((rs2)<< RS2STARTBIT); 
+     
+        d.p = (pPSR_t)&(d.PSR);
+        d.p->s = 1; // Set supervisor mode 
+        d.p->et = 1; // Enable traps 
+       
+        cpu.Decode(&d);
+        
+        d.function(&cpu, &d);
+        cpu.WriteBack(&d); 
+    }
+
+
 };
 
 
@@ -63,25 +93,10 @@ TEST_F(CPUInstructionsTest, WRWIM_allOnes)
 {    
     // adress to read is taken from LOCALREG4
     cpu.WriteReg((u32)0-1, LOCALREG4); // write all ones to L4
-    cpu.WriteReg(0x0,  LOCALREG5); // write all ones to L4
+    cpu.WriteReg(0x0,  LOCALREG5); 
      
-    // Construct WRWIM opcode
-    DecodeStruct d;
-    u32 op = 0b110010; // WRWIM
-    d.opcode = ((2 & LOBITS2) << FMTSTARTBIT) 
-        ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
-        ^ ((op & LOBITS6) << OP3STARTBIT)
-        ^ ((LOCALREG4) << RS1STARTBIT)
-        ^ (0x0 << ISTARTBIT)
-        ^ ((LOCALREG5)<< RS2STARTBIT); 
-        
-    d.p = (pPSR_t)&(d.PSR);
-    d.p->s = 1; // Set supervisor mode 
-    
-    cpu.Decode(&d);
-    
-    d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    u32 op3 = 0b110010; // WRWIM
+    do_op3_instr(2, op3, LOCALREG4, LOCALREG5, LOCALREG0);
 
     
     // WIM should only have bits set up the number of windows:
@@ -93,26 +108,397 @@ TEST_F(CPUInstructionsTest, WRWIM_allOnes)
     ASSERT_EQ(cpu.GetWIM(), 0b11111111); // This will brea if we change NWINDOWS
 
     // Check if instruction RDWIM yields the same
-    op = 0b101010; // RDWIM
-    d.opcode = ((2 & LOBITS2) << FMTSTARTBIT) 
-        ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
-        ^ ((op & LOBITS6) << OP3STARTBIT)
-        ^ ((LOCALREG4) << RS1STARTBIT)
-        ^ (0x0 << ISTARTBIT)
-        ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
-    
-    d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    op3 = 0b101010; // RDWIM
+    do_op3_instr(2, op3, LOCALREG4, LOCALREG5, LOCALREG0);
 
     // WIM is now in rd (L0)    
     u32 l0;
     cpu.ReadReg(LOCALREG0, &l0);
  
     ASSERT_EQ(cpu.GetWIM(), l0);
+}
 
-    
+TEST_F(CPUInstructionsTest, LDSTUB_noMMU)
+{   
+
+    //for(int i = 0; i <= 8; ++i) 
+    //{
+        // TEst swapping the values from $o0 and a value in memory, pointed by $g2 
+        
+        u32 value = 0xab;
+        MMU::MemAccess<intent_store, 1>(0x100, value, CROSS_ENDIAN); 
+        cpu.WriteReg(0x100, GLOBALREG2); 
+        cpu.WriteReg(0x000, LOCALREG0); 
+
+
+        u32 op3 = 0b001101; // LDSTUB
+        do_op3_instr(3, op3, GLOBALREG2, LOCALREG0, OUTREG0);
+
+        
+        u32 val1; cpu.ReadReg(OUTREG0, &val1);
+        u32 val2; MMU::MemAccess<intent_load, 1>(0x100, val2, CROSS_ENDIAN); 
+     
+
+
+        EXPECT_EQ(val1, 0xab);
+        EXPECT_EQ(val2, 0xff); 
+
+        do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    //}
+
+}
+
+TEST_F(CPUInstructionsTest, SWAP_noMMU)
+{   
+
+    //for(int i = 0; i <= 8; ++i) 
+    //{
+        // TEst swapping the values from $o0 and a value in memory, pointed by $g2 
+        cpu.WriteReg(0x0610c041, OUTREG0); 
+        
+        u32 value = 0xff00ffff;
+        MMU::MemAccess<intent_store, 4>(0x100, value, CROSS_ENDIAN); 
+        cpu.WriteReg(0x100, GLOBALREG2); 
+        cpu.WriteReg(0x000, LOCALREG0); 
+
+
+        u32 op3 = 0b001111; // SWAP
+        do_op3_instr(3, op3, GLOBALREG2, LOCALREG0, OUTREG0);
+
+        
+        u32 val1; cpu.ReadReg(OUTREG0, &val1);
+        u32 val2; MMU::MemAccess<intent_load, 4>(0x100, val2, CROSS_ENDIAN); 
+     
+
+
+        EXPECT_EQ(val1, 0xff00ffff);
+        EXPECT_EQ(val2, 0x0610c041); 
+
+        do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    //}
+
+}
+
+
+TEST_F(CPUInstructionsTest, SAVE)
+{   
+    u32 cwp = cpu.GetPSR() & LOBITS5;
+    ASSERT_EQ(cwp, 0);
+    ASSERT_EQ(cpu.GetWIM(), 0x2); // Standard value after cpu.Reset()
 
 
 
-} 
+
+    cpu.WriteReg(cwp*10 + 0, INREG0); 
+    cpu.WriteReg(cwp*10 + 1, INREG1); 
+    cpu.WriteReg(cwp*10 + 2, INREG2); 
+    cpu.WriteReg(cwp*10 + 3, INREG3); 
+    cpu.WriteReg(cwp*10 + 4, INREG4); 
+    cpu.WriteReg(cwp*10 + 5, INREG5); 
+    cpu.WriteReg(cwp*10 + 6, INREG6); 
+    cpu.WriteReg(cwp*10 + 7, INREG7); 
+    cpu.WriteReg(cwp*200 + 0, LOCALREG0); 
+    cpu.WriteReg(cwp*200 + 1, LOCALREG1); 
+    cpu.WriteReg(cwp*200 + 2, LOCALREG2); 
+    cpu.WriteReg(cwp*200 + 3, LOCALREG3); 
+    cpu.WriteReg(cwp*200 + 4, LOCALREG4); 
+    cpu.WriteReg(cwp*200 + 5, LOCALREG5); 
+    cpu.WriteReg(cwp*200 + 6, LOCALREG6); 
+    cpu.WriteReg(cwp*200 + 7, LOCALREG7); 
+    cpu.WriteReg(cwp*20 + 0, OUTREG0); 
+    cpu.WriteReg(cwp*20 + 1, OUTREG1); 
+    cpu.WriteReg(cwp*20 + 2, OUTREG2); 
+    cpu.WriteReg(cwp*20 + 3, OUTREG3); 
+    cpu.WriteReg(cwp*20 + 4, OUTREG4); 
+    cpu.WriteReg(cwp*20 + 5, OUTREG5); 
+    cpu.WriteReg(cwp*20 + 6, OUTREG6); 
+    cpu.WriteReg(cwp*20 + 7, OUTREG7); 
+    cpu.WriteReg(cwp*2000 + 0, GLOBALREG0); 
+    cpu.WriteReg(cwp*2000 + 1, GLOBALREG1); 
+    cpu.WriteReg(cwp*2000 + 2, GLOBALREG2); 
+    cpu.WriteReg(cwp*2000 + 3, GLOBALREG3); 
+    cpu.WriteReg(cwp*2000 + 4, GLOBALREG4); 
+    cpu.WriteReg(cwp*2000 + 5, GLOBALREG5); 
+    cpu.WriteReg(cwp*2000 + 6, GLOBALREG6); 
+    cpu.WriteReg(cwp*2000 + 7, GLOBALREG7); 
+ 
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+
+    // Check we have xpected window pointer
+    cwp = (cwp - 1) % NWINDOWS;
+    ASSERT_EQ(cwp, 7);
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 7);
+
+    // The SAVE is also add, and places result in destinaiont reg in new window:
+    u32 res1;
+    cpu.ReadReg(LOCALREG0, &res1); ASSERT_EQ(res1, 0);
+    cpu.ReadReg(LOCALREG1, &res1); ASSERT_EQ(res1, 0);
+    cpu.ReadReg(LOCALREG2, &res1); ASSERT_EQ(res1, 1); // The add from previous %l0 and %l1
+    cpu.ReadReg(LOCALREG3, &res1); ASSERT_EQ(res1, 0);
+    cpu.ReadReg(LOCALREG4, &res1); ASSERT_EQ(res1, 0);
+    cpu.ReadReg(LOCALREG5, &res1); ASSERT_EQ(res1, 0);
+    cpu.ReadReg(LOCALREG6, &res1); ASSERT_EQ(res1, 0);
+    cpu.ReadReg(LOCALREG7, &res1); ASSERT_EQ(res1, 0);
+
+    // After a SAVE, the OUTS from previous register window should now be in the INS
+    cpu.ReadReg(INREG0, &res1); ASSERT_EQ(res1, 0);
+    cpu.ReadReg(INREG1, &res1); ASSERT_EQ(res1, 1);
+    cpu.ReadReg(INREG2, &res1); ASSERT_EQ(res1, 2);
+    cpu.ReadReg(INREG3, &res1); ASSERT_EQ(res1, 3);
+    cpu.ReadReg(INREG4, &res1); ASSERT_EQ(res1, 4);
+    cpu.ReadReg(INREG5, &res1); ASSERT_EQ(res1, 5);
+    cpu.ReadReg(INREG6, &res1); ASSERT_EQ(res1, 6);
+    cpu.ReadReg(INREG7, &res1); ASSERT_EQ(res1, 7);
+
+ 
+
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 6);
+
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 5);
+
+    cwp = cpu.GetPSR() & LOBITS5;
+    cpu.WriteReg(cwp*10 + 0, INREG0); 
+    cpu.WriteReg(cwp*10 + 1, INREG1); 
+    cpu.WriteReg(cwp*10 + 2, INREG2); 
+    cpu.WriteReg(cwp*10 + 3, INREG3); 
+    cpu.WriteReg(cwp*10 + 4, INREG4); 
+    cpu.WriteReg(cwp*10 + 5, INREG5); 
+    cpu.WriteReg(cwp*10 + 6, INREG6); 
+    cpu.WriteReg(cwp*10 + 7, INREG7); 
+    cpu.WriteReg(cwp*200 + 0, LOCALREG0); 
+    cpu.WriteReg(cwp*200 + 1, LOCALREG1); 
+    cpu.WriteReg(cwp*200 + 2, LOCALREG2); 
+    cpu.WriteReg(cwp*200 + 3, LOCALREG3); 
+    cpu.WriteReg(cwp*200 + 4, LOCALREG4); 
+    cpu.WriteReg(cwp*200 + 5, LOCALREG5); 
+    cpu.WriteReg(cwp*200 + 6, LOCALREG6); 
+    cpu.WriteReg(cwp*200 + 7, LOCALREG7); 
+    cpu.WriteReg(cwp*20 + 0, OUTREG0); 
+    cpu.WriteReg(cwp*20 + 1, OUTREG1); 
+    cpu.WriteReg(cwp*20 + 2, OUTREG2); 
+    cpu.WriteReg(cwp*20 + 3, OUTREG3); 
+    cpu.WriteReg(cwp*20 + 4, OUTREG4); 
+    cpu.WriteReg(cwp*20 + 5, OUTREG5); 
+    cpu.WriteReg(cwp*20 + 6, OUTREG6); 
+    cpu.WriteReg(cwp*20 + 7, OUTREG7); 
+    cpu.WriteReg(cwp*2000 + 0, GLOBALREG0); 
+    cpu.WriteReg(cwp*2000 + 1, GLOBALREG1); 
+    cpu.WriteReg(cwp*2000 + 2, GLOBALREG2); 
+    cpu.WriteReg(cwp*2000 + 3, GLOBALREG3); 
+    cpu.WriteReg(cwp*2000 + 4, GLOBALREG4); 
+    cpu.WriteReg(cwp*2000 + 5, GLOBALREG5); 
+    cpu.WriteReg(cwp*2000 + 6, GLOBALREG6); 
+    cpu.WriteReg(cwp*2000 + 7, GLOBALREG7); 
+ 
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 4);
+
+    // After a SAVE, the OUTS from previous register window should now be in the INS
+    cpu.ReadReg(INREG0, &res1); ASSERT_EQ(res1, 100);
+    cpu.ReadReg(INREG1, &res1); ASSERT_EQ(res1, 101);
+    cpu.ReadReg(INREG2, &res1); ASSERT_EQ(res1, 102);
+    cpu.ReadReg(INREG3, &res1); ASSERT_EQ(res1, 103);
+    cpu.ReadReg(INREG4, &res1); ASSERT_EQ(res1, 104);
+    cpu.ReadReg(INREG5, &res1); ASSERT_EQ(res1, 105);
+    cpu.ReadReg(INREG6, &res1); ASSERT_EQ(res1, 106);
+    cpu.ReadReg(INREG7, &res1); ASSERT_EQ(res1, 107);
+
+
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 3);
+
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 2);
+
+    // This one will trigger windoww overflow since WIM = 0x2:
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 2);
+    ASSERT_EQ(cpu.GetTrapType(), SPARC_WINDOW_OVERFLOW);
+    // Run the CPU through the trap:
+    cpu.SetSingleStep(true);
+    cpu.Run(0, nullptr);
+    // CWP should now be 1
+    // In real ilfe we would do a RETT here, and end up at 2 again.
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 1);
+ 
+
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 0);
+
+    cpu.ReadReg(INREG0, &res1); ASSERT_EQ(res1, 0);
+    cpu.ReadReg(INREG1, &res1); ASSERT_EQ(res1, 1);
+    cpu.ReadReg(INREG2, &res1); ASSERT_EQ(res1, 2);
+    cpu.ReadReg(INREG3, &res1); ASSERT_EQ(res1, 3);
+    cpu.ReadReg(INREG4, &res1); ASSERT_EQ(res1, 4);
+    cpu.ReadReg(INREG5, &res1); ASSERT_EQ(res1, 5);
+    cpu.ReadReg(INREG6, &res1); ASSERT_EQ(res1, 6);
+    cpu.ReadReg(INREG7, &res1); ASSERT_EQ(res1, 7);
+
+    cpu.ReadReg(OUTREG0, &res1); ASSERT_EQ(res1, 0);
+    cpu.ReadReg(OUTREG1, &res1); ASSERT_EQ(res1, 1);
+    cpu.ReadReg(OUTREG2, &res1); ASSERT_EQ(res1, 2);
+    cpu.ReadReg(OUTREG3, &res1); ASSERT_EQ(res1, 3);
+    cpu.ReadReg(OUTREG4, &res1); ASSERT_EQ(res1, 4);
+    cpu.ReadReg(OUTREG5, &res1); ASSERT_EQ(res1, 5);
+    cpu.ReadReg(OUTREG6, &res1); ASSERT_EQ(res1, 6);
+    cpu.ReadReg(OUTREG7, &res1); ASSERT_EQ(res1, 7);
+
+
+ 
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 7);
+
+
+
+
+
+
+}
+
+TEST_F(CPUInstructionsTest, RESTORE)
+{   
+    u32 cwp = cpu.GetPSR() & LOBITS5;
+    ASSERT_EQ(cwp, 0);
+    ASSERT_EQ(cpu.GetWIM(), 0x2); // Standard value after cpu.Reset()
+
+    cpu.WriteReg(0, LOCALREG4);
+    cpu.WriteReg(0, LOCALREG5); 
+     
+    u32 op3 = 0b110010; // WRWIM
+    do_op3_instr(2, op3, LOCALREG4, LOCALREG5, LOCALREG0);
+    ASSERT_EQ(cpu.GetWIM(), 0x0);
+    ASSERT_EQ(cpu.GetTrapType(), 0);
+ 
+    cpu.WriteReg(0x2, LOCALREG4);
+    op3 = 0b110010; // WRWIM
+    do_op3_instr(2, op3, LOCALREG4, LOCALREG5, LOCALREG0);
+    ASSERT_EQ(cpu.GetWIM(), 0x2); // Standard value after cpu.Reset()
+ 
+ 
+    cwp = 1;
+    cpu.WriteReg(cwp*10 + 0, INREG0); 
+    cpu.WriteReg(cwp*10 + 1, INREG1); 
+    cpu.WriteReg(cwp*10 + 2, INREG2); 
+    cpu.WriteReg(cwp*10 + 3, INREG3); 
+    cpu.WriteReg(cwp*10 + 4, INREG4); 
+    cpu.WriteReg(cwp*10 + 5, INREG5); 
+    cpu.WriteReg(cwp*10 + 6, INREG6); 
+    cpu.WriteReg(cwp*10 + 7, INREG7); 
+    cpu.WriteReg(cwp*200 + 0, LOCALREG0); 
+    cpu.WriteReg(cwp*200 + 1, LOCALREG1); 
+    cpu.WriteReg(cwp*200 + 2, LOCALREG2); 
+    cpu.WriteReg(cwp*200 + 3, LOCALREG3); 
+    cpu.WriteReg(cwp*200 + 4, LOCALREG4); 
+    cpu.WriteReg(cwp*200 + 5, LOCALREG5); 
+    cpu.WriteReg(cwp*200 + 6, LOCALREG6); 
+    cpu.WriteReg(cwp*200 + 7, LOCALREG7); 
+    cpu.WriteReg(cwp*20 + 0, OUTREG0); 
+    cpu.WriteReg(cwp*20 + 1, OUTREG1); 
+    cpu.WriteReg(cwp*20 + 2, OUTREG2); 
+    cpu.WriteReg(cwp*20 + 3, OUTREG3); 
+    cpu.WriteReg(cwp*20 + 4, OUTREG4); 
+    cpu.WriteReg(cwp*20 + 5, OUTREG5); 
+    cpu.WriteReg(cwp*20 + 6, OUTREG6); 
+    cpu.WriteReg(cwp*20 + 7, OUTREG7); 
+    cpu.WriteReg(cwp*2000 + 0, GLOBALREG0); 
+    cpu.WriteReg(cwp*2000 + 1, GLOBALREG1); 
+    cpu.WriteReg(cwp*2000 + 2, GLOBALREG2); 
+    cpu.WriteReg(cwp*2000 + 3, GLOBALREG3); 
+    cpu.WriteReg(cwp*2000 + 4, GLOBALREG4); 
+    cpu.WriteReg(cwp*2000 + 5, GLOBALREG5); 
+    cpu.WriteReg(cwp*2000 + 6, GLOBALREG6); 
+    cpu.WriteReg(cwp*2000 + 7, GLOBALREG7); 
+    cwp = 0;
+
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2);
+    ASSERT_EQ(cpu.GetTrapType(), 0);
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 7);
+    u32 val; cpu.ReadReg(LOCALREG2, &val); ASSERT_EQ(val, 401);
+    cpu.ReadReg(INREG0, &val); ASSERT_EQ(val, 20);
+    cpu.ReadReg(INREG1, &val); ASSERT_EQ(val, 21);
+    cpu.ReadReg(INREG2, &val); ASSERT_EQ(val, 22);
+    cpu.ReadReg(INREG3, &val); ASSERT_EQ(val, 23);
+    cpu.ReadReg(INREG4, &val); ASSERT_EQ(val, 24);
+    cpu.ReadReg(INREG5, &val); ASSERT_EQ(val, 25);
+    cpu.ReadReg(INREG6, &val); ASSERT_EQ(val, 26);
+    cpu.ReadReg(INREG7, &val); ASSERT_EQ(val, 27);
+
+
+
+
+
+
+
+
+
+    do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2);
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 6);
+    ASSERT_EQ(cpu.GetTrapType(), 0);
+    cpu.ReadReg(LOCALREG2, &val); ASSERT_EQ(val, 0);
+
+    do_RESTORE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 7);
+    cpu.ReadReg(INREG0, &val); ASSERT_EQ(val, 20);
+    cpu.ReadReg(INREG1, &val); ASSERT_EQ(val, 21);
+    cpu.ReadReg(INREG2, &val); ASSERT_EQ(val, 22);
+    cpu.ReadReg(INREG3, &val); ASSERT_EQ(val, 23);
+    cpu.ReadReg(INREG4, &val); ASSERT_EQ(val, 24);
+    cpu.ReadReg(INREG5, &val); ASSERT_EQ(val, 25);
+    cpu.ReadReg(INREG6, &val); ASSERT_EQ(val, 26);
+    cpu.ReadReg(INREG7, &val); ASSERT_EQ(val, 27);
+
+
+    do_RESTORE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 0);
+    ASSERT_EQ(cpu.GetTrapType(), 0);
+ 
+    cpu.ReadReg(LOCALREG0, &val); ASSERT_EQ(val, 200);
+    cpu.ReadReg(LOCALREG1, &val); ASSERT_EQ(val, 201);
+    cpu.ReadReg(LOCALREG2, &val); ASSERT_EQ(val, 0);
+    cpu.ReadReg(LOCALREG3, &val); ASSERT_EQ(val, 203);
+    cpu.ReadReg(LOCALREG4, &val); ASSERT_EQ(val, 204);
+    cpu.ReadReg(LOCALREG5, &val); ASSERT_EQ(val, 205);
+    cpu.ReadReg(LOCALREG6, &val); ASSERT_EQ(val, 206);
+    cpu.ReadReg(LOCALREG7, &val); ASSERT_EQ(val, 207);
+    cpu.ReadReg(OUTREG0, &val); ASSERT_EQ(val, 20);
+    cpu.ReadReg(OUTREG1, &val); ASSERT_EQ(val, 21);
+    cpu.ReadReg(OUTREG2, &val); ASSERT_EQ(val, 22);
+    cpu.ReadReg(OUTREG3, &val); ASSERT_EQ(val, 23);
+    cpu.ReadReg(OUTREG4, &val); ASSERT_EQ(val, 24);
+    cpu.ReadReg(OUTREG5, &val); ASSERT_EQ(val, 25);
+    cpu.ReadReg(OUTREG6, &val); ASSERT_EQ(val, 26);
+    cpu.ReadReg(OUTREG7, &val); ASSERT_EQ(val, 27);
+
+
+    cpu.ReadReg(INREG0, &val); ASSERT_EQ(val, 10);
+    cpu.ReadReg(INREG1, &val); ASSERT_EQ(val, 11);
+    cpu.ReadReg(INREG2, &val); ASSERT_EQ(val, 12);
+    cpu.ReadReg(INREG3, &val); ASSERT_EQ(val, 13);
+    cpu.ReadReg(INREG4, &val); ASSERT_EQ(val, 14);
+    cpu.ReadReg(INREG5, &val); ASSERT_EQ(val, 15);
+    cpu.ReadReg(INREG6, &val); ASSERT_EQ(val, 16);
+    cpu.ReadReg(INREG7, &val); ASSERT_EQ(val, 17);
+
+
+
+
+
+    // This one will trigger windoww underflow since WIM = 0x2:
+    // and cwp will remain 0
+    do_RESTORE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 0);
+    ASSERT_EQ(cpu.GetTrapType(), SPARC_WINDOW_UNDERFLOW);
+    // Run the CPU through the trap:
+    cpu.SetSingleStep(true);
+    cpu.Run(0, nullptr);
+    // CWP should now be 7 since traos decrement cwp
+    // In real ilfe we would do a RETT here, and end up at 0 again.. Or something.
+    ASSERT_EQ(cpu.GetPSR() & LOBITS5, 7);
+ 
+
+
+
+
+}
