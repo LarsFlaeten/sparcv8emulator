@@ -124,11 +124,64 @@ std::string gdb_read_mem(CPU& cpu, std::string msg) {
 
 	u32 addr = hexstr_to_u32(address);
 	u32 sz = hexstr_to_u32(size);
-	if(addr % 4 != 0) {
-		throw std::runtime_error("Unaligned address not supported for GBD mem read");
-	}
- 
-    if(sz < 4) {
+	u32 read = 0;
+
+    std::string ret;
+
+
+    // Read the forst  bytes if this is an unaligned read request
+    if(addr % 4 != 0) {
+        u32 value = 0;
+        u32 fill = addr % 4; // Dmmy values to be read as part of word before our requested byte
+        u32 head = 4 - fill; // The first bytes to be read
+        u32 start = addr - fill;
+    
+        // read 4 bytes, head is the last of these, fill is discared
+	    auto r = MMU::MemAccess<intent_load, 4>(start, value, CROSS_ENDIAN, true);	
+    	
+        if(r < 0) {
+            std::cerr << "Fault adress: 0x" << std::hex << MMU::GetFaultAddress() << "\n";
+            std::cerr << "Fault status: " << MMU::GetFaultStatus() << "\n"; 
+ 	        std::cerr << "Mem: [" << std::hex << addr << "],[" << sz << "]->E14\n";
+
+		    return "E14"; // errno EFAULT
+	    }
+
+        auto tmpstr = u32_to_hexstr(value);
+        tmpstr = tmpstr.substr(fill*2, 2*sz);
+	    ret += tmpstr;
+        if(head < sz)
+            sz -= head;
+        else
+            sz = 0;
+        
+        addr += head;
+    }
+   
+     
+    if(sz == 0)
+        return ret;
+
+    // read remaining words
+    int j = sz/4;
+    for(u32 i = 0; i < j; ++i) {
+	    u32 value = 0;
+	    auto r = MMU::MemAccess<intent_load, 4>(addr, value, CROSS_ENDIAN, true);	
+	    if(r < 0) {
+            std::cerr << "Fault adress: 0x" << std::hex << MMU::GetFaultAddress() << "\n";
+            std::cerr << "Fault status: " << MMU::GetFaultStatus() << "\n"; 
+ 	        std::cerr << "Mem: [" << std::hex << addr + i*4 << "],[" << 4 << "]->E14\n";
+
+		    return "E14"; // errno EFAULT
+	    }
+
+        ret += u32_to_hexstr(value);
+        sz -= 4;
+        addr += 4;
+    }
+
+    // Read reainder after reading head and whole words
+    if(sz > 0) {
 		u32 value = 0;
 	    auto r = MMU::MemAccess<intent_load, 4>(addr, value, CROSS_ENDIAN, true);	
         if(r < 0) {
@@ -139,34 +192,14 @@ std::string gdb_read_mem(CPU& cpu, std::string msg) {
             return "E14";
         }
 
-        auto ret = u32_to_hexstr(value);
-        ret = ret.substr(0, sz*2);
+        auto tmpstr = u32_to_hexstr(value);
+        tmpstr = tmpstr.substr(0, sz*2);
+        ret += tmpstr;
         return ret;
 
 	}
- 	if(sz % 4 != 0) {
-		throw std::runtime_error("Size % 4 != 0 is not supported for GBD mem read");
-	}
    
-    std::string ret;
-    //std::cout << "Reading " << size << " bytes in " << sz/4 << " words\n";
     
-    for(u32 i = 0; i < sz/4; ++i) {
-	    u32 value = 0;
-	    auto r = MMU::MemAccess<intent_load, 4>(addr + i*4, value, CROSS_ENDIAN, true);	
-	    if(r < 0) {
-            std::cerr << "Fault adress: 0x" << std::hex << MMU::GetFaultAddress() << "\n";
-            std::cerr << "Fault status: " << MMU::GetFaultStatus() << "\n"; 
- 	        std::cerr << "Mem: [" << std::hex << addr + i*4 << "],[" << 4 << "]->E14\n";
-
-		    return "E14"; // errno EFAULT
-	    }
-    	
-        //std::cout << "Mem: [" << std::hex << addr + i*4 << "],[" << 4 << "]->0x" << u32_to_hexstr(value) << "\n";
-
-
-        ret += u32_to_hexstr(value);
-    }
 
 	return ret;
 }
