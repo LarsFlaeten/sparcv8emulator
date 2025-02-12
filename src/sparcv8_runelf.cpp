@@ -27,6 +27,9 @@
 #include <string>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
+#include <thread>
+
 
 #if !defined(_WIN32) && !defined(_WIN64)
 #include <getopt.h>
@@ -38,6 +41,8 @@ extern char* optarg;
 #include "readelf.h"
 #include "dis.h"
 #include "debug.h"
+#include "gdb/gdb_server.h"
+
 
 constexpr int FOREVER =           0;
 constexpr int ONCE =              1;
@@ -69,10 +74,11 @@ int main(int argc, char **argv)
     std::ofstream   os;
     int    option;
 
-  
+    bool debug_server = false; 
+    int debug_port;
     bool write_to_file = false; 
     // Process the command line options 
-    while ((option = getopt(argc, argv, "f:vdn:b:o:c")) != EOF)
+    while ((option = getopt(argc, argv, "f:vdn:b:g:o:c")) != EOF)
         switch(option) {
         case 'o':
             os.open(optarg, std::ios_base::out); 
@@ -101,6 +107,10 @@ int main(int argc, char **argv)
             break;
         case 'b':
             UserBreakpoint = (u32)strtol(optarg, NULL, 0);
+            break;
+        case 'g':
+            debug_port = (u32)strtol(optarg, NULL, 0);
+            debug_server = true;
             break;
         case 'h':
         case '?':
@@ -143,9 +153,31 @@ int main(int argc, char **argv)
     
      
     RunSummary rs;
-    if(!Disassemble) {
+    if(!Disassemble && !debug_server) {
         // Run the machine
        cpu.Run(NumRunInst, &rs);
+    } else if(debug_server) {
+		int server_fd = create_server_socket(debug_port);
+        int client_fd = accept(server_fd, NULL, NULL);
+        
+        if (client_fd < 0) {
+        	perror("Client connection failed");
+        	close(server_fd);
+        	exit(EXIT_FAILURE);
+    	}
+   
+        // Add a breakpoint at the entry 
+        //cpu.AddUserBreakpoint(entry_va);
+        //std::cout << "Atomatically addded breakpoint at entry, PC=0x" << std::hex << entry_va << std::dec << "\n"; 
+        //std::thread t1(&CPU::Run, &cpu, NumRunInst, &rs);
+
+
+	    handle_gdb_client(client_fd, cpu); 
+
+        //t1.join();
+        close(client_fd);
+        close(server_fd);
+
 
     } else 
     {
