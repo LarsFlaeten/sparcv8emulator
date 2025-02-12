@@ -241,7 +241,7 @@ void CPU::WRPSR (pDecode_t d)
         os << std::format("{:#08x} wrpsr    = {:#08x}\n", d->PC, d->rs1_value ^ d->ev);
 
     if (((d->rs1_value ^ d->ev) & LOBITS5) >= NWINDOWS) { 
-       os << std::format("Ooops, rs1:{:#08x}, ev:{:#08x}, rs1^ev[4:0]:{:#08x}, NWIN:{:#08x}\n", d->rs1_value, d->ev, (d->rs1_value^d->ev)&LOBITS5, NWINDOWS);
+       //os << std::format("Ooops, rs1:{:#08x}, ev:{:#08x}, rs1^ev[4:0]:{:#08x}, NWIN:{:#08x}\n", d->rs1_value, d->ev, (d->rs1_value^d->ev)&LOBITS5, NWINDOWS);
 
        Trap (d, SPARC_ILLEGAL_INSTRUCTION);
     }
@@ -249,7 +249,7 @@ void CPU::WRPSR (pDecode_t d)
         Trap (d, SPARC_PRIVILEGED_INSTRUCTION);
     else {
         // Hard wire LEON specific values..
-        d->PSR = (0xf << 28) | (0x3 << 24) | d->rs1_value ^ d->ev;
+        d->PSR = (0xf << 28) | (0x3 << 24) | (d->rs1_value ^ d->ev);
         d->PC = d->nPC;
         d->nPC += 4;
     }
@@ -267,7 +267,7 @@ void CPU::WRWIM (pDecode_t d)
     else {
         // Only allow WIM to be set up to number of windows
         // Reference page 30
-        WIM = (d->rs1_value ^ d->ev) & (0x1 << (NWINDOWS))-1;
+        WIM = (d->rs1_value ^ d->ev) & ((0x1 << (NWINDOWS))-1);
         d->PC = d->nPC;
         d->nPC += 4;
     }
@@ -314,12 +314,13 @@ void CPU::JMPL (pDecode_t d)
 
 void CPU::RETT (pDecode_t d)
 {
-    u32 temp, new_win;
+    u32 temp, new_cwp;
 
-    new_win = d->p->cwp + 1;
-
+    new_cwp = (d->p->cwp + 1) % NWINDOWS;
+    //os << std::format("RETT, new cwp {:#x}\n", new_cwp);
+ 
     if (verbose) 
-        os << std::format("{:#08x} rett     rs1 {:#08x} + ev => nPC = {:#08x}\n", d->PC, d->rs1_value, d->ev & ~LOBITS2);
+        os << std::format("{:#08x} rett     rs1 {:#08x} + ev => nPC = {:#08x} (new CWP = {:#08x})\n", d->PC, d->rs1_value, d->ev & ~LOBITS2, new_cwp);
 
     if ( (d->p->et && !d->p->s) || (!d->p->et && !d->p->s))
         Trap (d, SPARC_PRIVILEGED_INSTRUCTION);
@@ -327,7 +328,7 @@ void CPU::RETT (pDecode_t d)
         Trap (d, SPARC_ILLEGAL_INSTRUCTION);
     else if (d->ev & LOBITS2)
         Trap (d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
-    else if (((WIM >> new_win) & LOBITS1) != 0)
+    else if (((WIM >> new_cwp) & LOBITS1) != 0)
         Trap (d, SPARC_WINDOW_UNDERFLOW);
     else {
         temp = d->PC;
@@ -335,7 +336,7 @@ void CPU::RETT (pDecode_t d)
         d->nPC = d->ev & ~LOBITS2;
         d->p->s = d->p->ps;
         d->p->et = 1;
-        d->p->cwp = new_win;
+        d->p->cwp = new_cwp & LOBITS5;
     }
 
 }
@@ -368,15 +369,15 @@ void CPU::TICC (pDecode_t d)
 
 void CPU::SAVE (pDecode_t d)
 {
-    u32 new_win;
-
-    new_win = (d->PSR & LOBITS4) - 1;
+    u32 new_cwp = ((d->PSR & LOBITS5) - 1) % NWINDOWS;
+    //os << std::format("Save, new cwp {:#x}\n", new_cwp);
+    
     if (verbose) 
-        os << std::format("{:#08x} save     {:#08x}, {:#08x}\n", d->PC, d->rs1_value, d->ev);
-    if (((WIM >> new_win) & LOBITS1) != 0)
+        os << std::format("{:#08x} save     {:#08x}, {:#08x} (new CWP: {:#08x})\n", d->PC, d->rs1_value, d->ev, new_cwp);
+    if (((WIM >> new_cwp) & LOBITS1) != 0)
         Trap (d, SPARC_WINDOW_OVERFLOW);
     else {
-        d->PSR = (d->PSR & ~(LOBITS4)) | (new_win & LOBITS4);
+        d->PSR = (d->PSR & ~(LOBITS5)) | (new_cwp & LOBITS5);
         d->wb_type = WriteBackType::WRITEBACKREG;
         d->value = d->ev;
         d->PC = d->nPC;
@@ -388,16 +389,16 @@ void CPU::SAVE (pDecode_t d)
 
 void CPU::RESTORE (pDecode_t d)
 {
-    u32 new_win;
-
+    u32 new_cwp = ((d->PSR & LOBITS5) + 1) % NWINDOWS;
+    //os << std::format("Restore, new cwp {:#x}\n", new_cwp);
+ 
     if (verbose) 
-        os << std::format("{:#08x} restore\n", d->PC);
+        os << std::format("{:#08x} restore (new CWP: {:#08x})\n", d->PC, new_cwp);
 
-    new_win = (d->PSR & LOBITS4) + 1;
-    if (((WIM >> new_win) & LOBITS1) != 0)
+    if (((WIM >> new_cwp) & LOBITS1) != 0)
         Trap (d, SPARC_WINDOW_UNDERFLOW);
     else {
-        d->PSR = (d->PSR & ~(LOBITS4)) | (new_win & LOBITS4);
+        d->PSR = (d->PSR & ~(LOBITS5)) | (new_cwp & LOBITS5);
         d->wb_type = WriteBackType::WRITEBACKREG;
         d->value = d->ev;
         d->PC = d->nPC;

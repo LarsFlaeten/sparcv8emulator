@@ -77,7 +77,11 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
             p->et = 0;
             p->ps = p->s;
             p->s = 1;
-            p->cwp -= 1;
+            u32 n_cwp = p->cwp;
+            n_cwp = ((n_cwp - 1) & LOBITS5) % NWINDOWS;
+            //os << std::format("Trap {:#x}, new cwp {:#x}, WIM: {:#x}, NW: {:#x}\n", TrapType, n_cwp, WIM, NWINDOWS);
+            p->cwp = n_cwp;
+
             WriteReg (PC,  LOCALREG1);
             WriteReg (nPC, LOCALREG2);
             
@@ -353,18 +357,23 @@ void CPU::ReadReg (const u32 reg_no, u32 * const value)
     int win;
 
     Globals[0] = 0;
+    if(reg_no == GLOBALREG8) {
+        *value = *pSwapReg;
+        return;
+    }
+    
     switch (reg_no >> 3) {
     case 0 : // Globals
         *value = Globals[reg_no & LOBITS3];
         break;
     case 1 : // Outs
-        *value = Outs [((GetPSR() & LOBITS4) << 3) | (reg_no & LOBITS3)];
+        *value = Outs [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)];
         break;
     case 2 : // locals
-        *value = Locals [((GetPSR() & LOBITS4) << 3) | (reg_no & LOBITS3)];
+        *value = Locals [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)];
         break;
     case 3 : // Ins
-        win = ((GetPSR() & LOBITS4) + 1) & LOBITS4;
+        win = ((GetPSR() & LOBITS5) + 1) % NWINDOWS;
         *value = Outs [(win << 3) | (reg_no & LOBITS3)];
         break;
     }
@@ -377,24 +386,29 @@ void CPU::WriteReg (const u32 value, const u32 reg_no)
 {
    int win = 0;
 
+   if(reg_no == GLOBALREG8) {
+        *pSwapReg = value;
+        return;
+    }
+ 
    switch ((reg_no >>3) & LOBITS2) {
    case 0 : // Globals
       Globals[reg_no & LOBITS3] = value;
       Globals[0] = 0;
       break;
    case 1 : // Outs
-      Outs [((GetPSR() & LOBITS4) << 3) | (reg_no & LOBITS3)] = value;
+      Outs [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
       break;
    case 2 : // locals
-      Locals [((GetPSR() & LOBITS4) << 3) | (reg_no & LOBITS3)] = value;
+      Locals [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
       break;
    case 3 : // Ins
-      win = ((GetPSR() & LOBITS4) + 1) & LOBITS4;
+      win = ((GetPSR() & LOBITS5) + 1) % NWINDOWS;
       Outs [(win << 3) | (reg_no & LOBITS3)] = value;
       break;
    }
 }
-
+/*
 //------------------------------------------------------------------------
 //
 void CPU::WriteRegAll (const int RegBase, const u32 WriteValue) {
@@ -453,15 +467,15 @@ u32 CPU::GetRegBase (const u32 reg_no)
     }
     return 0;
 }
-
+*/
 
 //------------------------------------------------------------------------
 //
 int CPU::MemRead(const u32 va, const int bytes, const u32 rd, const int signext) 
 {
-    u32 value, value_ext, reg_no;
+    u32 value, value_ext;
     int ret1, ret2;
-    reg_no = GetRegBase(rd);
+    //reg_no = GetRegBase(rd);
 
     ret1 = ret2 = 0;
 
@@ -469,22 +483,22 @@ int CPU::MemRead(const u32 va, const int bytes, const u32 rd, const int signext)
     case 1 :
         ret1 = MMU::MemAccess<intent_load,1>(va, value, CROSS_ENDIAN);
         value |= ((signext && (value & BIT7)) ? 0xffffff00 : 0);
-        WriteRegAll(reg_no, value);
+        WriteReg(value, rd);
         break;
     case 2 : 
         ret1 = MMU::MemAccess<intent_load,2>(va, value, CROSS_ENDIAN);
         value |= ((signext && (value & BIT15)) ? 0xffff0000 : 0);
-        WriteRegAll(reg_no, value);
+        WriteReg(value, rd);
         break;
     case 4 :
         ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN);
-        WriteRegAll(reg_no, value);
+        WriteReg(value, rd);
         break;
     case 8 :
         ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN);
         ret2 = MMU::MemAccess<intent_load,4>(va+4, value_ext, CROSS_ENDIAN);
-        WriteRegAll(reg_no, value);
-        WriteRegAll(reg_no+1, value_ext);
+        WriteReg(value, rd);
+        WriteReg(value_ext, rd+1);
         break;
     }
 
@@ -495,15 +509,12 @@ int CPU::MemRead(const u32 va, const int bytes, const u32 rd, const int signext)
 //
 int CPU::MemWrite(const u32 va, const int bytes, const u32 rd) 
 {
-    u32 value, reg_no;
+    u32 value;
     int ret1, ret2;
 
-    if (rd == GLOBALREG8)
-        reg_no = rd;
-    else
-        reg_no = GetRegBase(rd);
-    value = ReadRegsAll(reg_no);
-
+    
+    ReadReg(rd, &value);
+    
     ret1 = ret2 = 0;
     switch (bytes) {
     case 1 :
@@ -517,7 +528,7 @@ int CPU::MemWrite(const u32 va, const int bytes, const u32 rd)
         break;
     case 8 :
         ret1 = MMU::MemAccess<intent_store,4>(va, value, CROSS_ENDIAN);
-        value = ReadRegsAll(reg_no+1);
+        ReadReg(rd+1, &value);
         ret2 = MMU::MemAccess<intent_store,4>(va+4, value, CROSS_ENDIAN);
         break;
     }
@@ -656,6 +667,8 @@ void CPU::handleMMUFault(pDecode_t d) {
     if(FT == 0)
         return; // No fault....
                 
-    if(FT > 0)
+    if(FT > 0) {
         Trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+        MMU::ClearFaultStatus();
+    }
 }

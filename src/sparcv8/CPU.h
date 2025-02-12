@@ -172,12 +172,12 @@ class CPU
 
         // Read/write registers
         void ReadReg (const u32 reg_no, u32 * const value);
-        u32  ReadRegsAll (const int reg_base); 
+        //u32  ReadRegsAll (const int reg_base); 
         void WriteReg (const u32 value, const u32 reg_no);
-        void WriteRegAll (const int RegBase, const u32 WriteValue);
+        //void WriteRegAll (const int RegBase, const u32 WriteValue);
         int  MemRead(const u32 va, const int bytes, const u32 rd, const int signext);    
         int  MemWrite(const u32 va, const int bytes, const u32 rd);
-        u32  GetRegBase (const u32 reg_no); 
+        //u32  GetRegBase (const u32 reg_no); 
 
         // Get/Set multi-core id:
         void SetId(u32 value) { cpu_id = value; }
@@ -190,6 +190,7 @@ class CPU
         u32 GetPC() const { return PC;  }
         u32 GetnPC() const { return nPC; }
         u32 GetIRL() const { return IRL; }
+        u32 GetTrapType() const { return TrapType; }
         void SetIRL(u32 irl)  { IRL = (irl & 0xf); }
         bool IsRunning() const {return running;}
         // MMU Fault handling
