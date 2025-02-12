@@ -221,6 +221,18 @@ TEST_F(GPTIMERTest, TimerIRQOnUnderflow)
     timer.Write(0x38, TCTRL);
     TCTRL = timer.Read(0x38);
     ASSERT_FALSE((TCTRL >> 4) & 0x1);
+
+ 
+    // Clear interrupt,  timer 1
+    TCTRL = timer.Read(0x18);
+    ASSERT_TRUE((TCTRL >> 4) & 0x1);
+    timer.Write(0x18, TCTRL);
+    
+    // Clear interrupt,  timer 5
+    TCTRL = timer.Read(0x58);
+    ASSERT_TRUE((TCTRL >> 4) & 0x1);
+    timer.Write(0x58, TCTRL);
+ 
     ASSERT_FALSE(timer.CheckInterrupt());
 
 
@@ -239,6 +251,9 @@ TEST_F(GPTIMERTest, TimerIRQOnUnderflow)
     timer.Tick();
 
     // Check that timer.CheckInterrupt clear the interrupt when passed true
+    // Three timers will signal interrupt now..
+    ASSERT_TRUE(timer.CheckInterrupt(true));
+    ASSERT_TRUE(timer.CheckInterrupt(true));
     ASSERT_TRUE(timer.CheckInterrupt(true));
     ASSERT_FALSE(timer.CheckInterrupt());
 
