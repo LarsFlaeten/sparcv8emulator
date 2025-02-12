@@ -224,7 +224,7 @@ int main(int argc, char **argv)
     // RAM
     SDRAM<0x02000000> RAM;   // IO: 0x60000000, 32 MB of RAM
     SDRAM<0x00100000> RAM2;  // IO: 0xffd03000, 1 MB of RAM
-    SDRAM<0x00100000> RAM3;  // IO: 0x00000000, 1 MB of RAM
+    SDRAM<0x00800000> RAM3;  // IO: 0x00000000, 8 MB of RAM
 
 
     // Set up amba IO area:
@@ -256,7 +256,7 @@ int main(int argc, char **argv)
         MMU::IOmap[a] = { [&RAM2](u32 i)          {  return RAM2.Read((i-0xffd00000)/4); },
                          [&RAM2](u32 i, u32 v)   {   RAM2.Write((i-0xffd00000)/4, v);    } };
  */
-    // Test 1MB of low RAM
+    // Test 8MB of low RAM
     base_ram = 0x00000000;
     size_ram = RAM3.getSizeBytes();
     start = base_ram/0x10000;
