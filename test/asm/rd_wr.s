@@ -58,7 +58,8 @@ main:
 
         !!!!!!! RDPSR, WRPSR !!!!!!!
         rd      %psr, %g3
-        MOVW    (0x567000e7, %g2)
+        !MOVW    (0x567000e7, %g2) 
+        MOVW    (0xf77000e7, %g2) ! Add LEON values
         MOVW    (0xa98fff18, %g6)
         MOVW    (0xffffffff, %g7)
 
@@ -69,7 +70,8 @@ main:
         bne     .LFAIL
         nop
 
-        MOVW    (0x567000e7, %g5)
+        !MOVW    (0x567000e7, %g5)
+        MOVW    (0xf77000e7, %g5) ! Add LEON values
         MOVW    (0xfcdaaa4d, %g6)
         MOVW    (0xAAAAAAAA, %g7)
 
@@ -115,11 +117,16 @@ main:
         wr      %g6, %g7, %wim
         rd      %wim, %g5
 
-        cmp     %g5, 0xa98
+        ! again, a value that relies on NWINDOWS
+        !cmp     %g5, 0xa98 ! FOR NWINDOWS >= 12
+        cmp     %g5, 0x098 ! FOR NWINDOWS = 8
         bne     .LFAIL
         nop
 
-        MOVW    (0xb89efcd2, %g5)
+        !MOVW    (0xb89efcd2, %g5)
+        !MOVW    (0xfcd2, %g5) ! NWINDOWS = 8
+        MOVW    (0xd2, %g5) ! NWINDOWS = 8
+        
         MOVW    (0x12345678, %g6)
         MOVW    (0xAAAAAAAA, %g7)
 

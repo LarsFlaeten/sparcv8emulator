@@ -109,13 +109,15 @@ main:
 
 	rd	%wim, %g2
 	rd	%psr, %g4
-        MOVW	(0x0004000, %g3)
+        !MOVW	(0x0004000, %g3) ONLY for NWINDOWS = 16
+        MOVW    (0x40, %g3) ! For NWINDOWS = 8
 	or	%g2, %g3, %g3
 	wr	%g3, %wim
 	mov	0x1f, %g5
 	not	%g5, %g5
 	and	%g4, %g5, %g5
-	or	%g5, 15, %g5
+	!or	%g5, 15, %g5 NWINDOWS = 16
+    or	%g5, 7, %g5 !NWINDOWS = 8
 	wr	%g5, %psr
 	mov	0, %g6
 
@@ -130,13 +132,15 @@ main:
 
 	rd	%wim, %g2
 	rd	%psr, %g4
-        MOVW	(0x0004000, %g3)
+        !MOVW	(0x0004000, %g3) ONLY for NWINDOWS = 16
+        MOVW    (0x40, %g3) ! For NWINDOWS = 8
 	or	%g2, %g3, %g3
 	wr	%g3, %wim
 	mov	0x1f, %g5
 	not	%g5, %g5
 	and	%g4, %g5, %g5
-	or	%g5, 13, %g5
+	!or	%g5, 13, %g5 NW = 16
+    or %g5, 5, %g5 ! NW = 8
 	wr	%g5, %psr
 	mov	0, %g6
 

@@ -20,6 +20,8 @@ do
         ./compile $testname nowarn
     fi
 
+    echo "Test '$testname':"
+ 
     if ../../bin/sparcv8_runelf -f ${testname}.aout
     then
         echo "Test '$testname' passed."
