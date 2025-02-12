@@ -17,7 +17,7 @@ class GPTIMER {
             u32 TCTRL;
             u32 TLATCH;
 
-            timer_impl() : TRLDVAL(0xffffffff) {
+            timer_impl() : TRLDVAL(0x270f) {
                 // Default is RS bit set, not IRQ, disabled
                 TCTRL = (0x1 << 1);
             }
@@ -58,7 +58,7 @@ class GPTIMER {
         u32 VendorId() const { return 0x01; }
         u32 DeviceId() const { return 0x011;}
     
-        GPTIMER(u32 IRQ = 8, u32 prescaler = 0xff) : SRELOAD(prescaler) {
+        GPTIMER(u32 IRQ = 8, u32 prescaler = 0x31) : SRELOAD(prescaler) {
             CONFIG = (0x1 << 16) | (IRQ & 0x1f) << 3 | 0x7; // only one timer enabled, 7 implemented
             SRELOAD = prescaler & 0xffff;
 
