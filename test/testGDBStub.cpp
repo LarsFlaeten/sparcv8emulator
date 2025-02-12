@@ -446,6 +446,16 @@ TEST_F(GDBStubTest, GDB_read_memory_short)
 	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "cafe");
 
     // Send read reuest for valid memory locations
+	ASSERT_TRUE(tcp_send(client_socket, "m60000000,1"));
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+   
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+ 
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "ca");
+
+    // Send read reuest for valid memory locations
 	ASSERT_TRUE(tcp_send(client_socket, "m60000004,2"));
     
     std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
@@ -454,8 +464,175 @@ TEST_F(GDBStubTest, GDB_read_memory_short)
     ASSERT_TRUE(validate(ret));
  
 	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "bacc");
+
+    // Send read reuest for valid memory locations
+	ASSERT_TRUE(tcp_send(client_socket, "m60000004,1"));
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+   
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+ 
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "ba");
+
+
+
 }
 
+TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_4)
+{
+
+	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+
+    std::string ret;
+
+    ASSERT_TRUE(tcp_send(client_socket, "m60000001,4"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "febabeba");
+}
+
+TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_1)
+{
+
+	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+
+    std::string ret;
+
+    ASSERT_TRUE(tcp_send(client_socket, "m60000001,1"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "fe");
+}
+ 
+TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_2)
+{
+
+	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+
+    std::string ret;
+
+    ASSERT_TRUE(tcp_send(client_socket, "m60000001,2"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "feba");
+}
+
+TEST_F(GDBStubTest, GDB_read_memory_unaligned_2_4)
+{
+
+	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+
+    std::string ret;
+
+
+
+	ASSERT_TRUE(tcp_send(client_socket, "m60000002,4"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "babebacc");
+}
+
+
+TEST_F(GDBStubTest, GDB_read_memory_unaligned_2_8)
+{
+
+	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+
+    std::string ret;
+
+
+
+	ASSERT_TRUE(tcp_send(client_socket, "m60000002,8"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "babebaccecaf1122");
+}
+
+TEST_F(GDBStubTest, GDB_read_memory_unaligned_2_16)
+{
+
+	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+
+    std::string ret;
+
+
+
+	ASSERT_TRUE(tcp_send(client_socket, "m60000002,10"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "babebaccecaf112233445566778899aa");
+}
+
+TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_16)
+{
+
+	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+
+    std::string ret;
+
+
+
+	ASSERT_TRUE(tcp_send(client_socket, "m60000001,10"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "febabebaccecaf112233445566778899");
+}
+
+TEST_F(GDBStubTest, GDB_read_memory_unaligned_3_16)
+{
+
+	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+
+    std::string ret;
+
+
+
+	ASSERT_TRUE(tcp_send(client_socket, "m60000003,10"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "bebaccecaf112233445566778899aabb");
+}
 
 
 
