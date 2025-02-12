@@ -254,6 +254,7 @@ TEST_F(GPTIMERTest, TimerIRQOnUnderflow)
     // Three timers will signal interrupt now..
     ASSERT_TRUE(timer.CheckInterrupt(true));
     ASSERT_TRUE(timer.CheckInterrupt(true));
+    ASSERT_TRUE(timer.CheckInterrupt(false)); // This checks last timer is signalling, but do not clear
     ASSERT_TRUE(timer.CheckInterrupt(true));
     ASSERT_FALSE(timer.CheckInterrupt());
 
