@@ -26,7 +26,7 @@ class APBCTRL {
             mem(0x100), 
             apbuart(),
             irq(),
-            timer(),
+            timer(),//8, 31),
             ahbuart(0x100)
         {
 
@@ -55,11 +55,11 @@ class APBCTRL {
                 return irq.Read(va & 0x0ff);        
             } else if ( (va & 0xfff00) >> 8 == 0x003) {
                 // Return data from slv 3 (GRTIMER)
-                std::cout << "Read APBCTRL(GRTIMER), va = " << std::hex << va << std::dec << "\n";
+                //std::cout << "Read APBCTRL(GRTIMER), va = " << std::hex << va << std::dec << "\n";
                 return timer.Read(va & 0x0ff);        
             } else if ( (va & 0xfff00) >> 8 == 0x009) {
                 // Return data from slv 7 (AHB UART)
-                std::cout << "Read APBCTRL(AHB UART), va = " << std::hex << va << std::dec << "\n";
+                //std::cout << "Read APBCTRL(AHB UART), va = " << std::hex << va << std::dec << "\n";
                 return ahbuart.Read(va & 0x0ff);        
             } else {
                 std::cerr << "APB Master was adressed ouside any registered peripheral.\n";
@@ -85,11 +85,11 @@ class APBCTRL {
                 // Return data from slv 2 (IRQMP)
                 irq.Write(va & 0x0ff, value);        
             } else if ( (va & 0xfff00) >> 8 == 0x003) {
-                std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
+                //std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 // Return data from slv 3 (GRTIMER)
                 timer.Write(va & 0x0ff, value);        
             } else if ( (va & 0xfff00) >> 8 == 0x009) {
-                std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
+                std::cout << "Write APBCTRL, va = 0x" << std::hex << va << " -> " << value << std::dec << "\n";
                 // Return data from slv 7 (AHB UART)
                 ahbuart.Write(va & 0x0ff, value);        
             } else {
