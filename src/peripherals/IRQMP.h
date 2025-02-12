@@ -23,7 +23,7 @@ class IRQMP {
         u32 BRDCST;
         u32 ERRSTAT;
         u32 AMPCTRL;
-
+        u32 PIMASK[32]; // Processor n interrupt mask registers
 
 
     public:
@@ -52,6 +52,11 @@ class IRQMP {
 
         u32 Read(u32 offset) const {
             std::cout << "Read IRQ at offset " << std::hex << offset << "\n";
+            if(offset >= 0x40 && offset < 0x60) {
+                u32 n = offset - 0x40;
+                std::cout << "Read IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << PIMASK[n] << std::dec << "\n";
+                return PIMASK[n];
+            }     
             switch(offset) {
                 case(IRQMP_ILEVEL_OS):
                     return ILEVEL;
@@ -84,7 +89,15 @@ class IRQMP {
         }
         void Write(u32 offset, u32 value) {
             std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << "\n";
-             switch(offset) {
+            
+            if(offset >= 0x40 && offset < 0x60) {
+                u32 n = offset - 0x40;
+                std::cout << "Write IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << value << std::dec << "\n";
+                PIMASK[n] = value;
+                return;
+            }     
+            
+            switch(offset) {
                 case(IRQMP_ILEVEL_OS):
                     ILEVEL = value;
                     break;
