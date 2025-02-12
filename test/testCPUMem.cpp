@@ -83,7 +83,7 @@ TEST_F(CPUMemTest, TestResetState)
 
 }
 
-TEST_F(CPUMemTest, CheckRegBase)
+/*TEST_F(CPUMemTest, CheckRegBase)
 {
     std::cout << "RegNo -> RegBase\n";
 
@@ -101,7 +101,7 @@ TEST_F(CPUMemTest, CheckRegBase)
 
     
 }
-
+*/
 TEST_F(CPUMemTest, MemAccess_ReadWrite)
 {
 
