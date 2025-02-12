@@ -112,7 +112,12 @@ public:
                 ints_enabled = (value & (RI|TI));
                 enabled = value & (RE|TE);
                 break;
+            case(0xc):
+                scaler = 0;
+                scaler = value & 0xfff;
+                break;
             default:
+                std::cerr << "APBUART write offset " << std::hex << offset << " -> " << value << "\n";
                 throw not_implemented_leon_exception("Test - write UART other reg");
         }
     }
