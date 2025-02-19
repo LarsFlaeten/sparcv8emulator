@@ -50,10 +50,10 @@
 #define SWAPA              UNIMP
 #define LDF                UNIMP //LDF_impl
 #define LDDF               UNIMP
-#define LDFSR              UNIMP //LDFSR_impl
+#define LDFSR              fpu_LDFSR
 #define STF                UNIMP //STF_impl
 #define STDF               UNIMP
-#define STFSR              UNIMP //STFSR_impl
+#define STFSR              fpu_STFSR
 #define STDFQ              UNIMP
 #define FBFCC              UNIMP // FBFCC_impl
 #define FPOP1              UNIMP // FOP1_impl
