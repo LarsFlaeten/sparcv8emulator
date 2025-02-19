@@ -2,6 +2,7 @@ build/
 image/
 bin/
 lib/
+.vscode/
 test/asm/*.o
 test/asm/*.aout
 test/asm/*.map
