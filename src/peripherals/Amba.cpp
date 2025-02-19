@@ -80,10 +80,10 @@ void amba_apb_setup(SDRAM2& io_area, u32 base) {
     apb->id = (VENDOR_GAISLER << 24) | (GAISLER_GPTIMER << 12) | (AMB_VERSION << 5) | (0x8 & 0xf);
     apb->iobar = (0x003 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO; // 80000300 - 800003ff
 
-    // slv7 at 0x800ff020 - AHB Debug UART ?
+    // slv7 at 0x800ff020 - APB UART IRQ 3
     p = io_area.getPtr((0x800ff020-base)/4);
     apb = reinterpret_cast<ambapp_pnp_apb*>(p); 
-    apb->id = (VENDOR_GAISLER << 24) | (GAISLER_AHBUART << 12) | (AMB_VERSION_1 << 5) | (0x3 & 0xf);
+    apb->id = (VENDOR_GAISLER << 24) | (GAISLER_APBUART << 12) | (AMB_VERSION_1 << 5) | (0x3 & 0xf);
     apb->iobar = (0x009 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO; // 80000900 - 800009ff
 
 
