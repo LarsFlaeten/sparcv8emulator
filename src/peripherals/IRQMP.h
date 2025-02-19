@@ -27,11 +27,29 @@ class IRQMP {
 
 
     public:
-        IRQMP() {}
+        IRQMP():
+            ILEVEL(0),
+            IPEND(0),
+            IFORCE(0),
+            ICLEAR(0),
+            MPSTAT(0),
+            BRDCST(0),
+            ERRSTAT(0),
+            AMPCTRL(0) 
+        {
+            for(int i = 0; i < 32; ++i)
+                PIMASK[i] = 0;
+        }
 
         void TriggerIRQ(u32 IRL) {
             IRL = IRL & 0xf;
-            IPEND = IPEND | (0x1 << IRL);
+            for(int i = 0; i < 32; ++i)
+            {
+                if((0x1 << IRL) & PIMASK[i]) {
+                    IPEND = IPEND | (0x1 << IRL);
+                    return;
+                }
+            }
         }
 
         unsigned int GetNextIRQPending() const {
@@ -51,10 +69,10 @@ class IRQMP {
 
 
         u32 Read(u32 offset) const {
-            std::cout << "Read IRQ at offset " << std::hex << offset << "\n";
+            //std::cout << "Read IRQ at offset " << std::hex << offset << "\n";
             if(offset >= 0x40 && offset < 0x60) {
                 u32 n = offset - 0x40;
-                std::cout << "Read IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << PIMASK[n] << std::dec << "\n";
+                //std::cout << "Read IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << PIMASK[n] << std::dec << "\n";
                 return PIMASK[n];
             }     
             switch(offset) {
@@ -88,11 +106,11 @@ class IRQMP {
             return 0; 
         }
         void Write(u32 offset, u32 value) {
-            std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << "\n";
+            //std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << "\n";
             
             if(offset >= 0x40 && offset < 0x60) {
                 u32 n = offset - 0x40;
-                std::cout << "Write IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << value << std::dec << "\n";
+                //std::cout << "Write IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << value << std::dec << "\n";
                 PIMASK[n] = value;
                 return;
             }     
