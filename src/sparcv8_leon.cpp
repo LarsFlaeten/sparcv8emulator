@@ -333,7 +333,8 @@ int main(int argc, char **argv)
     
             timer.Tick();
 
-            if(timer.CheckInterrupt(true)) intc.TriggerIRQ(8);
+            // It seems like the kernel clears the interrupts, and we dont need to do it here
+            if(timer.CheckInterrupt(false)) intc.TriggerIRQ(8);
         
             u32 IRL = intc.GetNextIRQPending();
             if(IRL>0) {
@@ -343,6 +344,10 @@ int main(int argc, char **argv)
         }
     );
 
+    // Set up timer to the same state as TSIM starts with
+    GPTIMER& timer = apbctrl.GetTimer();
+    timer.SetLEONState();
+ 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     u32 word_count = ReadElf(fname, cpu, entry_va); 
