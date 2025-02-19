@@ -24,14 +24,14 @@ void CPU::Reset(u32 entry_va = 0x0)
     ((pPSR_t)&PSR)->et = 1;
     ((pPSR_t)&PSR)->s  = 1;
     ((pPSR_t)&PSR)->ps  = 1;
-    ((pPSR_t)&PSR)->ef = 1;
+    ((pPSR_t)&PSR)->ef = 1; // Enable floats by default
 
     // Leon3 specific values:
     ((pPSR_t)&PSR)->imp = 0xf; // Gaisler
     ((pPSR_t)&PSR)->ver = 0x3; // Leon3
 
 
- 
+    fpu_fsr = 0; 
 
     IRL = 0;
 
@@ -63,13 +63,15 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
         count++;
         
         // Process interrupts
-        if (TrapType == 0 && (p->et && IRL > p->pil)) {
+        if (TrapType == 0 && (p->et && (IRL > p->pil))) {
             if (verbose)
                 os << std::format("INT  {:#x} PC={:#08x} NPC={:#08x}\n", IRL, PC, nPC);
 
             TrapType = IRL + SPARC_INTERRUPT;
-
-            // TODO: Do we clear IRL here, or handle that in interrupt handler?
+            // Do we clear IRL here, or handle that in interrupt handler?
+            // Update - yes we absolutely have to clear it here. The interrupt handlers cannot reach IRL,
+            // as it is not exposed in the machine... Hence, it was nevre cleared..
+            IRL = 0;
         }
 
         // Process Traps
