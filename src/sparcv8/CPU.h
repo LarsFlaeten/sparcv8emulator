@@ -126,7 +126,7 @@ class CPU
         u32 Y;
 
         u32 cpu_id;
-
+        u32 fpu_fsr; // FPU state register
         ///////////////////////
         // Registers
         u32 Globals [9];              // Global[8] is a pseudo register used only for SWAP
@@ -276,6 +276,14 @@ class CPU
     // LEON3 Extensions
     //
     void CASA    (pDecode_t d);
+
+    //////////////////////////////////////
+    // FPU Extensions
+    //
+    void fpu_STFSR    (pDecode_t d);
+    void fpu_LDFSR    (pDecode_t d);
+
+
 
 
 	//////////////////////////////////////
