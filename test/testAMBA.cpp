@@ -191,7 +191,7 @@ TEST_F(AMBATest, AHB_setup)
     p = amba_apb.getPtr((0x800ff020-base_amba_apb_io)/4);
 	apb = reinterpret_cast<ambapp_pnp_apb*>(p); 
  	ASSERT_EQ(ambapp_pnp_vendor(apb->id), VENDOR_GAISLER);
- 	ASSERT_EQ(ambapp_pnp_device(apb->id), GAISLER_AHBUART);
+ 	ASSERT_EQ(ambapp_pnp_device(apb->id), GAISLER_APBUART);
  	ASSERT_EQ(ambapp_pnp_ver(apb->id), 0x1);
  	ASSERT_EQ(ambapp_pnp_irq(apb->id), 0x3);
 	ASSERT_EQ(ambapp_pnp_apb_start(apb->iobar, 0x80000900), 0x80000900);
