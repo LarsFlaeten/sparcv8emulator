@@ -88,7 +88,7 @@ void MMUTest::SetUp()
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     cpu.Reset(entry_va);
- 
+    MMU::reset(); 
 }
 
 void MMUTest::TearDown()
@@ -114,7 +114,10 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
     u32 entry_va = 0x0; 
     cpu.Reset(entry_va);
  */
-  
+   
+    EXPECT_FALSE(MMU::GetEnabled());
+ 
+
     // adress to indicate MMU op is taken from LOCALREG4
     cpu.WriteReg(0x00011, LOCALREG0); //0x0000 is VA/adress in MMU regs
     cpu.WriteReg(0x00000, LOCALREG4); 
@@ -122,6 +125,9 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
  
     // Construct STA opcode
     DecodeStruct d;
+    // Map the PSR structure to the decode PSR variable just once
+    d.p = (pPSR_t) &(d.PSR);
+
     u32 op = 0b010100; // STA
     d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
         ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
@@ -175,6 +181,9 @@ TEST_F(MMUTest, MMUEnableDisable)
  
     // Construct STA opcode
     DecodeStruct d;
+    // Map the PSR structure to the decode PSR variable just once
+    d.p = (pPSR_t) &(d.PSR);
+
     u32 op = 0b010100; // STA
     d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
         ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
