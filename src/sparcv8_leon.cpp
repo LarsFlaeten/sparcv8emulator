@@ -222,7 +222,7 @@ int main(int argc, char **argv)
 
 
     // RAM
-    SDRAM<0x02000000> RAM;   // IO: 0x60000000, 32 MB of RAM
+    SDRAM<0x10000000> RAM;   // IO: 0x60000000, 128 MB of RAM
     SDRAM<0x00100000> RAM2;  // IO: 0xffd03000, 1 MB of RAM
     SDRAM<0x00800000> RAM3;  // IO: 0x00000000, 8 MB of RAM
 
