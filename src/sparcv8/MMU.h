@@ -170,7 +170,25 @@ public:
     static u32 GetFaultStatus() {return fault_status_reg;}
     static void ClearFaultStatus() {fault_status_reg = 0x0;}
 
+    static void reset() {
+        control_reg = 0x0;
+        ccr = 0x0;
+        iccr = 0x0;
+        dccr = 0x0;
+        ctx_tbl_ptr = 0x0;
+        ctx_n = 0x0;
+        last_ctx_n = 0x0;
+        fault_status_reg = 0x0;
+        fault_address_reg = 0x0;
 
+        tlb_miss = true;
+        for(int i = 0; i < 3; ++i) {
+            tlb_pos[i] = 2;
+            for(int j = 0; j < 3; ++j) {
+                tlbs[i][j] = {0,0,0};
+            }
+        }
+    }
 
     static void nop() { return; }
 
@@ -272,6 +290,74 @@ public:
 
     }
 
+
+    static std::string rw_str(intent rw) {
+        switch(rw) {
+            case(intent_load): return "intent_load";
+            case(intent_store): return "intent_store";
+            case(intent_execute): return "intent_exec";
+            default: return "unknown";
+        }
+
+    }
+
+    static std::string at_str(int at) {
+        switch(at) {
+            case(0): return "Load from User Data Space";
+            case(1): return "Load from Supervisor Data Space";
+            case(2): return "Load/Execute from User Instruction Space";
+            case(3): return "Load/Execute from Supervisor Instruction Space";
+            case(4): return "Store to User Data Space";
+            case(5): return "Store to Supervisor Data Space";
+            case(6): return "Store to User Instruction Space";
+            case(7): return "Store to Supervisor Instruction Space";
+            default: return "unknown";
+        }
+
+    }
+
+    static std::string acc_str(int acc, bool super) {
+        if(super) {
+           switch(acc) {
+                case(0): return "S:Read Only";
+                case(1): return "S:Read/Write";
+                case(2): return "S:Read/Execute";
+                case(3): return "S:Read/Write/Execute";
+                case(4): return "S:Execute Only";
+                case(5): return "S:Read/Write";
+                case(6): return "S:Read/Execute";
+                case(7): return "S:Read/Write/Execute";
+                default: return "S:unknown";
+           }
+        } else {
+             switch(acc) {
+                case(0): return "U:Read Only";
+                case(1): return "U:Read/Write";
+                case(2): return "U:Read/Execute";
+                case(3): return "U:Read/Write/Execute";
+                case(4): return "U:Execute Only";
+                case(5): return "U:Read Only";
+                case(6): return "U:No Access";
+                case(7): return "U:No Access";
+                default: return "U:unknown";
+             } 
+        }
+    }
+
+    static std::string ft_str(int ft) {
+        switch(ft) {
+            case(0): return "None";
+            case(1): return "Invalid address error";
+            case(2): return "Protection error";
+            case(3): return "Privilege violation error";
+            case(4): return "Translation error";
+            case(5): return "Access bus error";
+            case(6): return "Internal error";
+            case(7): return "Reserved";
+            default: return "unknown";
+
+        }
+    }
 
     static u32 translate_va(u32 virt_addr, bool supervisor, u8& level, intent rw=intent_load) {
      
@@ -398,7 +484,7 @@ public:
         } 
         // Signal fault 
         if(FT != 0) {
-            std::cerr << "MMU Fault, virt_addr = 0x" << std::hex << virt_addr << ", lvl: " << std::dec << (int)level << ", intent=" << rw << ", AT = " << AT << ", ACC = " << ACC << ", FT = " << FT << "\n";
+            std::cerr << "MMU Fault, virt_addr = 0x" << std::hex << virt_addr << ", lvl: " << std::dec << (int)level << ", intent=" << rw << " (" << rw_str(rw) << "), AT = " << AT << " (" << at_str(AT) << "), ACC = " << ACC << " (" << acc_str(ACC, supervisor) << "), FT = " << FT << " (" << ft_str(FT) << ")\n";
             fault_address_reg = virt_addr;
             fault_status_reg = 0x0 | ((level&0x3) << 8) | FT << 2;
             return 0xffffffff;
@@ -429,7 +515,7 @@ public:
      * <0 - MMU FAULT
      */
     template<intent rw=intent_load, unsigned size = 4>
-    unsigned static MemAccess(u32 virt_addr, u32& value, bool reverse, bool supervisor = true)
+    int static MemAccess(u32 virt_addr, u32& value, bool reverse, bool supervisor = true)
     {
         u32 phys_addr = 0x0;
         u8 level = 0;
