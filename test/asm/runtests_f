@@ -17,7 +17,7 @@ do
         ./compile $testname nowarn
     fi
 
-    if ../sparc_iss -f ${testname}.aout
+    if ../../bin/sparcv8_runelf -f ${testname}.aout
     then
         echo "Test '$testname' passed."
     else
