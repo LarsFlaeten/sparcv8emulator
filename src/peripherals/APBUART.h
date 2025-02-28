@@ -108,6 +108,8 @@ public:
                 console.Putc(value);
                 tx_emptied_int_pending = true; 
                 break;
+            case(0x4):
+                break;
             case(0x8):
                 ints_enabled = (value & (RI|TI));
                 enabled = value & (RE|TE);
