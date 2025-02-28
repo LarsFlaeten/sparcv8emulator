@@ -195,5 +195,15 @@ TEST_F(INSTRTest, _xor)
 {
     do_test_assertg7("xor.aout");
 } 
+/*
+TEST_F(INSTRTest, _fbfcc)
+{
+    do_test_assertg7("fbfcc.aout");
+} 
 
+TEST_F(INSTRTest, _fld)
+{
+    do_test_assertg7("fld.aout");
+} 
+*/
 
