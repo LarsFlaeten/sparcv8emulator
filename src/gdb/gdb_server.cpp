@@ -103,7 +103,7 @@ std::string gdb_read_regs(CPU& cpu) {
 		response += u32_to_hexstr(cpu.GetTBR());
 		response += u32_to_hexstr(cpu.GetPC());
 		response += u32_to_hexstr(cpu.GetnPC());
-		response += u32_to_hexstr(0); // FSR
+		response += u32_to_hexstr(cpu.GetFSR()); // FSR
 		response += u32_to_hexstr(0); // CSR
  
         return response;

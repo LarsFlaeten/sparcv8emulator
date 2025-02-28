@@ -192,6 +192,8 @@ class CPU
         u32 GetIRL() const { return IRL; }
         u32 GetTrapType() const { return TrapType; }
         void SetIRL(u32 irl)  { IRL = (irl & 0xf); }
+        u32 GetFSR() const { return fpu_fsr; }
+        void SetFSR(u32 _fsr)  { fpu_fsr = _fsr; }
         bool IsRunning() const {return running;}
         // MMU Fault handling
         void handleMMUFault(pDecode_t d);

@@ -30,8 +30,8 @@ void CPU::Reset(u32 entry_va = 0x0)
     ((pPSR_t)&PSR)->imp = 0xf; // Gaisler
     ((pPSR_t)&PSR)->ver = 0x3; // Leon3
 
-
-    fpu_fsr = 0; 
+    // Version 3 in bitfield 17:19
+    fpu_fsr = 3 << 17; 
 
     IRL = 0;
 
@@ -196,14 +196,14 @@ void CPU::Decode(pDecode_t d)
         // All instructions need r[rs1] value
         // op = 11 and op3 = 100xxx means load or store from fregs,
         // handle that in function
-        if((fmt_bits == 3) && ( (d->op_2_3 >> 3 ) == 4) ) {
+        /*if((fmt_bits == 3) && ( (d->op_2_3 >> 3 ) == 4) ) {
             break;
         } else if ((fmt_bits == 2) && ( (d->op_2_3 == 52) || (d->op_2_3 == 53)) ) {
             break; // Skip read regs for FOP1 and FOP2
         } else
-        {        
+        { */       
             ReadReg (d->rs1, &d->rs1_value);
-        }
+        /*}*/
 
         // ev = ((RD/WR/ALU/Logic instr) ? r[rs1] : 0) + (i ? sign_ext(imm) : r[rs2])
         I_idx = op3 + ((fmt_bits & 1) << 6);
