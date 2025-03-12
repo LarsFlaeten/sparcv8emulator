@@ -53,7 +53,7 @@ void CPU::LDA_impl (pDecode_t d) {
                     break;
                 case(0x300):
                     d->value = MMU::GetFaultStatus();
-                    MMU::ClearFaultStatus();
+                    MMU::ClearFaultStatus(); // Clear on read, ref turboSparc
                     break;
                 case(0x400):
                     d->value = MMU::GetFaultAddress();
