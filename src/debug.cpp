@@ -4,7 +4,13 @@
 #include <string>
 #include <iomanip>
 
-void debug_dumpmem(u32 pa) {
+void debug_dumpmem(u32 pa, int n) {
+    if(n < 0) n = 1;
+
+    if(n > 16) n = 16;
+   
+    int count = 0;
+
     for(int i = 0; i < 4; ++i) {
         std::cout << std::hex << "0x" << pa + 4*i*4;
         std::string strrep;
@@ -20,12 +26,25 @@ void debug_dumpmem(u32 pa) {
             if( c >= 33 && c <= 126) strrep.push_back(c); else strrep.push_back('.');
             if( d >= 33 && d <= 126) strrep.push_back(d); else strrep.push_back('.');
             strrep.push_back(' ');
+
+            ++count;
+            if(count >= n)
+                break;
         }
         std::cout << "  " << strrep << std::endl;
+        
+        if(count >= n)
+            break;
     }
 }
 
-void debug_dumpmemv(u32 va) {
+void debug_dumpmemv(u32 va, int n) {
+    if(n < 0) n = 1;
+
+    if(n > 16) n = 16;
+    
+    int count = 0;
+
     for(int i = 0; i < 4; ++i) {
         std::cout << std::hex << "0x" << va + 4*i*4;
         std::string strrep;
@@ -42,8 +61,15 @@ void debug_dumpmemv(u32 va) {
             if( c >= 33 && c <= 126) strrep.push_back(c); else strrep.push_back('.');
             if( d >= 33 && d <= 126) strrep.push_back(d); else strrep.push_back('.');
             strrep.push_back(' ');
+             
+            ++count;
+            if(count >= n)
+                break;
         }
         std::cout << "  " << strrep << std::endl;
+             
+        if(count >= n)
+                break;
     }
 }
 
