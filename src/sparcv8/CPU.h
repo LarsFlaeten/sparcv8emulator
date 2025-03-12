@@ -98,7 +98,8 @@ enum TerminateReason {
     BREAK = 1,
     STEP = 2,
     TRAP_CONDITIONAL = 3,
-    UNIMPLEMENTED = 4
+    UNIMPLEMENTED = 4,
+    RECV_SIGINT = 5
 };
 
 struct RunSummary {
@@ -150,9 +151,9 @@ class CPU
 
         std::function<void()> bus_tick_func;
         std::function<void()> breakpoint_func;
-         
+        bool _interrupt;         
    public:
-        CPU(std::ostream& out = std::cout) : cpu_id(0), os(out), running(false), verbose(false), single_step(false), breakpoint(NO_USER_BREAK)
+        CPU(std::ostream& out = std::cout) : cpu_id(0), os(out), running(false), verbose(false), single_step(false), breakpoint(NO_USER_BREAK), _interrupt(false)
         {  }
 
         // Main execution flow methods
@@ -203,6 +204,7 @@ class CPU
 
 
         // Emulator control and debugging
+        void interrupt() { _interrupt = true; }
         void    SetSingleStep(bool v) { single_step = v; }
         void    SetVerbose(bool v) { verbose = v; }
         bool    GetVerbose() const {return verbose;}

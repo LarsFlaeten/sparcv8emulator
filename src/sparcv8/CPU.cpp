@@ -73,7 +73,7 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
             // as it is not exposed in the machine... Hence, it was nevre cleared..
             IRL = 0;
         }
-
+        
         // Process Traps
         if (TrapType) {
             p->et = 0;
@@ -93,6 +93,7 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
             TrapType &= ~(LOBITS8);
         }
 
+       
         u32 virt_addr = (u32) PC;
 
         // Service breakpoints if breakpoint_func is added and virt_addr is in breakpoints list,
@@ -129,10 +130,20 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
         // ---- Writeback ----
         WriteBack(d);
 
+
+
+        
         // Tick the bus, handling input, interrupts etc
         // ..and gdb server if present
 		if(bus_tick_func)
             bus_tick_func();
+
+
+        if(_interrupt) {
+            _interrupt = false;
+            rs.reason = TerminateReason::RECV_SIGINT; // received SIGINT
+            break;
+        }
     }
 
     rs.instr_count = count;
@@ -671,6 +682,6 @@ void CPU::handleMMUFault(pDecode_t d) {
                 
     if(FT > 0) {
         Trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
-        MMU::ClearFaultStatus();
+        //MMU::ClearFaultStatus(); // Not to be cleared here
     }
 }
