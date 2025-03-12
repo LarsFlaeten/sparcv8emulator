@@ -863,7 +863,7 @@ TEST_F(MMUTest, MMUTables)
 
     ret = MMU::MemAccess<intent_load>(0xFBFFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -4);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xFBFFFFFC);
+    ASSERT_EQ(MMU::GetFaultAddress(), 0xFBFFF000); // Corresponing page
 
     // Area not mapped,  * 0xFC000000-0xFFCFFFFF: Not Mapped
     ret = MMU::MemAccess<intent_load>(0xFC000000, val, CROSS_ENDIAN);
@@ -872,17 +872,17 @@ TEST_F(MMUTest, MMUTables)
 
     ret = MMU::MemAccess<intent_load>(0xFFCFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xFFCFFFFC);
+    ASSERT_EQ(MMU::GetFaultAddress(), 0xFFCFF000);
 
 
     // Area not mapped,   * 0xFFD3FFFF-0xFFFFFFFF: Not Mapped
     ret = MMU::MemAccess<intent_load>(0xFFD3FFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xFFD3FFFC);
+    ASSERT_EQ(MMU::GetFaultAddress(), 0xFFD3F000);
 
     ret = MMU::MemAccess<intent_load>(0xFFFFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xFFFFFFFC);
+    ASSERT_EQ(MMU::GetFaultAddress(), 0xFFFFF000);
 
  
     // Read memory through MMU translation for 81 kb PROM (mapped to end of ram)
@@ -930,7 +930,7 @@ TEST_F(MMUTest, MMUFaults)
     // Should flag unaligned:
     ret = MMU::MemAccess<intent_load>(0xF, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -3);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xF);
+    ASSERT_EQ(MMU::GetFaultAddress(), 0x0); // Corresponding page
 
     // Get a level 3 and level 1 physical address we can play with
     u32 pa_l3 = _mmu_ctx0_ffd_level3[0] >> 8;
