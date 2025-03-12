@@ -330,7 +330,10 @@ bool handle_gdb_packet(int client_fd, CPU& cpu, const char *packet) {
         //send_packet(client_fd, "OK");
         
         // Here we start/continue execution until it hits a breakpoint:
-        cpu.Run(0);
+        RunSummary rs;
+        cpu.Run(0, &rs);
+
+        // Lets look into runsummary why it exited.
         send_packet(client_fd, "T05thread:p01.01;");
  
     } else if (strcmp(packet, "?") == 0) {
