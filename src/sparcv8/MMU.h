@@ -359,6 +359,31 @@ public:
         }
     }
 
+    static u32 get_access_type(intent rw, bool supervisor) {
+        u32 AT = 0;
+
+        // ACCESS TYPE
+        if(rw == intent_load) {
+            if(supervisor)
+                AT = 1;
+            else 
+                AT = 0;
+        } else if (rw == intent_store) {
+            // We have no way of discerning between store to data or instruction space...
+            if(supervisor)
+                AT = 5;
+            else
+                AT = 4;
+        } else /*rw == intent_execute*/ {
+            if(supervisor)
+                AT = 3;
+            else
+                AT = 2;
+        }
+
+        return AT;
+    }
+
     static u32 translate_va(u32 virt_addr, bool supervisor, u8& level, intent rw=intent_load) {
      
 
@@ -431,26 +456,8 @@ public:
         // Fault handling:    
         u32 FT = 0; // Fault type      
         u32 ACC = (PTE >> 2) & 0x7;
-        u32 AT = 0;
+        u32 AT = get_access_type(rw, supervisor);
 
-        // ACCESS TYPE
-        if(rw == intent_load) {
-            if(supervisor)
-                AT = 1;
-            else 
-                AT = 0;
-        } else if (rw == intent_store) {
-            // We have no way of discerning between store to data or instruction space...
-            if(supervisor)
-                AT = 5;
-            else
-                AT = 4;
-        } else /*rw == intent_execute*/ {
-            if(supervisor)
-                AT = 3;
-            else
-                AT = 2;
-        }
 
         if((ET == 1 && level == 3) || ET == 3) {
             FT = 4; // Translation error
@@ -458,35 +465,36 @@ public:
 
         if(ET == 0)
             FT = 1; // Invalid address
-
-        // Check against access controls
-        // SRMMU page 257 table
-        if(AT == 0) {
-            if( ACC == 4) FT = 2;
-            if( ACC == 6 || ACC == 7) FT = 3;
-        } else if(AT == 1) {
-            if( ACC == 4) FT = 2;
-        } else if(AT == 2) {
-            if( ACC == 0 || ACC == 1 || ACC == 5) FT = 2;
-            if( ACC == 6 || ACC == 7 ) FT = 3;
-        } else if(AT == 3) {
-            if( ACC == 0 || ACC == 1 || ACC == 5) FT = 2;
-        } else if(AT == 4) {
-            if( ACC == 0 || ACC == 2 || ACC == 4 || ACC == 5) FT = 2;
-            if( ACC == 6 || ACC == 7 ) FT = 3;
-        } else if(AT == 5) {
-            if( ACC == 0 || ACC == 2 || ACC == 4 || ACC == 6) FT = 2;
-        } else if(AT == 6) {
-            if( ACC == 0 || ACC == 1 || ACC == 2 || ACC == 4 || ACC == 5) FT = 2;
-            if( ACC == 6 || ACC == 7 ) FT = 3;
-        } else if(AT == 7) {
-            if( ACC==0 || ACC==1 || ACC==2 || ACC==4 || ACC == 5 || ACC == 6) FT = 2;
-        } 
+        else { 
+            // Check against access controls
+            // SRMMU page 257 table
+            if(AT == 0) {
+                if( ACC == 4) FT = 2;
+                if( ACC == 6 || ACC == 7) FT = 3;
+            } else if(AT == 1) {
+                if( ACC == 4) FT = 2;
+            } else if(AT == 2) {
+                if( ACC == 0 || ACC == 1 || ACC == 5) FT = 2;
+                if( ACC == 6 || ACC == 7 ) FT = 3;
+            } else if(AT == 3) {
+                if( ACC == 0 || ACC == 1 || ACC == 5) FT = 2;
+            } else if(AT == 4) {
+                if( ACC == 0 || ACC == 2 || ACC == 4 || ACC == 5) FT = 2;
+                if( ACC == 6 || ACC == 7 ) FT = 3;
+            } else if(AT == 5) {
+                if( ACC == 0 || ACC == 2 || ACC == 4 || ACC == 6) FT = 2;
+            } else if(AT == 6) {
+                if( ACC == 0 || ACC == 1 || ACC == 2 || ACC == 4 || ACC == 5) FT = 2;
+                if( ACC == 6 || ACC == 7 ) FT = 3;
+            } else if(AT == 7) {
+                if( ACC==0 || ACC==1 || ACC==2 || ACC==4 || ACC == 5 || ACC == 6) FT = 2;
+            } 
+        }
         // Signal fault 
         if(FT != 0) {
-            std::cerr << "MMU Fault, virt_addr = 0x" << std::hex << virt_addr << ", lvl: " << std::dec << (int)level << ", intent=" << rw << " (" << rw_str(rw) << "), AT = " << AT << " (" << at_str(AT) << "), ACC = " << ACC << " (" << acc_str(ACC, supervisor) << "), FT = " << FT << " (" << ft_str(FT) << ")\n";
-            fault_address_reg = virt_addr;
-            fault_status_reg = 0x0 | ((level&0x3) << 8) | FT << 2;
+            //std::cerr << "MMU Fault, virt_addr = 0x" << std::hex << virt_addr << ", lvl: " << std::dec << (int)level << ", intent=" << rw << " (" << rw_str(rw) << "), AT = " << AT << " (" << at_str(AT) << "), ACC = " << ACC << " (" << acc_str(ACC, supervisor) << "), FT = " << FT << " (" << ft_str(FT) << ")\n";
+            fault_address_reg = virt_addr & ~0xfff; // Only show page, not page offset
+            fault_status_reg = 0x0 | ((level&0x3) << 8) | (AT & 0x7) << 5 | FT << 2 | 0x1 << 1;
             return 0xffffffff;
         }
 
@@ -522,7 +530,10 @@ public:
        
         // Check alignment
         if(virt_addr % size != 0) {
-            fault_address_reg = virt_addr;
+            u32 AT = get_access_type(rw, supervisor);
+            u32 FT = 1;
+            fault_status_reg = 0x0 | ((level&0x3) << 8) | (AT & 0x7) << 5 | FT << 2 | 0x1 << 1;
+            fault_address_reg = virt_addr & ~0xfff;
             return -3;
         }
 
@@ -582,10 +593,9 @@ public:
         catch(const std::bad_function_call& c)
         {
             //fprintf(stderr, "MemAccess(virt=%08X,phys=%08X,size=%u,reverse=%s,mode=%s,UM=%d,VM=%d> failed because of bad function call!\n",
-            //    virt_addr, phys_addr, size, reverse?"true":"false", rw==intent_store?"write":"read", /* TODO: Enable VM and UM regs.UM, regs.VM)*/ 0, 0);
             u8 FT = 1;
             fault_status_reg = 0x0 | ((level&0x3) << 8) | FT << 2;
-            fault_address_reg = virt_addr;
+            fault_address_reg = virt_addr & ~0xfff;
             return -4;
         }
         return 0;
