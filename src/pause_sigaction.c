@@ -14,6 +14,7 @@ int main(void)
 
         act.sa_handler =  signal_handler;
         sigaction(SIGCONT, &act, NULL);
+        sigaction(SIGINT, &act, NULL);
         ret = pause();
         if (-1 == ret)
                 printf("Process exited\n");
