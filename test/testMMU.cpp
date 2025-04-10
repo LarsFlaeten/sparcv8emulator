@@ -49,6 +49,45 @@ protected:
     //SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
     SDRAM2 RAM;  // IO: 0x0, 16 MB of RAM
 
+    void do_LDA_instr(u32 rs1, u32 rs2, u32 rd, u32 asi) {
+        u32 op3 = 0b010000; // LDA
+        do_op3_instr(3, op3, rs1, rs2, rd, asi);
+    }
+ 
+    void do_LD_instr(u32 rs1, u32 rs2, u32 rd) {
+        u32 op3 = 0b000000;
+        do_op3_instr(3, op3, rs1, rs2, rd, 0);
+    }
+ 
+    void do_STA_instr(u32 rs1, u32 rs2, u32 rd, u32 asi) {
+        u32 op3 = 0b010100; // STA
+        do_op3_instr(3, op3, rs1, rs2, rd, asi);
+    }
+ 
+    void do_ST_instr(u32 rs1, u32 rs2, u32 rd) {
+        u32 op3 = 0b000100; // STA
+        do_op3_instr(3, op3, rs1, rs2, rd, 0);
+    }
+ 
+    void do_op3_instr(u32 op, u32 op3, u32 rs1, u32 rs2, u32 rd, u32 asi) {
+        DecodeStruct d;
+        d.opcode = ((op & LOBITS2) << FMTSTARTBIT) 
+            | ((rd & LOBITS5) << RDSTARTBIT)
+            | ((op3 & LOBITS6) << OP3STARTBIT)
+            | ((rs1) << RS1STARTBIT)
+            | (0x0 << ISTARTBIT)
+            | (asi << ASISTARTBIT)
+            | ((rs2)<< RS2STARTBIT); 
+    
+        d.PSR = cpu.GetPSR(); 
+        d.p = (pPSR_t)&(d.PSR);
+       
+        cpu.Decode(&d);
+        
+        d.function(&cpu, &d);
+        cpu.WriteBack(&d); 
+    }
+
 
 };
 
@@ -122,34 +161,9 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
     cpu.WriteReg(0x00011, LOCALREG0); //0x0000 is VA/adress in MMU regs
     cpu.WriteReg(0x00000, LOCALREG4); 
     cpu.WriteReg(0x00000, LOCALREG5); // [L4] + [l5] is value to write
- 
-    // Construct STA opcode
-    DecodeStruct d;
-    // Map the PSR structure to the decode PSR variable just once
-    d.p = (pPSR_t) &(d.PSR);
 
-    u32 op = 0b010100; // STA
-    d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
-        ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
-        ^ ((op & LOBITS6) << OP3STARTBIT)
-        ^ ((LOCALREG4) << RS1STARTBIT)
-        ^ (0x0 << ISTARTBIT)
-        ^ (0x19 << ASISTARTBIT)
-        ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
- 
-    EXPECT_EQ(d.op_2_3, 0b010100);
-    EXPECT_EQ(d.rd, LOCALREG0);
-    EXPECT_EQ(d.rs1, LOCALREG4);
- 
-    EXPECT_EQ(d.rs1_value, 0x0000);
-    EXPECT_EQ(d.i, 0);
-    EXPECT_EQ(d.imm_disp_rs2 & LOBITS5, LOCALREG5);
-    EXPECT_EQ(d.imm_disp_rs2 >> 5, 0x19);
-    EXPECT_EQ(d.ev, 0x0000);
-    
-    d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+
+    do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set new register value:
     EXPECT_EQ(MMU::GetControlReg(), 0x0011);
@@ -179,40 +193,14 @@ TEST_F(MMUTest, MMUEnableDisable)
     cpu.WriteReg(0x00000, LOCALREG4); 
     cpu.WriteReg(0x00000, LOCALREG5); // [L4] + [l5] is value to write
  
-    // Construct STA opcode
-    DecodeStruct d;
-    // Map the PSR structure to the decode PSR variable just once
-    d.p = (pPSR_t) &(d.PSR);
-
-    u32 op = 0b010100; // STA
-    d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
-        ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
-        ^ ((op & LOBITS6) << OP3STARTBIT)
-        ^ ((LOCALREG4) << RS1STARTBIT)
-        ^ (0x0 << ISTARTBIT)
-        ^ (0x19 << ASISTARTBIT)
-        ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
-
-    d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set enabled bit to 1:
     EXPECT_TRUE(MMU::GetEnabled());
 
     cpu.WriteReg(0x00010, LOCALREG0); //0x0000 is VA/adress in MMU regs
-    d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
-        ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
-        ^ ((op & LOBITS6) << OP3STARTBIT)
-        ^ ((LOCALREG4) << RS1STARTBIT)
-        ^ (0x0 << ISTARTBIT)
-        ^ (0x19 << ASISTARTBIT)
-        ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
-
-    d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-
+ 
+    do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
     // MMU shuld now have set enabled bit to 0:
     EXPECT_FALSE(MMU::GetEnabled());
 
@@ -221,38 +209,18 @@ TEST_F(MMUTest, MMUEnableDisable)
 
 
 TEST_F(MMUTest, MMUInitCtxTblPtr)
-{   
-/*     SDRAM2 RAM(0x001000000);  // IO: 0x0, 16 MB of RAM
+{
+    MMU::reset();
 
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
-                         [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
+    // MMU shuld now have set new register value:
+    EXPECT_EQ(MMU::GetCtxTblPtr(), 0x0);
 
-    // Read the ELF and get the entry point, then reset
-    u32 entry_va = 0x0; 
-    cpu.Reset(entry_va);
- */
-  
     // adress to indicate MMU op is taken from LOCALREG4
     cpu.WriteReg(0x4000200, LOCALREG0); //0x...... is value to write
     cpu.WriteReg(0x00100, LOCALREG4); 
     cpu.WriteReg(0x00000, LOCALREG5); // [L4] + [l5] is va adress to MMU regs
  
-    // Construct STA opcode
-    DecodeStruct d;
-    u32 op = 0b010100; // STA
-    d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
-        ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
-        ^ ((op & LOBITS6) << OP3STARTBIT)
-        ^ ((LOCALREG4) << RS1STARTBIT)
-        ^ (0x0 << ISTARTBIT)
-        ^ (0x19 << ASISTARTBIT)
-        ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
-    d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set new register value:
     EXPECT_EQ(MMU::GetCtxTblPtr(), 0x4000200);
@@ -260,38 +228,16 @@ TEST_F(MMUTest, MMUInitCtxTblPtr)
 }
 
 TEST_F(MMUTest, MMUInitSetContext)
-{   
-/*     SDRAM2 RAM(0x001000000);  // IO: 0x0, 16 MB of RAM
-
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
-                         [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
-
-    // Read the ELF and get the entry point, then reset
-    u32 entry_va = 0x0; 
-    cpu.Reset(entry_va);
-*/ 
-  
+{  
+    MMU::reset();
+    EXPECT_EQ(MMU::GetCtxNumber(), 0x0);
+ 
     // adress to indicate MMU op is taken from LOCALREG4
     cpu.WriteReg(0x42, LOCALREG0); //0x0042 is value to write
     cpu.WriteReg(0x00100, LOCALREG4); 
     cpu.WriteReg(0x00100, LOCALREG5); // [L4] + [l5] is va (MMU regs)
  
-    // Construct STA opcode
-    DecodeStruct d;
-    u32 op = 0b010100; // STA
-    d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
-        ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
-        ^ ((op & LOBITS6) << OP3STARTBIT)
-        ^ ((LOCALREG4) << RS1STARTBIT)
-        ^ (0x0 << ISTARTBIT)
-        ^ (0x19 << ASISTARTBIT)
-        ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
-     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now ave new context:
     EXPECT_EQ(MMU::GetCtxNumber(), 0x42);
@@ -858,11 +804,11 @@ TEST_F(MMUTest, MMUTables)
     // Area 0xF1000000 - 0xFBFFFFFF mapped, but no physical memory there
     u32 val;
     int ret = MMU::MemAccess<intent_load>(0xF1000000, val, CROSS_ENDIAN);
-    ASSERT_EQ(ret, -4);
+    ASSERT_EQ(ret, -1);
     ASSERT_EQ(MMU::GetFaultAddress(), 0xF1000000);
 
     ret = MMU::MemAccess<intent_load>(0xFBFFFFFC, val, CROSS_ENDIAN);
-    ASSERT_EQ(ret, -4);
+    ASSERT_EQ(ret, -1);
     ASSERT_EQ(MMU::GetFaultAddress(), 0xFBFFF000); // Corresponing page
 
     // Area not mapped,  * 0xFC000000-0xFFCFFFFF: Not Mapped
@@ -1202,6 +1148,132 @@ TEST_F(MMUTest, MMUFaults)
     ASSERT_LT(ret, 0);
  
 }   
+
+TEST_F(MMUTest, MMUFaults_cpuOP)
+{
+    // MMU shuld be off in the start
+    ASSERT_FALSE(MMU::GetEnabled());
+
+ 	// Point the MMU table pointer to the correct location in RAM:
+	// MUMU Tables base: 0x60002000 (ctx)
+	_mmu_ctx_table = reinterpret_cast<u32*>(RAM.getPtr(0x2000 / 4));
+	_mmu_ctx0_level1 =  reinterpret_cast<u32*>(RAM.getPtr(0x2400 / 4));
+	_mmu_ctx0_fc_level2 =  reinterpret_cast<u32*>(RAM.getPtr(0x2800 / 4));
+	_mmu_ctx0_ffd_level3 =  reinterpret_cast<u32*>(RAM.getPtr(0x2900 / 4));
+
+	mmu_table_init(0x61000000);
+	mmu_init();
+    ASSERT_TRUE(MMU::GetEnabled());
+
+    // Read MMU controlreg:
+    cpu.WriteReg(0x000,  LOCALREG1); // MMU Control reg...
+    cpu.WriteReg(0x0,  LOCALREG2); 
+    cpu.WriteReg(0x0,  LOCALREG3); 
+   
+    do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
+    
+    u32 mmu_ctrl;
+    cpu.ReadReg(LOCALREG3, &mmu_ctrl);
+    ASSERT_EQ(mmu_ctrl, 0x1); // MMU Enabled..
+
+    // Place some data in memory
+    u32 val = 0xcafebabe;
+    u32 ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    ASSERT_EQ(ret, 0);
+  
+ 
+    // read in supervisor mode:
+    cpu.WriteReg(0x60000000,  LOCALREG1); // An address to read. Mapped with ACC = 7, so superviso access should be fine
+    do_LD_instr(LOCALREG1, LOCALREG2, LOCALREG3);
+
+    cpu.ReadReg(LOCALREG3, &val);
+    ASSERT_EQ(val, 0xcafebabe);
+    ASSERT_EQ(cpu.GetTrapType(), 0);
+
+    // Change to user mode:
+    auto psr = cpu.GetPSR(); 
+    psr = psr & ~(1 << 7);
+    cpu.SetPSR(psr);
+    ASSERT_EQ((cpu.GetPSR() >> 7) & 0x1, 0);
+    MMU::flush();
+ 
+    // The read of address 0x60000000 should now trap:
+    cpu.WriteReg(0x60000000,  LOCALREG1); 
+    cpu.WriteReg(0x0,  LOCALREG2); 
+    cpu.WriteReg(0x0,  LOCALREG3); 
+    do_LD_instr(LOCALREG1, LOCALREG2, LOCALREG3);
+
+    cpu.ReadReg(LOCALREG3, &val);
+    ASSERT_NE(val, 0xcafebabe);
+    ASSERT_EQ(cpu.GetTrapType(), 0x9); // SPARC_DATA_ACCESS_EXCEPTION
+    
+    // Run the CPU through the trap:
+    cpu.SetSingleStep(true);
+    cpu.Run(0, nullptr);
+ 
+    // We can now read fault type and address from MMUREGS:
+  
+    // Change to super mode:
+    psr = cpu.GetPSR(); 
+    psr = psr | (0x1 << 7);
+    cpu.SetPSR(psr);
+    ASSERT_EQ((cpu.GetPSR() >> 7) & 0x1, 0x1);
+
+    cpu.WriteReg(0x300,  LOCALREG1); // fault status reg
+    cpu.WriteReg(0x0,  LOCALREG2); // fault status reg
+    cpu.WriteReg(0x0,  LOCALREG3); // fault status reg
+    do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
+    u32 fsr; cpu.ReadReg(LOCALREG3, &fsr);
+ 
+    cpu.WriteReg(0x400,  LOCALREG1); // fault address reg
+    do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
+    u32 far; cpu.ReadReg(LOCALREG3, &far);
+    
+    ASSERT_EQ( (fsr >> 1) & 0x1, 0x1); // FAV, i.e. fault address is available
+    ASSERT_EQ( (fsr >> 2) & 0x7, 0x3); // FT = 3, Privelege violation
+    ASSERT_EQ( (fsr >> 5) & 0x7, 0x0); // AT = 0, Load from user data space
+    ASSERT_EQ( far, 0x60000000); // The page
+    MMU::flush();
+
+
+    // Ok, set nofault on the MMU. We shuld still not get the value, but the MMU should not Trap
+    // Read MMU controlreg:
+    cpu.WriteReg(0x000,  LOCALREG1); // MMU Control reg...
+    cpu.WriteReg(0x0,  LOCALREG2); 
+    cpu.WriteReg(0x0,  LOCALREG3); 
+  
+    ASSERT_FALSE(MMU::GetNoFault());
+        
+
+    do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
+    cpu.ReadReg(LOCALREG3, &mmu_ctrl);
+    mmu_ctrl = mmu_ctrl | 0x2; // Set nofault bit
+    cpu.WriteReg(mmu_ctrl, LOCALREG3);
+    do_STA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
+   
+    // Check that we got the control reg right:
+    u32 c = MMU::GetControlReg();
+    ASSERT_EQ( c & 0x2, 0x2);
+    ASSERT_TRUE(MMU::GetNoFault());
+
+    // Change to user mode:
+    psr = cpu.GetPSR(); 
+    psr = psr & ~(0x1 << 7);
+    cpu.SetPSR(psr);
+    ASSERT_EQ((cpu.GetPSR() >> 7) & 0x1, 0x0);
+
+
+    // The read of address 0x60000000 should not trap, but we shold still have a fault:
+    cpu.WriteReg(0x60000000,  LOCALREG1); 
+    cpu.WriteReg(0x0,  LOCALREG2); 
+    cpu.WriteReg(0x0,  LOCALREG3); 
+    do_LD_instr(LOCALREG1, LOCALREG2, LOCALREG3);
+
+    cpu.ReadReg(LOCALREG3, &val);
+    ASSERT_NE(val, 0xcafebabe);
+    ASSERT_EQ(cpu.GetTrapType(), 0x0);
+ 
+}
 
 /* The Below Code sets up the Virtual Address Space as follows:
  *
