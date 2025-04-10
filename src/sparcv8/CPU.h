@@ -34,7 +34,6 @@ constexpr u32 BREAK_SINGLE_STEP = 0xfffffffe;
 
 #include "CPU_defines.h"
 #include "CPU_instr_map.h"
-
 typedef struct {
     unsigned int cwp : 5;       // Current window pointer
     unsigned int et  : 1;       // Enable traps
@@ -58,6 +57,8 @@ typedef struct {
 // Defer structure definition
 class CPU;
 struct  DecodeStruct;
+#include "../debug.h"
+
 
 typedef struct DecodeStruct *pDecode_t;
 typedef void (*p_func) (pDecode_t);
@@ -162,7 +163,7 @@ class CPU
 
         u32  Run(u32 ExecCount = 0, RunSummary* _rs = nullptr);
         
-        void IFetch(u32 virt_addr, u32& opcode);
+        bool IFetch(u32 virt_addr, pDecode_t d);
 
         void Decode(pDecode_t d);
         
@@ -185,6 +186,7 @@ class CPU
         u32 GetId() const { return cpu_id; }
         // State Accessors
         u32 GetPSR() const {return PSR;}
+        void SetPSR(u32 value) { PSR = value; }
         u32 GetWIM() const {return WIM;}
         u32 GetTBR() const {return TBR;}
         u32 GetY() const {return Y;}

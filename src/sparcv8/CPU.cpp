@@ -23,7 +23,7 @@ void CPU::Reset(u32 entry_va = 0x0)
     PSR = 0;
     ((pPSR_t)&PSR)->et = 1;
     ((pPSR_t)&PSR)->s  = 1;
-    ((pPSR_t)&PSR)->ps  = 1;
+    ((pPSR_t)&PSR)->ps  = 0; // Previus trap supervisor bit
     ((pPSR_t)&PSR)->ef = 1; // Enable floats by default
 
     // Leon3 specific values:
@@ -40,9 +40,43 @@ void CPU::Reset(u32 entry_va = 0x0)
     WIM = 2;
 }
 
-void CPU::IFetch(u32 virt_addr, u32& opcode)
-{
-    MMU::MemAccess<intent_execute, 4>(virt_addr, opcode, CROSS_ENDIAN);
+bool CPU::IFetch(u32 virt_addr, pDecode_t d){
+ 
+    u32& opcode = d->opcode;
+/*
+    if((virt_addr > 0x50000000) && (virt_addr < 0x51000000)) {
+        std::cout << "P: " << std::hex << virt_addr << "\n";
+
+    }
+  */
+    bool super = (PSR >> 7) & 0x1;
+    
+    if(MMU::MemAccess<intent_execute, 4>(virt_addr, opcode, CROSS_ENDIAN, super) < 0)
+    {
+        // WHat do we do if we get here?
+        //os << std::format("Error @ PC={:#08x} opcode={:#08x}\n", virt_addr, opcode);
+        // Get the fault from MMU:
+        u32 f = MMU::GetFaultStatus();
+            
+        // We have a fault..
+        u32 AT = (f >> 5) & 0x7;
+        
+        if( AT<2 || AT>3)
+            throw std::runtime_error("AT != 2 | 3 is not possible in an instruction fetch!");
+   
+        // The NF field in the MMU control regs governs wether we should TRAP    
+        u32 nf = (MMU::GetControlReg() & 0x2) >> 1;
+
+        // Only throw trap if nf == 0, or if nf == 1 and ASI = 0x9 (supervisor instruction, i.e At = 3 or 7)
+        if(nf == 0) { // ASI 0x9 not applicaebl for LEON3? || (nf == 1 && (AT == 3))) {
+            Trap(d,  SPARC_INSTRUCTION_ACCESS_EXCEPTION); 
+            //MMU::ClearFaultStatus(); // Not to be cleared here
+        }
+        //throw std::runtime_error("Translation error while fetching instruction...");;
+        return false;
+    } 
+
+    return true;
 }
 
 u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
@@ -119,25 +153,25 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
        	// Process instruction ...
 
         // ---- IFetch ----
-        IFetch(virt_addr, d->opcode);
+        if(IFetch(virt_addr, d)) {
         
-        // ---- Decode ----
-        Decode (d);
+            // ---- Decode ----
+            Decode (d);
 
-        // ---- Execute ----
-        d->function(this, d);
+            // ---- Execute ----
+            d->function(this, d);
 
-        // ---- Writeback ----
-        WriteBack(d);
+            // ---- Writeback ----
+            WriteBack(d);
 
-
-
+        }
         
-        // Tick the bus, handling input, interrupts etc
-        // ..and gdb server if present
-		if(bus_tick_func)
-            bus_tick_func();
+            // Tick the bus, handling input, interrupts etc
+            // ..and gdb server if present
+		    if(bus_tick_func)
+                bus_tick_func();
 
+        //}
 
         if(_interrupt) {
             _interrupt = false;
@@ -267,12 +301,12 @@ void CPU::WriteBack (const pDecode_t d)
 
 // ------------------------------------------------
 
-void CPU::Trap (pDecode_t d, u32 trap_no) 
+void CPU::Trap(pDecode_t d, u32 trap_no) 
 {
     int tn = trap_no & LOBITS8;
     u32 npc = (TBR & ~(0xff0)) | ((tn & LOBITS8) << 4);;
 
-    if (d->p->et == 0) {
+    if (((pPSR_t)&PSR)->et == 0) {
          fprintf (stderr, "ERROR TRAP %x WHILE TRAPS DISABLED\n", trap_no);
          RegisterDump();
          //terminate = d->opcode;
@@ -283,15 +317,22 @@ void CPU::Trap (pDecode_t d, u32 trap_no)
 
     if (verbose) {
         if (tn < 0x40)
-            os << std::format("                   TRAP {} ({:#x}) PC={:#08x} NPC={:#08x}\n", TrapStr[tn], tn, d->PC, npc);
+            os << std::format("                   TRAP {} ({:#x}) PC={:#08x} NPC={:#08x}\n", TrapStr[tn], tn, PC, npc);
         else if (tn >= 0x40 && tn < 0x60)
-            os << std::format("                   TRAP NO TRAP ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, d->PC, npc);
+            os << std::format("                   TRAP NO TRAP ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, PC, npc);
         else if (tn >= 0x60 && tn < 0x80)
-            os << std::format("                   TRAP Impl. Dep. ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, d->PC, npc);
+            os << std::format("                   TRAP Impl. Dep. ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, PC, npc);
         else 
-            os << std::format("                   TRAP Ticc ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, d->PC, npc);
+            os << std::format("                   TRAP Ticc ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, PC, npc);
     }
-
+/*
+    // Set PS bit on PSR from S bit
+    // (PS is supervisor bit on last (this) Trao)
+    // NO, this is allready implemented in CPU::Run handling of traps
+    u32 s = (PSR >> 7) & 0x1; // Fetch S-bit
+    PSR = PSR & ~(1 << 6); // Clear PS;
+    PSR = PSR | (s << 6); // Set SP from S
+*/
     TrapType = (TrapType & ~(LOBITS8)) | tn;
 }
 
@@ -486,6 +527,9 @@ u32 CPU::GetRegBase (const u32 reg_no)
 //
 int CPU::MemRead(const u32 va, const int bytes, const u32 rd, const int signext) 
 {
+    bool super = (PSR >> 7) & 0x1 == 0x1;
+
+
     u32 value, value_ext;
     int ret1, ret2;
     //reg_no = GetRegBase(rd);
@@ -494,24 +538,31 @@ int CPU::MemRead(const u32 va, const int bytes, const u32 rd, const int signext)
 
     switch (bytes) {
     case 1 :
-        ret1 = MMU::MemAccess<intent_load,1>(va, value, CROSS_ENDIAN);
-        value |= ((signext && (value & BIT7)) ? 0xffffff00 : 0);
-        WriteReg(value, rd);
+        ret1 = MMU::MemAccess<intent_load,1>(va, value, CROSS_ENDIAN, super);
+        if(ret1 == 0) {
+            value |= ((signext && (value & BIT7)) ? 0xffffff00 : 0);
+            WriteReg(value, rd);
+        }
         break;
     case 2 : 
-        ret1 = MMU::MemAccess<intent_load,2>(va, value, CROSS_ENDIAN);
-        value |= ((signext && (value & BIT15)) ? 0xffff0000 : 0);
-        WriteReg(value, rd);
+        ret1 = MMU::MemAccess<intent_load,2>(va, value, CROSS_ENDIAN, super);
+        if(ret1 == 0) {
+            value |= ((signext && (value & BIT15)) ? 0xffff0000 : 0);
+            WriteReg(value, rd);
+        }
         break;
     case 4 :
-        ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN);
-        WriteReg(value, rd);
+        ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
+        if(ret1 == 0)
+            WriteReg(value, rd);
         break;
     case 8 :
-        ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN);
-        ret2 = MMU::MemAccess<intent_load,4>(va+4, value_ext, CROSS_ENDIAN);
-        WriteReg(value, rd);
-        WriteReg(value_ext, rd+1);
+        ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
+        ret2 = MMU::MemAccess<intent_load,4>(va+4, value_ext, CROSS_ENDIAN, super);
+        if( (ret1 == 0) && (ret2 == 0) ) {
+            WriteReg(value, rd);
+            WriteReg(value_ext, rd+1);
+        }
         break;
     }
 
@@ -673,15 +724,24 @@ void CPU::RegisterDump (bool transpose) {
     }
 }
 
+// Handles the MMU fault by issuing a Trap, unless nofault is set
 void CPU::handleMMUFault(pDecode_t d) {
     // Get the fault from MMU:
     u32 f = MMU::GetFaultStatus();
     u32 FT = (f >> 2) & 0x3;
     if(FT == 0)
         return; // No fault....
-                
-    if(FT > 0) {
+        
+    // We have a fault..
+    u32 AT = (f >> 5) & 0x7;
+    // The NF field in the MMU control regs governs wether we should TRAP    
+    u32 nf = (MMU::GetControlReg() & 0x2) >> 1;
+
+    // Only throw trap if nf == 0, or if nf == 1 and ASI = 0x9 (supervisor instruction, i.e At = 3 or 7)
+    // Is ASI 0x9 not supported on LEON3? In that case nf1 should never trap
+    if(nf == 0) { // || (nf == 1 && (AT == 1 || AT == 3 || AT == 5 || AT == 7))) {
         Trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         //MMU::ClearFaultStatus(); // Not to be cleared here
     }
+
 }
