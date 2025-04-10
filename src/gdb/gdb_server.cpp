@@ -109,6 +109,25 @@ std::string gdb_read_regs(CPU& cpu) {
         return response;
 }
 
+void report_mmu_fault(u32 addr, u32 sz) {
+            
+    u32 fsr = MMU::GetFaultStatus();
+
+            
+    std::cerr << "Fault status: " << fsr << "\n"; 
+    std::cerr << "EBE=" << ((fsr >> 10) & 0b11111111) << " L=" << ((fsr >> 8)& 0b11) << " AT=" << ((fsr>>5)&0b111) << " FT=" << ((fsr>>2)&0b111) << " FAV=" << ((fsr>>1) & 0b1) << " OW=" << (fsr&0x1) << "\n";       
+            
+    if(fsr & 0x2) 
+        std::cerr << "Fault adress: 0x" << std::hex << MMU::GetFaultAddress() << "\n";
+    else
+        std::cerr << "Fult address invalid\n";
+
+    std::cerr << "Mem: addr[" << std::hex << addr << "],sz[" << sz << "]->E14\n";
+
+
+
+}
+
 std::string gdb_read_mem(CPU& cpu, std::string msg) {
 
 	// string is on the form "m[address],[size]"
@@ -137,13 +156,10 @@ std::string gdb_read_mem(CPU& cpu, std::string msg) {
         u32 start = addr - fill;
     
         // read 4 bytes, head is the last of these, fill is discared
-	    auto r = MMU::MemAccess<intent_load, 4>(start, value, CROSS_ENDIAN, true);	
+	    auto r = MMU::MemAccess<intent_load, 4>(start, value, CROSS_ENDIAN, true, false);	
     	
         if(r < 0) {
-            std::cerr << "Fault adress: 0x" << std::hex << MMU::GetFaultAddress() << "\n";
-            std::cerr << "Fault status: " << MMU::GetFaultStatus() << "\n"; 
- 	        std::cerr << "Mem: [" << std::hex << addr << "],[" << sz << "]->E14\n";
-
+            report_mmu_fault(start, 4);
 		    return "E14"; // errno EFAULT
 	    }
 
@@ -166,12 +182,9 @@ std::string gdb_read_mem(CPU& cpu, std::string msg) {
     int j = sz/4;
     for(u32 i = 0; i < j; ++i) {
 	    u32 value = 0;
-	    auto r = MMU::MemAccess<intent_load, 4>(addr, value, CROSS_ENDIAN, true);	
+	    auto r = MMU::MemAccess<intent_load, 4>(addr, value, CROSS_ENDIAN, true, false);	
 	    if(r < 0) {
-            std::cerr << "Fault adress: 0x" << std::hex << MMU::GetFaultAddress() << "\n";
-            std::cerr << "Fault status: " << MMU::GetFaultStatus() << "\n"; 
- 	        std::cerr << "Mem: [" << std::hex << addr + i*4 << "],[" << 4 << "]->E14\n";
-
+            report_mmu_fault(addr, 4);
 		    return "E14"; // errno EFAULT
 	    }
 
@@ -183,12 +196,9 @@ std::string gdb_read_mem(CPU& cpu, std::string msg) {
     // Read reainder after reading head and whole words
     if(sz > 0) {
 		u32 value = 0;
-	    auto r = MMU::MemAccess<intent_load, 4>(addr, value, CROSS_ENDIAN, true);	
+	    auto r = MMU::MemAccess<intent_load, 4>(addr, value, CROSS_ENDIAN, true, false);	
         if(r < 0) {
-            std::cerr << "Fault adress: 0x" << std::hex << MMU::GetFaultAddress() << "\n";
-            std::cerr << "Fault status: " << MMU::GetFaultStatus() << std::dec << "\n"; 
-  	        std::cerr << "Mem: [" << address << "],[" << size << "]->E14\n";
-
+            report_mmu_fault(addr, 4);
             return "E14";
         }
 
