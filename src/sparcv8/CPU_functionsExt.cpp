@@ -9,8 +9,10 @@ void CPU::LDA_impl (pDecode_t d) {
    
     if (d->p->s == 0) {
         Trap (d, SPARC_PRIVILEGED_INSTRUCTION);
+        return;
     } else if( d->i == 1) {
         Trap (d, SPARC_ILLEGAL_INSTRUCTION);
+        return;
     }
     // First we need an extra decode here, to pull our ASI and rs2, both stored in simm13
     u32 rs2 = d->imm_disp_rs2 & LOBITS5; 
@@ -109,8 +111,10 @@ void CPU::STA_impl (pDecode_t d) {
    
     if (d->p->s == 0) {
         Trap (d, SPARC_PRIVILEGED_INSTRUCTION);
+        return;
     } else if( d->i == 1) {
         Trap (d, SPARC_ILLEGAL_INSTRUCTION);
+        return;
     }
 
     // First we need an extra decode here, to pull our ASI and rs2, both stored in simm13
@@ -142,10 +146,10 @@ void CPU::STA_impl (pDecode_t d) {
     ReadReg(rs2, &r2);
     u32 address = r1 + r2;
     
-    if (address & LOBITS2)
+    if (address & LOBITS2) {
         Trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
- 
-
+        return;
+    }
 
     if(verbose)
         os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
@@ -154,18 +158,23 @@ void CPU::STA_impl (pDecode_t d) {
  
     switch(ASI) {
         case(ASI_M_MMUREGS):
-            switch(address & ~0x11) {
+            //os << std::hex << (address & ~0xff) << "\n";
+            switch(address) {
                 case(0x000):
                     MMU::SetControlReg(rd_value);
                     break;
                 case(0x100):
                     MMU::SetCtxTblPtr(rd_value);
+                    os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
                     break;
                 case(0x200):
                     MMU::SetCtxNumber(rd_value);
+                    os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
                     break;
                 default:
-                    Trap (d, SPARC_ILLEGAL_INSTRUCTION);
+                    //Trap (d, SPARC_ILLEGAL_INSTRUCTION);
+                    throw std::runtime_error("ASI=MMUREGS with address != 0x000,100,200 not implemented");
+ 
             }
             break;
         case(ASI_M_MXCC):
