@@ -29,7 +29,8 @@
 #include <iostream>
 #include <iomanip>
 #include <thread>
-
+#include <signal.h>
+#
 #if !defined(_WIN32) && !defined(_WIN64)
 #include <getopt.h>
 #else
@@ -61,6 +62,8 @@ constexpr u32 SPARC_MEM_CB_WR =   1;
 constexpr s32 TERMINATE_NORM =    -1;
 constexpr s32 TERMINATE_BREAK =    1;
 constexpr s32 TERMINATE_STEP =     2;
+
+CPU* _cpu_ptr = nullptr;
 
 
 std::string uart_readline(APBUART& uart) {
@@ -142,6 +145,18 @@ bool ParseCommand(const std::string& cmd, CPU& cpu) {
     return true;
 }
 
+void signal_handler(int signal) 
+{
+    std::cout << "Signal " << signal << " caught..\n";
+    if((signal == SIGINT) && _cpu_ptr) {
+        std::cout << "SIGINT!\n";
+        _cpu_ptr->interrupt();
+
+    }
+
+}
+
+
 int main(int argc, char **argv)
 {
     int    PrintCount       = 0;
@@ -215,6 +230,7 @@ int main(int argc, char **argv)
     CPU cpu(write_to_file ? os : std::cout);
     cpu.SetVerbose(verbose);
     cpu.SetId(0);
+    _cpu_ptr = &cpu;
     // Set Cache control regs as TSIM does
     MMU::SetCCR(0x00020000);
     MMU::SetICCR(0x10220008);
@@ -222,9 +238,11 @@ int main(int argc, char **argv)
 
 
     // RAM
-    SDRAM<0x10000000> RAM;   // IO: 0x60000000, 128 MB of RAM
+    SDRAM<0x02000000> RAM;   // IO: 0x40000000, 32 MB of RAM
     SDRAM<0x00100000> RAM2;  // IO: 0xffd03000, 1 MB of RAM
     SDRAM<0x00800000> RAM3;  // IO: 0x00000000, 8 MB of RAM
+    SDRAM<0x00800000> RAM4;  // IO: 0x40000000, 8 MB of RAM
+
 
 
     // Set up amba IO area:
@@ -237,14 +255,25 @@ int main(int argc, char **argv)
 
     // Set up IO mapping
     // TODO: Move this MMU functions?
-    u32 base_ram = 0x60000000;
+    u32 base_ram = 0x40000000;
     u32 size_ram = RAM.getSizeBytes();
     u32 start = base_ram/0x10000;
     u32 end = (base_ram + size_ram)/0x10000;
     for(unsigned a = start; a < end; ++a)
-        MMU::IOmap[a] = { [&RAM](u32 i)          { return RAM.Read( (i-0x60000000)/4); },
-                          [&RAM](u32 i, u32 v)   {        RAM.Write((i-0x60000000)/4, v);    } };
-    
+        MMU::IOmap[a] = { [&RAM](u32 i)          { return RAM.Read( (i-0x40000000)/4); },
+                          [&RAM](u32 i, u32 v)   {        RAM.Write((i-0x40000000)/4, v);    } };
+ 
+    // Set up IO mapping
+    // TODO: Move this MMU functions?
+/*
+    u32 base4_ram = 0x40000000;
+    u32 size4_ram = RAM4.getSizeBytes();
+    u32 start4 = base4_ram/0x10000;
+    u32 end4 = (base4_ram + size4_ram)/0x10000;
+    for(unsigned a = start4; a < end4; ++a)
+        MMU::IOmap[a] = { [&RAM4](u32 i)          { return RAM4.Read( (i-0x40000000)/4); },
+                          [&RAM4](u32 i, u32 v)   {        RAM4.Write((i-0x40000000)/4, v);    } };
+*/    
     // This area is only used for a bss section in the ELF. Should really not be needed
     // bu cant be avoided as ELFreader trier to allocate memory at this location
 /*    base_ram = 0xffd00000;
@@ -330,12 +359,19 @@ int main(int argc, char **argv)
         {
             GPTIMER& timer = apbctrl.GetTimer();
             IRQMP& intc = apbctrl.GetIntc();
-    
+            APBUART& uart1 = apbctrl.GetUART();
+            APBUART& uart9 = apbctrl.GetUART9();
             timer.Tick();
 
             // It seems like the kernel clears the interrupts, and we dont need to do it here
-            if(timer.CheckInterrupt(false)) intc.TriggerIRQ(8);
-        
+            if(timer.CheckInterrupt(false)) 
+                intc.TriggerIRQ(8);
+            
+            if(uart1.CheckIRQ()) 
+                intc.TriggerIRQ(2);
+            else if(uart9.CheckIRQ()) 
+                intc.TriggerIRQ(3);
+       
             u32 IRL = intc.GetNextIRQPending();
             if(IRL>0) {
                 cpu.SetIRL(IRL);
@@ -353,17 +389,23 @@ int main(int argc, char **argv)
     u32 word_count = ReadElf(fname, cpu, entry_va); 
     cpu.Reset(entry_va);
 
-    //we want 0xffd03170 to point to 0x60c5c8a0
-    // with end of ram it points to 0x61fef170
-    // Difference is 0x13928d0
     // OS boot process step 1: Set stack pointer to end of ram
-    u32 end_of_ram = 0x60000000 + RAM.getSizeBytes(); 
+    u32 end_of_ram = 0x40000000 + RAM.getSizeBytes(); 
     //u32 end_of_ram = 0x41fffe80; // Value from TSIM
     //u32 end_of_ram = 0x42000000; // Value from TSIM
 
     cpu.WriteReg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
     cpu.WriteReg(end_of_ram, INREG6); // Write frame pointer
-     
+    
+    // Set up handler for external SIGINTs
+    struct sigaction act;
+
+    act.sa_handler =  signal_handler;
+    sigaction(SIGINT, &act, NULL);
+ 
+
+
+
     RunSummary rs;
     if(!Disassemble && !debug_server) {
         // Run the machine in the main thread
@@ -395,10 +437,10 @@ int main(int argc, char **argv)
     {
         u32 PC = entry_va;
         u32 count = word_count;
+        struct DecodeStruct Dec, *d=&Dec;
         while(count > 0) {
-            u32 opcode;
-            cpu.IFetch(PC, opcode);
-            disDecode(PC, opcode);
+            cpu.IFetch(PC, d);
+            disDecode(PC, d->opcode);
             PC += 4;
             --count;
         }
