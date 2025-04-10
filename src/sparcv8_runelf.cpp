@@ -183,10 +183,12 @@ int main(int argc, char **argv)
     {
         u32 PC = entry_va;
         u32 count = word_count;
+        struct DecodeStruct Dec, *d=&Dec;
+ 
         while(count > 0) {
-            u32 opcode;
-            cpu.IFetch(PC, opcode);
-            disDecode(PC, opcode);
+            cpu.IFetch(PC, d);
+
+            disDecode(PC, d->opcode);
             PC += 4;
             --count;
         }
