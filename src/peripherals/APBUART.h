@@ -126,15 +126,32 @@ public:
     bool CheckIRQ() // TX interrupt is an edge; RX interrupt is a level.
     {
         if(ints_enabled && (in.len || tx_emptied_int_pending))
-            { tx_emptied_int_pending=false; return true; }
+        { 
+            tx_emptied_int_pending=false; 
+            return true; 
+        }
         return false;
     }
     void Input()
     {
         static unsigned counter = 0;
-        if(!counter) counter = scaler & 0xfff; else { --counter; return; }
-        if(!console.Hit()) return;
-        if(in.len >= 8) { overrun = true; return; }
+        if(!counter) 
+            counter = scaler & 0xfff; 
+        else 
+        { 
+            --counter; 
+            return; 
+        }
+        
+        if(!console.Hit()) 
+            return;
+        
+        if(in.len >= 8) 
+        { 
+            overrun = true; 
+            return;
+        }
+        
         in.fifo[ in.pos++ % 8 ] = console.Getc();
         ++in.len;
     }
