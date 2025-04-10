@@ -164,6 +164,10 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
             // ---- Writeback ----
             WriteBack(d);
 
+        } else {
+            rs.reason = TerminateReason::TRAP_CONDITIONAL;
+            break;
+ 
         }
         
             // Tick the bus, handling input, interrupts etc
