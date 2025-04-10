@@ -165,9 +165,11 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
             WriteBack(d);
 
         } else {
-            rs.reason = TerminateReason::TRAP_CONDITIONAL;
-            break;
- 
+            // we could not fetch instruction, and no Traps occured.. Not much more to do.
+            if(!TrapType) {
+                rs.reason = TerminateReason::TRAP_CONDITIONAL;
+                break;
+            }
         }
         
             // Tick the bus, handling input, interrupts etc
