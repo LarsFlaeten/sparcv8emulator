@@ -35,6 +35,8 @@ class APBCTRL {
         GPTIMER& GetTimer() { return timer; }
         IRQMP& GetIntc() { return irq; }
         APBUART& GetUART() {return apbuart;}
+        APBUART& GetUART9() {return apbuart9;}
+
 
         u32 Read(u32 va) {
             if( (va < 0x80000000) || (va > 0x800fffff) )
@@ -43,7 +45,7 @@ class APBCTRL {
                 return 0;
             } else if ( (va & 0xfff00) >> 8 == 0x000) {
                 // Return data from 255 bytes Memory range 000-0ff;
-                //std::cout << "Read APBCTRL, va = " << std::hex << va << std::dec << "\n";
+                std::cout << "Read APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 return mem.Read((va & 0x0ff)/4);        
             } else if ( (va & 0xfff00) >> 8 == 0x001) {
                 // Return data from slv 1 (APBUART)
@@ -51,7 +53,7 @@ class APBCTRL {
                 return apbuart.Read(va & 0x0ff);        
             } else if ( (va & 0xfff00) >> 8 == 0x002) {
                 // Return data from slv 2 (IRQMP)
-                //std::cout << "Read APBCTRL(IRQMP), va = " << std::hex << va << std::dec << "\n";
+                std::cout << "Read APBCTRL(IRQMP), va = " << std::hex << va << std::dec << "\n";
                 return irq.Read(va & 0x0ff);        
             } else if ( (va & 0xfff00) >> 8 == 0x003) {
                 // Return data from slv 3 (GRTIMER)
@@ -74,14 +76,14 @@ class APBCTRL {
                 std::cerr << "APB Master was adressed out of its range.\n";
                 return;
             } else if ( (va & 0xfff00) >> 8 == 0x000) {
-                //std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
+                std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 // Return data from 255 bytes Memory range 000-0ff;
                 mem.Write((va & 0x0ff)/4, value);        
             } else if ( (va & 0xfff00) >> 8 == 0x001) {
                 // Return data from slv 1 (APBUART)
                 apbuart.Write(va & 0x0ff, value);        
             } else if ( (va & 0xfff00) >> 8 == 0x002) {
-                //std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
+                std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 // Return data from slv 2 (IRQMP)
                 irq.Write(va & 0x0ff, value);        
             } else if ( (va & 0xfff00) >> 8 == 0x003) {
