@@ -250,6 +250,12 @@ void CPU::WRPSR (pDecode_t d)
     else {
         // Hard wire LEON specific values..
         d->PSR = (0xf << 28) | (0x3 << 24) | (d->rs1_value ^ d->ev);
+
+        // disable EC and EF:
+        d->PSR = d->PSR & ~(0x1 << 13) & ~(0x1 >> 12);
+        // disable resevred field:
+        d->PSR = d->PSR & ~(0x3f << 14);
+
         d->PC = d->nPC;
         d->nPC += 4;
     }
