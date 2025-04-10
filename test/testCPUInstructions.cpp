@@ -38,11 +38,11 @@ protected:
     void do_op3_instr(u32 op, u32 op3, u32 rs1, u32 rs2, u32 rd) {
         DecodeStruct d;
         d.opcode = ((op & LOBITS2) << FMTSTARTBIT) 
-            ^ ((rd & LOBITS5) << RDSTARTBIT)
-            ^ ((op3 & LOBITS6) << OP3STARTBIT)
-            ^ ((rs1) << RS1STARTBIT)
-            ^ (0x0 << ISTARTBIT)
-            ^ ((rs2)<< RS2STARTBIT); 
+            | ((rd & LOBITS5) << RDSTARTBIT)
+            | ((op3 & LOBITS6) << OP3STARTBIT)
+            | ((rs1) << RS1STARTBIT)
+            | (0x0 << ISTARTBIT)
+            | ((rs2)<< RS2STARTBIT); 
      
         d.p = (pPSR_t)&(d.PSR);
         d.p->s = 1; // Set supervisor mode 
