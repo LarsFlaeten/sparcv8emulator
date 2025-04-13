@@ -198,7 +198,7 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
     }
 
 #ifdef PERFORMANCE_MONITOR
-	std::out << "Stats for CPU # " << GetID() << "\n";	
+	std::cout << "Stats for CPU # " << GetId() << "\n";	
 	lt.printStats();
 #endif
 
