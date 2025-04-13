@@ -172,6 +172,9 @@ class CPU
         void Trap (pDecode_t d, u32 trap_no); 
 
 
+        void nop() { return; } // Just for the sake of it...
+
+
         // Read/write registers
         void ReadReg (const u32 reg_no, u32 * const value);
         //u32  ReadRegsAll (const int reg_base); 

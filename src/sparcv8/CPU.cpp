@@ -2,6 +2,12 @@
 #include <sstream>
 #include <iomanip>
 #include "MMU.h"
+
+#include "../LoopTimer.h"
+#if 1
+#define PERFORMANCE_MONITOR
+#endif
+
 //------------------------------------------------------------------------
 // Reset()
 //
@@ -43,18 +49,11 @@ void CPU::Reset(u32 entry_va = 0x0)
 bool CPU::IFetch(u32 virt_addr, pDecode_t d){
  
     u32& opcode = d->opcode;
-/*
-    if((virt_addr > 0x50000000) && (virt_addr < 0x51000000)) {
-        std::cout << "P: " << std::hex << virt_addr << "\n";
-
-    }
-  */
-    bool super = (PSR >> 7) & 0x1;
+    
+	bool super = (PSR >> 7) & 0x1;
     
     if(MMU::MemAccess<intent_execute, 4>(virt_addr, opcode, CROSS_ENDIAN, super) < 0)
     {
-        // WHat do we do if we get here?
-        //os << std::format("Error @ PC={:#08x} opcode={:#08x}\n", virt_addr, opcode);
         // Get the fault from MMU:
         u32 f = MMU::GetFaultStatus();
             
@@ -67,12 +66,13 @@ bool CPU::IFetch(u32 virt_addr, pDecode_t d){
         // The NF field in the MMU control regs governs wether we should TRAP    
         u32 nf = (MMU::GetControlReg() & 0x2) >> 1;
 
-        // Only throw trap if nf == 0, or if nf == 1 and ASI = 0x9 (supervisor instruction, i.e At = 3 or 7)
-        if(nf == 0) { // ASI 0x9 not applicaebl for LEON3? || (nf == 1 && (AT == 3))) {
+        // Only throw trap if nf == 0
+        if(nf == 0) { 
             Trap(d,  SPARC_INSTRUCTION_ACCESS_EXCEPTION); 
-            //MMU::ClearFaultStatus(); // Not to be cleared here
-        }
-        //throw std::runtime_error("Translation error while fetching instruction...");;
+        	return false;
+		} else {
+			throw std::runtime_error("Unhandled error in instruction fetch (MMU nofault == 1)");
+		}
         return false;
     } 
 
@@ -81,7 +81,11 @@ bool CPU::IFetch(u32 virt_addr, pDecode_t d){
 
 u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
     rs.reason = TerminateReason::INSTRUCTION;
-    
+ 
+#ifdef PERFORMANCE_MONITOR
+	LoopTimer lt;
+#endif
+	   
     u64 count = 0;
     //u32 word_count;
     struct DecodeStruct Dec, *d=&Dec;
@@ -94,6 +98,9 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
     running = true;
     while ((!(rs.reason) /*!= TerminateReason::INSTRUCTION*/) && (ExecCount == 0) ? 1 : (count < (u64)ExecCount)) {
 
+#ifdef PERFORMANCE_MONITOR
+		lt.start();
+#endif		
         count++;
         
         // Process interrupts
@@ -184,7 +191,16 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
             rs.reason = TerminateReason::RECV_SIGINT; // received SIGINT
             break;
         }
+
+#ifdef PERFORMANCE_MONITOR
+		lt.stop();
+#endif
     }
+
+#ifdef PERFORMANCE_MONITOR
+	std::out << "Stats for CPU # " << GetID() << "\n";	
+	lt.printStats();
+#endif
 
     rs.instr_count = count;
     rs.last_opcode = d->opcode; 
@@ -192,9 +208,8 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
     // Return summary
     if(_rs != nullptr)
         *_rs = rs;
-
-    // return ocunt
-    return count;
+    
+	return count;
 }
 
 //------------------------------------------------------------------------
