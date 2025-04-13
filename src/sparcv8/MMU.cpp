@@ -189,8 +189,8 @@ u32 MMU::translate_va(u32 virt_addr, bool supervisor, intent rw, bool report_fau
     if(PTE == 0) {
         level = 0;	
         // Fetch context table entry:
-        if(ctx_n > 0)
-            throw std::runtime_error("ctx_n != 0 Needds testing");
+        //if(ctx_n > 0)
+        //    throw std::runtime_error("ctx_n != 0 Needds testing");
         if(ctx_n > 255)
             throw std::runtime_error("ctx_n > 255 error");
 
