@@ -30,7 +30,7 @@
 #include <iomanip>
 #include <thread>
 #include <signal.h>
-#
+
 #if !defined(_WIN32) && !defined(_WIN64)
 #include <getopt.h>
 #else
@@ -47,6 +47,7 @@ extern char* optarg;
 
 #include "readelf.h"
 #include "dis.h"
+
 constexpr int FOREVER =           0;
 constexpr int ONCE =              1;
 
@@ -238,7 +239,7 @@ int main(int argc, char **argv)
 
 
     // RAM
-    SDRAM<0x02000000> RAM;   // IO: 0x40000000, 32 MB of RAM
+    SDRAM<0x08000000> RAM;   // IO: 0x40000000, 32 MB of RAM
     SDRAM<0x00100000> RAM2;  // IO: 0xffd03000, 1 MB of RAM
     SDRAM<0x00800000> RAM3;  // IO: 0x00000000, 8 MB of RAM
     SDRAM<0x00800000> RAM4;  // IO: 0x40000000, 8 MB of RAM
@@ -362,6 +363,7 @@ int main(int argc, char **argv)
             APBUART& uart1 = apbctrl.GetUART();
             APBUART& uart9 = apbctrl.GetUART9();
             timer.Tick();
+            uart1.Input();
 
             // It seems like the kernel clears the interrupts, and we dont need to do it here
             if(timer.CheckInterrupt(false)) 
@@ -369,7 +371,7 @@ int main(int argc, char **argv)
             
             if(uart1.CheckIRQ()) 
                 intc.TriggerIRQ(2);
-            else if(uart9.CheckIRQ()) 
+            if(uart9.CheckIRQ()) 
                 intc.TriggerIRQ(3);
        
             u32 IRL = intc.GetNextIRQPending();
