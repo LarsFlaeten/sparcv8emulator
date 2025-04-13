@@ -1,0 +1,13 @@
+TODO before we start RISC-V:
+X Profiler for performance
+- Investigate busyloop
+- Inline all instructions?
+- Code cleanliness, naming convention
+- Improve MMU, TLBS etc
+- Better/real interrupt controller
+- Improve speed
+- FPU implemented and tested
+- SVGA controller
+- Multiple CPUS
+
+
