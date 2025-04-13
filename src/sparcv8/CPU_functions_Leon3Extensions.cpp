@@ -35,12 +35,25 @@ void CPU::CASA (pDecode_t d)
     ReadReg(rs2 & LOBITS5, &rs2_value);
    
     // Get value pointed to by rs1
-    u32 rs1_value;
-    if( imm_asi == 0xB)
-        MMU::MemAccess<intent_load>(rs1_addr, rs1_value, CROSS_ENDIAN); 
-    else
-        throw not_implemented_leon_exception("ASI != 0xb not implemented for CASA");
+    u32 rs1_value, mret;
+    bool super = false;
+    if( imm_asi == 0xB) {
+        super = true;
+    } else if (imm_asi == 0xA) {
+        super = false;
+    } else {
+        throw not_implemented_leon_exception("ASI != 0xb|0xa not implemented for CASA");
+        mret = -1;
+    }
+        
+    mret = MMU::MemAccess<intent_load>(rs1_addr, rs1_value, CROSS_ENDIAN, super);
  
+    if(mret < 0) {
+        if(!MMU::GetNoFault())
+            Trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+        return;
+    }
+
     //if (verbose)
     //    os << std::format("  --> casa cmp   {:#08x} and {:#08x}\n", rs1_value, rs2_value);
     //    os << std::format("      Value from reg:  rs2={}:                {:#08x}\n", DispRegStr(rs2), rs2_value);
@@ -58,8 +71,14 @@ void CPU::CASA (pDecode_t d)
 
        // Write back swapped
         WriteReg(rs1_value, d->rd & LOBITS5);
-        MMU::MemAccess<intent_store>(rs1_addr, rd_value, CROSS_ENDIAN); 
-        //os << std::format("      ..swapped rd and rs1 \n", DispRegStr(d->rd),  rs1_value);
+        mret = MMU::MemAccess<intent_store>(rs1_addr, rd_value, CROSS_ENDIAN, super); 
+        if(mret < 0) {
+            if(!MMU::GetNoFault())
+                Trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+            return;
+        }
+
+       //os << std::format("      ..swapped rd and rs1 \n", DispRegStr(d->rd),  rs1_value);
     } else {
         // Only RD changed by content of rs1
         WriteReg(rs1_value, d->rd & LOBITS5);
