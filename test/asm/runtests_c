@@ -8,7 +8,7 @@
 
 #
 
-testlist="fop"
+testlist="mmu_fault_traps fop"
 
 for testname in $testlist
 do
@@ -17,7 +17,7 @@ do
         ./compile_c $testname nowarn
     fi
 
-    if ../sparc_iss -f ${testname}.aout
+    if ~/workspace/sparcv8/bin/sparcv8_runelf -f ${testname}.aout
     then
         echo "Test '$testname' passed."
     else
