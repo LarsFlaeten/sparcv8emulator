@@ -165,11 +165,11 @@ void CPU::STA_impl (pDecode_t d) {
                     break;
                 case(0x100):
                     MMU::SetCtxTblPtr(rd_value);
-                    os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
+                    //os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
                     break;
                 case(0x200):
                     MMU::SetCtxNumber(rd_value);
-                    os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
+                    //os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
                     break;
                 default:
                     //Trap (d, SPARC_ILLEGAL_INSTRUCTION);
