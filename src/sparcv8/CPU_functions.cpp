@@ -142,7 +142,7 @@ void CPU::RDY (pDecode_t d)
     if (d->rs1 == 15 && d->rd == 0) {
         if (verbose) 
             os << std::format("{:#08x} stbar\n", d->PC);
-        UNIMP(d);
+        nop();
     } else {
         if (d->rs1 == 0 && (d->op_2_3 & 0x2f) == 0x28) {
             if (verbose) 
