@@ -19,9 +19,9 @@ int main()
 
 
     if( (f - correct_ans > 0.00001f) || (f - correct_ans < -0.00001f))
-       return (0xbad);
+       FAIL_TEST();
 
-    return 0xbed; 
+    SUCEED_TEST(); 
 
 
 }
