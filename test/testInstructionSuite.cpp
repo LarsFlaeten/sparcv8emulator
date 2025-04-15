@@ -217,7 +217,7 @@ TEST_F(INSTRTest, _fld)
 // C - tests
 TEST_F(INSTRTest, mmu_fault_traps)
 {
-    do_test_assertg7("mmu_fault_traps.aout");
+    do_test_assertg7("simpletest.aout");
 } 
 
 

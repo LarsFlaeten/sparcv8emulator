@@ -25,16 +25,17 @@ void CPU::reset(u32 entry_va = 0x0)
     pc  = entry_va;
     npc = pc + 4;;
 
-    //PSR = (1 << PSR_ENABLE_TRAPS) | (1 << PSR_SUPER_MODE);
-    psr = 0;
-    ((pPSR_t)&psr)->et = 1;
-    ((pPSR_t)&psr)->s  = 1;
-    ((pPSR_t)&psr)->ps  = 0; // Previus trap supervisor bit
-    ((pPSR_t)&psr)->ef = 1; // Enable floats by default
+    psr = (1 << PSR_ENABLE_TRAPS) | (0 << PSR_PREV_SUPER_MODE) 
+        | (1 << PSR_SUPER_MODE) | (1 << PSR_ENABLE_FLOATING_POINT)
+        | (0x3 << PSR_VER) | (0xf << PSR_IMPL) ;
+    //((pPSR_t)&psr)->et = 1;
+    //((pPSR_t)&psr)->s  = 1;
+    //((pPSR_t)&psr)->ps  = 0; // Previus trap supervisor bit
+    //((pPSR_t)&psr)->ef = 1; // Enable floats by default
 
     // Leon3 specific values:
-    ((pPSR_t)&psr)->imp = 0xf; // Gaisler
-    ((pPSR_t)&psr)->ver = 0x3; // Leon3
+    //((pPSR_t)&psr)->imp = 0xf; // Gaisler
+    //((pPSR_t)&psr)->ver = 0x3; // Leon3
 
     // Version 3 in bitfield 17:19
     fpu_fsr = 3 << 17; 
@@ -326,7 +327,7 @@ void CPU::trap(pDecode_t d, u32 trap_no)
     int tn = trap_no & LOBITS8;
     u32 npc = (tbr & ~(0xff0)) | ((tn & LOBITS8) << 4);;
 
-    if (((pPSR_t)&psr)->et == 0) {
+    if ( ((psr >> PSR_ENABLE_TRAPS) & 0x1) == 0) {
          fprintf (stderr, "ERROR TRAP %x WHILE TRAPS DISABLED\n", trap_no);
          dump_regs();
          //terminate = d->opcode;
@@ -547,10 +548,11 @@ u32 CPU::GetRegBase (const u32 reg_no)
 //
 int CPU::mem_read(const u32 va, const int bytes, const u32 rd, const int signext) 
 {
-    bool super = (psr >> 7) & 0x1 == 0x1;
+    bool super = ((psr >> 7) & 0x1) == 0x1;
 
 
-    u32 value, value_ext;
+    u32 value = 0;
+    u32 value_ext = 0;
     int ret1, ret2;
     //reg_no = GetRegBase(rd);
 

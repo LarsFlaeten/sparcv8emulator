@@ -75,7 +75,7 @@ int main(int argc, char **argv)
     int    option;
 
     bool debug_server = false; 
-    int debug_port;
+    int debug_port = 0; // To avoid warning
     bool write_to_file = false; 
     // Process the command line options 
     while ((option = getopt(argc, argv, "f:vdn:b:g:o:c")) != EOF)

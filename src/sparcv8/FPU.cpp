@@ -37,7 +37,7 @@ void CPU::fpu_LDFSR (pDecode_t d)
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
     } else {
         u32 va = d->ev;
-        u32 value;
+        u32 value = 0; // To avoid warning
         u32 ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN);
         if(ret1 < 0)
             throw("fix this"); //handleMMUFault(d);

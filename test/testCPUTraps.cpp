@@ -89,16 +89,17 @@ TEST_F(CPUTrapsTest, TestResetState)
     EXPECT_EQ(cpu.get_pc(), 0);
     EXPECT_EQ(cpu.get_npc(), 4);
 
-    u32 PSR = cpu.get_psr(); 
+    u32 psr = cpu.get_psr(); 
     
     // Current window pointer should be 0
-    EXPECT_EQ(((pPSR_t)&PSR)->cwp , 0);
+    EXPECT_EQ(psr & LOBITS5 , 0);
     
     // Supervisor, enable traos and enable fp should all be 1
-    EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
-    EXPECT_EQ(((pPSR_t)&PSR)->ps , 0);
-    EXPECT_EQ(((pPSR_t)&PSR)->et , 1);
-    EXPECT_EQ(((pPSR_t)&PSR)->ef , 1);
+    EXPECT_EQ((psr >> PSR_SUPER_MODE) & 0x1 , 1);
+    EXPECT_EQ((psr >> PSR_PREV_SUPER_MODE) & 0x1 , 0);
+    EXPECT_EQ((psr >> PSR_ENABLE_TRAPS) & 0x1 , 1);
+    EXPECT_EQ((psr >> PSR_ENABLE_FLOATING_POINT) & 0x1, 1);
+
 
     // reset to another memory location:
     cpu.reset(0x1180);
@@ -113,15 +114,16 @@ TEST_F(CPUTrapsTest, TestResetState)
 TEST_F(CPUTrapsTest, Traps_PSR_PS_bit)
 {
 
-    u32 PSR = cpu.get_psr(); 
+    u32 psr = cpu.get_psr(); 
     
     DecodeStruct d;
     d.psr = cpu.get_psr(); 
     d.p = (pPSR_t)&(d.psr);
 
 
-    EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
-    EXPECT_EQ(((pPSR_t)&PSR)->ps , 0);
+    EXPECT_EQ((psr >> PSR_SUPER_MODE) & 0x1 , 1);
+    EXPECT_EQ((psr >> PSR_PREV_SUPER_MODE) & 0x1 , 0);
+    
  
     // Trap the CPU in supervisor mode:
     cpu.trap(nullptr, 9);
@@ -132,13 +134,13 @@ TEST_F(CPUTrapsTest, Traps_PSR_PS_bit)
     // Return from Trap
     do_RETT_instr(0,0,0);
         
-    PSR = cpu.get_psr();
-    EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
-    EXPECT_EQ(((pPSR_t)&PSR)->ps , 1); // PS should now be set
+    psr = cpu.get_psr();
+    EXPECT_EQ((psr >> PSR_SUPER_MODE) & 0x1 , 1);
+    EXPECT_EQ((psr >> PSR_PREV_SUPER_MODE) & 0x1 , 1); // PS should now be set
  
     // Change to user mode:
-    PSR = PSR & ~(1 << 7);
-    cpu.set_psr(PSR);
+    psr = psr & ~(1 << 7);
+    cpu.set_psr(psr);
 
     // Trap the CPU in user mode:
     cpu.trap(nullptr, 9);
@@ -151,16 +153,16 @@ TEST_F(CPUTrapsTest, Traps_PSR_PS_bit)
 
 
 
-    PSR = cpu.get_psr();
-    EXPECT_EQ(((pPSR_t)&PSR)->s , 0);
-    EXPECT_EQ(((pPSR_t)&PSR)->ps , 0); // PS should not be set
+    psr = cpu.get_psr();
+    EXPECT_EQ((psr >> PSR_SUPER_MODE) & 0x1 , 0);
+    EXPECT_EQ((psr >> PSR_PREV_SUPER_MODE) & 0x1 , 0); // PS should not be set
  
     // Change to super mode:
-    PSR = PSR | (1 << 7);
-    cpu.set_psr(PSR);
+    psr = psr | (1 << 7);
+    cpu.set_psr(psr);
     
-    EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
-    EXPECT_EQ(((pPSR_t)&PSR)->ps , 0);
+    EXPECT_EQ((psr >> PSR_SUPER_MODE) & 0x1 , 1);
+    EXPECT_EQ((psr >> PSR_PREV_SUPER_MODE) & 0x1 , 0);
  
     // Trap the CPU again in supervisor mode:
     cpu.trap(nullptr, 9);
@@ -172,9 +174,9 @@ TEST_F(CPUTrapsTest, Traps_PSR_PS_bit)
 
 
 
-    PSR = cpu.get_psr();
-    EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
-    EXPECT_EQ(((pPSR_t)&PSR)->ps , 1); // PS should now be set
+    psr = cpu.get_psr();
+    EXPECT_EQ((psr >> PSR_SUPER_MODE) & 0x1 , 1);
+    EXPECT_EQ((psr >> PSR_PREV_SUPER_MODE) & 0x1 , 1); // PS should now be set
  
 
 

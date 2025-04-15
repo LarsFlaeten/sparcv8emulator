@@ -113,7 +113,7 @@ bool ParseCommand(const std::string& cmd, CPU& cpu) {
         }   
     } else if(cmd.starts_with("dis")){
         u32 va = cpu.get_pc();
-        u32 opcode;
+        u32 opcode = 0; // Supress uninitialized warning
 
         if(cmd.length() > 4)
             opcode = std::stoul(cmd.substr(4), nullptr, 16);
@@ -170,7 +170,7 @@ int main(int argc, char **argv)
     int    option;
 
     bool debug_server = false; 
-    int debug_port;
+    int debug_port = 0; // Supress uninitiliazed warning
     bool write_to_file = false; 
     // Process the command line options 
     while ((option = getopt(argc, argv, "vdn:b:o:i:cg:")) != EOF)

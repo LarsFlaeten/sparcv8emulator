@@ -143,8 +143,7 @@ std::string gdb_read_mem(CPU& cpu, std::string msg) {
 
 	u32 addr = hexstr_to_u32(address);
 	u32 sz = hexstr_to_u32(size);
-	u32 read = 0;
-
+	
     std::string ret;
 
 
@@ -179,7 +178,7 @@ std::string gdb_read_mem(CPU& cpu, std::string msg) {
         return ret;
 
     // read remaining words
-    int j = sz/4;
+    u32 j = sz/4;
     for(u32 i = 0; i < j; ++i) {
 	    u32 value = 0;
 	    auto r = MMU::MemAccess<intent_load, 4>(addr, value, CROSS_ENDIAN, true, false);	
@@ -284,7 +283,9 @@ void send_packet(int client_fd, const char *data) {
     snprintf(buffer, sizeof(buffer), "$%s#%02x", data, checksum);
 
     // Send packet
-    write(client_fd, buffer, strlen(buffer));
+    auto sz = write(client_fd, buffer, strlen(buffer));
+    if(sz == 0)
+        return;
     //std::cout << "Wrote [" << buffer << "] from data=" << data << ", (l=" << strlen(buffer) << "), checksum=" << (int)checksum << "\n";
 }
 
@@ -393,8 +394,10 @@ void handle_gdb_client(int client_fd, CPU& cpu) {
             *end = '\0';
             const char *packet = buffer + 1;
             // Acknowledge packet
-            write(client_fd, "+", 1);
- 
+            auto sz = write(client_fd, "+", 1);
+            if(sz == 0)
+                return;
+                
             // Handle the packet
             bool cont = handle_gdb_packet(client_fd, cpu, packet);
             if (!cont)

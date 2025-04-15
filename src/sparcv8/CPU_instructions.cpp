@@ -308,7 +308,7 @@ void CPU::WRTBR (pDecode_t d)
 
 void CPU::JMPL (pDecode_t d)
 {
-    u32 temp;
+    //u32 temp;
 
 
     if (verbose) 
@@ -319,7 +319,7 @@ void CPU::JMPL (pDecode_t d)
     } else {
         d->wb_type = WriteBackType::WRITEBACKREG;
         d->value = d->pc;
-        temp = d->pc;
+        //temp = d->pc;
         d->pc = d->npc;
         d->npc = d->ev;
     }
@@ -329,7 +329,8 @@ void CPU::JMPL (pDecode_t d)
 
 void CPU::RETT (pDecode_t d)
 {
-    u32 temp, new_cwp;
+    //u32 temp;
+    u32 new_cwp;
 
     new_cwp = (d->p->cwp + 1) % NWINDOWS;
     //os << std::format("RETT, new cwp {:#x}\n", new_cwp);
@@ -346,7 +347,7 @@ void CPU::RETT (pDecode_t d)
     else if (((wim >> new_cwp) & LOBITS1) != 0)
         trap (d, SPARC_WINDOW_UNDERFLOW);
     else {
-        temp = d->pc;
+        //temp = d->pc;
         d->pc = d->npc;
         d->npc = d->ev & ~LOBITS2;
         d->p->s = d->p->ps;
@@ -921,7 +922,7 @@ void CPU::AND (pDecode_t d)
 
     x = d->rs1_value;
     y = d->ev;
-
+    z = 0; // To avoid warning..
     y_sign = (d->op_2_3 & BIT2) ? ~y : y;
 
     switch (d->op_2_3 & LOBITS2) {

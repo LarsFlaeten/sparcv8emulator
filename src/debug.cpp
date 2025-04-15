@@ -54,7 +54,7 @@ void debug_dumpmemv(u32 va, int n) {
         std::cout << std::hex << "0x" << va + 4*i*4;
         std::string strrep;
         for(int j = 0; j < 4; ++j) {
-            u32 v;
+            u32 v = 0; // supress warning
             MMU::MemAccess(va + 4*(i*4 + j), v, CROSS_ENDIAN, true);
             std::cout <<  "  " << std::setfill('0') << std::setw(8) << v;
             char a = v & 0xff;
@@ -224,7 +224,7 @@ void debug_mmu_tables() {
     }
 
     // Truncate / collapse trs
-    for(int i = 0; i < trs.size()-1; ++i) {
+    for(u32 i = 0; i < trs.size()-1; ++i) {
         if(         ((trs[i].end_va + 1) == trs[i+1].start_va) 
                 &&  ((trs[i].end_pa + 1) == trs[i+1].start_pa)
                 &&  (trs[i].perms.compare(trs[i+1].perms) == 0 )    ) {

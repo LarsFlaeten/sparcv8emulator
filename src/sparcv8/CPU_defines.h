@@ -58,6 +58,11 @@ public:
 #define PSR_SUPER_MODE                     7
 #define PSR_INTERRUPT_LEVEL_0              8
 #define PSR_INTERRUPT_LEVEL_3              11
+#define PSR_ENABLE_FLOATING_POINT          12
+#define PSR_ENABLE_COPROCESSOR             13
+#define PSR_VER                            24
+#define PSR_IMPL                           28
+
 
 #define PSR_CC_NEGATIVE                    23
 #define PSR_CC_ZERO                        22

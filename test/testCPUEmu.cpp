@@ -64,15 +64,15 @@ TEST_F(CPUEmuTest, TestResetState)
     EXPECT_EQ(cpu.get_pc(), 0);
     EXPECT_EQ(cpu.get_npc(), 4);
 
-    u32 PSR = cpu.get_psr(); 
+    u32 psr = cpu.get_psr(); 
     
     // Current window pointer should be 0
-    EXPECT_EQ(((pPSR_t)&PSR)->cwp , 0);
+    EXPECT_EQ(psr & LOBITS5 , 0);
     
     // Supervisor, enable traos and enable fp should all be 1
-    EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
-    EXPECT_EQ(((pPSR_t)&PSR)->et , 1);
-    EXPECT_EQ(((pPSR_t)&PSR)->ef , 1);
+    EXPECT_EQ((psr >> PSR_SUPER_MODE) & 0x1 , 1);
+    EXPECT_EQ((psr >> PSR_ENABLE_TRAPS) & 0x1 , 1);
+    EXPECT_EQ((psr >> PSR_ENABLE_FLOATING_POINT) & 0x1, 1);
 
     // reset to another memory location:
     cpu.reset(0x1180);

@@ -35,7 +35,8 @@ void CPU::CASA (pDecode_t d)
     read_reg(rs2 & LOBITS5, &rs2_value);
    
     // Get value pointed to by rs1
-    u32 rs1_value, mret;
+    u32 rs1_value = 0; // To avoid warning..
+    u32 mret;
     bool super = false;
     if( imm_asi == 0xB) {
         super = true;

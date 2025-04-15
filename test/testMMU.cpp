@@ -781,7 +781,7 @@ TEST_F(MMUTest, MMUTables)
     for(u32 va = 0x60010000; va < 0x61000000; va += 4) {
         u32 val;
         int ret = MMU::MemAccess<intent_load>(va, val, CROSS_ENDIAN);
-        //ASSERT_EQ(ret, 0);
+        ASSERT_EQ(ret, 0);
         ASSERT_EQ(val, va);
     }
  
@@ -1294,7 +1294,7 @@ void mmu_table_init(u32 end_of_mem)
 	// From radelf image.ram
 	unsigned long _startup_start = 0xffd00000;
 	unsigned long _prom_end = 0xffd14000;
-	u32 start_ffd00000_pa;
+	//u32 start_ffd00000_pa;
 
 	for (i = 0; i < 256; i++) {
 		if (i < 64) {
@@ -1361,7 +1361,7 @@ void mmu_table_init(u32 end_of_mem)
 	page_cnt = (page_va_end - page_va_start) >> PAGE_SHIFT;
 	page_pa_end = (end_of_mem + (PAGE_SIZE-1)) & ~PAGE_MASK;
 	page_pa_start = page_pa_end - (page_cnt << PAGE_SHIFT);
-	start_ffd00000_pa = page_pa_start;
+	//start_ffd00000_pa = page_pa_start;
 	for (i = 0; i < page_cnt; i++) {
 		_mmu_ctx0_ffd_level3[i] = (page_pa_start >> 4) | SRMMU_CACHE |
 						SRMMU_ACC_S_ALL | SRMMU_ET_PTE;

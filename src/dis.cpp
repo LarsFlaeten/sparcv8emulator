@@ -22,7 +22,8 @@
 //=============================================================
 
 #include <stdio.h>
-#include <string.h>
+#include <string>
+
 #include "dis.h"
 
 //extern FILE *ofp;
@@ -38,15 +39,15 @@ FILE* ofp = stdout;
 // Instruction function pointer tables
 
 // Format 1 instruction
-static char * const format1 = "call    ";
+static std::string format1 = "call    ";
 
 // Format 2 instructions
-static const char * format2[8] = {
+static std::string format2[8] = {
     "unimp   "    , "unimp   "    , "b"           , "unimp   ",
     "sethi   "    , "unimp   "    , "fbfcc   "    , "cbccc   "};
 
 // Format 3 instructions 
-static const char * format3[128] = {
+static std::string format3[128] = {
     "add     ", "and     ", "or      ", "xor     ",  
     "sub     ", "andn    ", "orn     ", "xnor    ",
     "addx    ", "unimp   ", "umul    ", "smul    ",
@@ -81,7 +82,7 @@ static const char * format3[128] = {
     "unimp   ", "unimp   ", "unimp   ", "unimp   "
     };
 
-static char * cond_byte [16] = {
+static std::string cond_byte [16] = {
    "n  ", "e  ", "le ", "l  ",
    "leu", "cs ", "neg", "vs ",
    "a  ", "ne ", "g  ", "ge ",
@@ -149,8 +150,8 @@ static void disShowRegName (const u32 regnum)
 
 //------------------------------------------------------------------------
 
-static void disIfetch (const u64 physaddr, u32 * const inst) 
-{
+//static void disIfetch (const u64 physaddr, u32 * const inst) 
+//{
 /*    u64 PA = physaddr & ADDR_MASK;
 
     if ((PA & (u64)3) != 0) {
@@ -165,16 +166,16 @@ static void disIfetch (const u64 physaddr, u32 * const inst)
     }
 
     *inst = Memory[PA >> (u64)2];*/
-}
+//}
 
 //------------------------------------------------------------------------
 
-static void disPrintOpcode(u32 PC, u32 opcode, const char * f, const char * c) {
+static void disPrintOpcode(u32 PC, u32 opcode, std::string f, std::string c) {
     fprintf(ofp, "%12x:  %02x %02x %02x %02x\t", PC, (opcode & 0xff000000) >> 24,
                                                         (opcode & 0x00ff0000) >> 16,
                                                         (opcode & 0x0000ff00) >> 8,
                                                         (opcode & 0x000000ff));
-    fprintf(ofp, "   %s%s\t", f, c);
+    fprintf(ofp, "   %s%s\t", f.c_str(), c.c_str());
 }
 
 //------------------------------------------------------------------------
@@ -182,7 +183,7 @@ static void disPrintOpcode(u32 PC, u32 opcode, const char * f, const char * c) {
 //
 void disDecode(u32 PC, u32 opcode)
 {
-    const char * function;
+    std::string function, trimmed;
     int is_mov, is_cmp, is_rd, is_wr, is_sethi_or, is_clr;
     u32 imm_disp_rs2;
     static u32 last_sethi = 0, last_sethi_value, last_sethi_reg;
@@ -191,7 +192,7 @@ void disDecode(u32 PC, u32 opcode)
     u32 op2      = (opcode >> OP2STARTBIT) & LOBITS3;
     u32 op3      = (opcode >> OP3STARTBIT) & LOBITS6;
     u32 rd       = (opcode >> RDSTARTBIT)  & LOBITS5;
-    u32 op_2_3   = (opcode >> OP3STARTBIT) & LOBITS6;
+    //u32 op_2_3   = (opcode >> OP3STARTBIT) & LOBITS6;
     u32 rs1      = (opcode >> RS1STARTBIT) & LOBITS5;
     u32 i        = (opcode >> ISTARTBIT)   & LOBITS1;
 
@@ -210,11 +211,11 @@ void disDecode(u32 PC, u32 opcode)
         function     = format2[op2];                     
         imm_disp_rs2 = (opcode & LOBITS22);
 
-        if (strcmp("unimp   ", function) == 0) {
+        if (function == "unimp   ") {
             disPrintOpcode(PC, opcode, function, "");
             fprintf(ofp, "0x%x\n", opcode);
             last_sethi = 0;
-        } else if (strcmp("sethi   ", function) == 0) {
+        } else if (function == "sethi   ") {
             if (opcode == NOP) {
                 function = "nop     ";
                 last_sethi = 0;
@@ -243,9 +244,14 @@ void disDecode(u32 PC, u32 opcode)
         function     = format3[op3 + ((fmt_bits & 1) << 6)];
         imm_disp_rs2 = (opcode >> RS2STARTBIT) & LOBITS13;
 
+
+
         disPrintOpcode(PC, opcode, function, "");
 
-        if (strncmp("st", function, 2) == 0) {
+        trimmed = function;
+        trimmed.erase(trimmed.find_last_not_of(' ') + 1);
+
+        if (trimmed == "st") {
             disShowRegName(rd & LOBITS5);
             fprintf(ofp, ", ");
         }
@@ -261,7 +267,7 @@ void disDecode(u32 PC, u32 opcode)
         }
         fprintf(ofp, "]");
 
-        if (strncmp("ld", function, 2) == 0) {
+        if (trimmed == "ld") {
             fprintf(ofp, ", ");
             disShowRegName(rd & LOBITS5);
         }
@@ -275,12 +281,15 @@ void disDecode(u32 PC, u32 opcode)
         function        = format3[op3 + ((fmt_bits & 1) << 6)];
         imm_disp_rs2 = (opcode >> RS2STARTBIT) & LOBITS13;
 
-        is_cmp = (!strcmp("subcc   ", function) && !rd);
-        is_wr = !strncmp("wr", function, 2);
-        is_rd = !strncmp("rd", function, 2);
-        is_mov = (!strcmp("or      ", function) && !rs1) || (is_wr & !rs1);
-        is_clr = !strcmp("or      ", function) && !rs1 && i && imm_disp_rs2 == 0;
-        is_sethi_or = (!strcmp("or      ", function) && (rs1 == last_sethi_reg) && (rs1 == last_sethi_reg) && i);
+        trimmed = function;
+        trimmed.erase(trimmed.find_last_not_of(' ') + 1);
+        
+        is_cmp = (function != "subcc   " && !rd);
+        is_wr = !(trimmed == "wr");
+        is_rd = !(trimmed == "rd");
+        is_mov = (!(function == "or      ") && !rs1) || (is_wr & !rs1);
+        is_clr = !(function == "or      ") && !rs1 && i && imm_disp_rs2 == 0;
+        is_sethi_or = ((function != "or      ") && (rs1 == last_sethi_reg) && (rs1 == last_sethi_reg) && i);
 
         if (is_clr)
             function = "clr     ";
@@ -302,12 +311,12 @@ void disDecode(u32 PC, u32 opcode)
         if (!is_rd) {
             if (i == 0)
                 disShowRegName(imm_disp_rs2 & LOBITS5);
-            else 
-                if (!is_clr) 
-                    if (is_sethi_or)
-                        fprintf(ofp, "0x%x", (int)sign_ext13(imm_disp_rs2));
-                    else
-                        fprintf(ofp, "%d", (int)sign_ext13(imm_disp_rs2));
+            else if (!is_clr) {
+                if (is_sethi_or)
+                    fprintf(ofp, "0x%x", (int)sign_ext13(imm_disp_rs2));
+                else
+                    fprintf(ofp, "%d", (int)sign_ext13(imm_disp_rs2));
+            }
         }
         if (!is_cmp) {
             if (!is_rd && !is_clr)
