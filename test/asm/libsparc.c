@@ -38,7 +38,7 @@ void startup()
 {
     return;
 }
-
+/*
 int fprintf (int stream, char *format, ...) 
 {
     return 0;
@@ -53,7 +53,7 @@ int getc(FILE *ifp)
 {
     return;
 }
-
+*/
 void BadTrap(void)
 {
     exit(1);
