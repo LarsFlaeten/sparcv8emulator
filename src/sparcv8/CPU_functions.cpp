@@ -360,7 +360,7 @@ void CPU::RETT (pDecode_t d)
 
 void CPU::TICC (pDecode_t d)
 {
-    int tn = TrapType;
+    int tn = trap_type;
 
     if (TestCC(d)) {
         if (d->i) 
@@ -683,7 +683,7 @@ void CPU::SWAP (pDecode_t d)
         Trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
     else {
         // Copy data to swap register
-        *pSwapReg = d->value;
+        *p_swap_reg = d->value;
 
         // Issue the read
         if(( MemRead(d->ev, 4, d->rd, 0) < 0) && !MMU::GetNoFault())
@@ -716,7 +716,7 @@ void CPU::LDSTUB (pDecode_t d)
     }
 
     // Set memory byte to all 1s
-    *pSwapReg = 0xff;
+    *p_swap_reg = 0xff;
 
     if((MemWrite(d->ev, 1, GLOBALREG8) < 0) && !MMU::GetNoFault())
         Trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 

@@ -41,7 +41,7 @@ void CPU::Reset(u32 entry_va = 0x0)
 
     IRL = 0;
 
-    TrapType = 0;
+    trap_type = 0;
     TBR = 0;
     WIM = 2;
 }
@@ -104,11 +104,11 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
         count++;
         
         // Process interrupts
-        if (TrapType == 0 && (p->et && (IRL > p->pil))) {
+        if (trap_type == 0 && (p->et && (IRL > p->pil))) {
             if (verbose)
                 os << std::format("INT  {:#x} PC={:#08x} NPC={:#08x}\n", IRL, PC, nPC);
 
-            TrapType = IRL + SPARC_INTERRUPT;
+            trap_type = IRL + SPARC_INTERRUPT;
             // Do we clear IRL here, or handle that in interrupt handler?
             // Update - yes we absolutely have to clear it here. The interrupt handlers cannot reach IRL,
             // as it is not exposed in the machine... Hence, it was nevre cleared..
@@ -116,22 +116,21 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
         }
         
         // Process Traps
-        if (TrapType) {
+        if (trap_type) {
             p->et = 0;
             p->ps = p->s;
             p->s = 1;
             u32 n_cwp = p->cwp;
             n_cwp = ((n_cwp - 1) & LOBITS5) % NWINDOWS;
-            //os << std::format("Trap {:#x}, new cwp {:#x}, WIM: {:#x}, NW: {:#x}\n", TrapType, n_cwp, WIM, NWINDOWS);
             p->cwp = n_cwp;
 
             WriteReg (PC,  LOCALREG1);
             WriteReg (nPC, LOCALREG2);
             
-            TBR = (TBR & ~(0xff0)) | ((TrapType & LOBITS8) << 4);
+            TBR = (TBR & ~(0xff0)) | ((trap_type & LOBITS8) << 4);
             PC  = TBR;
             nPC = TBR + 4;
-            TrapType &= ~(LOBITS8);
+            trap_type &= ~(LOBITS8);
         }
 
        
@@ -173,7 +172,7 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
 
         } else {
             // we could not fetch instruction, and no Traps occured.. Not much more to do.
-            if(!TrapType) {
+            if(!trap_type) {
                 rs.reason = TerminateReason::TRAP_CONDITIONAL;
                 break;
             }
@@ -209,7 +208,7 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
     if(_rs != nullptr)
         *_rs = rs;
     
-	return count;
+    return count;
 }
 
 //------------------------------------------------------------------------
@@ -354,7 +353,7 @@ void CPU::Trap(pDecode_t d, u32 trap_no)
     PSR = PSR & ~(1 << 6); // Clear PS;
     PSR = PSR | (s << 6); // Set SP from S
 */
-    TrapType = (TrapType & ~(LOBITS8)) | tn;
+    trap_type = (trap_type & ~(LOBITS8)) | tn;
 }
 
 // ------------------------------------------------
@@ -431,25 +430,25 @@ void CPU::ReadReg (const u32 reg_no, u32 * const value)
 {
     int win;
 
-    Globals[0] = 0;
+    globals[0] = 0;
     if(reg_no == GLOBALREG8) {
-        *value = *pSwapReg;
+        *value = *p_swap_reg;
         return;
     }
     
     switch (reg_no >> 3) {
     case 0 : // Globals
-        *value = Globals[reg_no & LOBITS3];
+        *value = globals[reg_no & LOBITS3];
         break;
     case 1 : // Outs
-        *value = Outs [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)];
+        *value = outs [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)];
         break;
     case 2 : // locals
-        *value = Locals [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)];
+        *value = locals [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)];
         break;
     case 3 : // Ins
         win = ((GetPSR() & LOBITS5) + 1) % NWINDOWS;
-        *value = Outs [(win << 3) | (reg_no & LOBITS3)];
+        *value = outs [(win << 3) | (reg_no & LOBITS3)];
         break;
     }
 }
@@ -462,24 +461,24 @@ void CPU::WriteReg (const u32 value, const u32 reg_no)
    int win = 0;
 
    if(reg_no == GLOBALREG8) {
-        *pSwapReg = value;
+        *p_swap_reg = value;
         return;
     }
  
    switch ((reg_no >>3) & LOBITS2) {
    case 0 : // Globals
-      Globals[reg_no & LOBITS3] = value;
-      Globals[0] = 0;
+      globals[reg_no & LOBITS3] = value;
+      globals[0] = 0;
       break;
    case 1 : // Outs
-      Outs [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
+      outs [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
       break;
    case 2 : // locals
-      Locals [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
+      locals [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
       break;
    case 3 : // Ins
       win = ((GetPSR() & LOBITS5) + 1) % NWINDOWS;
-      Outs [(win << 3) | (reg_no & LOBITS3)] = value;
+      outs [(win << 3) | (reg_no & LOBITS3)] = value;
       break;
    }
 }
@@ -630,21 +629,21 @@ void CPU::DispReadReg (const u32 reg_no, u32 *value)
     u32  win;
    
     win = (GetPSR() & LOBITS4);
-    Globals[0] = 0;
+    globals[0] = 0;
 
     switch ((reg_no >> 3) & LOBITS2) {
     case 0 : // Globals
-        *value = Globals[reg_no & LOBITS3];
+        *value = globals[reg_no & LOBITS3];
         break;
     case 1 : // Outs
-        *value = Outs [(win << 3) | (reg_no & LOBITS3)];
+        *value = outs [(win << 3) | (reg_no & LOBITS3)];
         break;
     case 2 : // locals
-        *value = Locals [(win << 3) | (reg_no & LOBITS3)];
+        *value = locals [(win << 3) | (reg_no & LOBITS3)];
         break;
     case 3 : // Ins
         win = (GetPSR() & LOBITS4) + 1;
-        *value = Outs [(win << 3) | (reg_no & LOBITS3)];
+        *value = outs [(win << 3) | (reg_no & LOBITS3)];
         break;
     }
 }
@@ -664,9 +663,9 @@ void CPU::RegisterDump (bool transpose) {
                  (GetPSR() >> PSR_CC_OVERFLOW) & LOBITS1,
                  (GetPSR() >> PSR_CC_CARRY) & LOBITS1, (GetPSR() >> PSR_INTERRUPT_LEVEL_0) & LOBITS4, GetIRL());
         os << std::format("Ma g0=({:#08x}) g1=({:#08x}) g2=({:#08x}) g3=({:#08x})\n",
-                 Globals[0], Globals[1], Globals[2], Globals[3]);
+                 globals[0], globals[1], globals[2], globals[3]);
         os << std::format("Ma g4=({:#08x}) g5=({:#08x}) g6=({:#08x}) g7=({:#08x})\n",
-                 Globals[4], Globals[5], Globals[6], Globals[7]);
+                 globals[4], globals[5], globals[6], globals[7]);
         DispReadReg (OUTREG0, &a);
         DispReadReg (OUTREG1, &b);
         DispReadReg (OUTREG2, &c);
@@ -702,42 +701,42 @@ void CPU::RegisterDump (bool transpose) {
         DispReadReg (INREG0, &a);
         DispReadReg (LOCALREG0, &b);
         DispReadReg (OUTREG0, &c);
-        d = Globals[0];
+        d = globals[0];
         os << std::setfill('0') << std::hex << std::setw(8) << "     0:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
         DispReadReg (INREG1, &a);
         DispReadReg (LOCALREG1, &b);
         DispReadReg (OUTREG1, &c);
-        d = Globals[1];
+        d = globals[1];
         os << std::setfill('0') << std::hex << std::setw(8) << "     1:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
         DispReadReg (INREG2, &a);
         DispReadReg (LOCALREG2, &b);
         DispReadReg (OUTREG2, &c);
-        d = Globals[2];
+        d = globals[2];
         os << std::setfill('0') << std::hex << std::setw(8) << "     2:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
         DispReadReg (INREG3, &a);
         DispReadReg (LOCALREG3, &b);
         DispReadReg (OUTREG3, &c);
-        d = Globals[3];
+        d = globals[3];
         os << std::setfill('0') << std::hex << std::setw(8) << "     3:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
         DispReadReg (INREG4, &a);
         DispReadReg (LOCALREG4, &b);
         DispReadReg (OUTREG4, &c);
-        d = Globals[4];
+        d = globals[4];
         os << std::setfill('0') << std::hex << std::setw(8) << "     4:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
         DispReadReg (INREG5, &a);
         DispReadReg (LOCALREG5, &b);
         DispReadReg (OUTREG5, &c);
-        d = Globals[5];
+        d = globals[5];
         os << std::setfill('0') << std::hex << std::setw(8) << "     5:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
         DispReadReg (INREG6, &a);
         DispReadReg (LOCALREG6, &b);
         DispReadReg (OUTREG6, &c);
-        d = Globals[6];
+        d = globals[6];
         os << std::setfill('0') << std::hex << std::setw(8) << "     6:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
         DispReadReg (INREG7, &a);
         DispReadReg (LOCALREG7, &b);
         DispReadReg (OUTREG7, &c);
-        d = Globals[7];
+        d = globals[7];
         os << std::setfill('0') << std::hex << std::setw(8) << "     7:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
  
 

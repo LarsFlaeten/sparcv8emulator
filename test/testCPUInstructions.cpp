@@ -315,7 +315,7 @@ TEST_F(CPUInstructionsTest, SAVE)
     // This one will trigger windoww overflow since WIM = 0x2:
     do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
     ASSERT_EQ(cpu.GetPSR() & LOBITS5, 2);
-    ASSERT_EQ(cpu.GetTrapType(), SPARC_WINDOW_OVERFLOW);
+    ASSERT_EQ(cpu.get_trap_type(), SPARC_WINDOW_OVERFLOW);
     // Run the CPU through the trap:
     cpu.SetSingleStep(true);
     cpu.Run(0, nullptr);
@@ -369,7 +369,7 @@ TEST_F(CPUInstructionsTest, RESTORE)
     u32 op3 = 0b110010; // WRWIM
     do_op3_instr(2, op3, LOCALREG4, LOCALREG5, LOCALREG0);
     ASSERT_EQ(cpu.GetWIM(), 0x0);
-    ASSERT_EQ(cpu.GetTrapType(), 0);
+    ASSERT_EQ(cpu.get_trap_type(), 0);
  
     cpu.WriteReg(0x2, LOCALREG4);
     op3 = 0b110010; // WRWIM
@@ -413,7 +413,7 @@ TEST_F(CPUInstructionsTest, RESTORE)
     cwp = 0;
 
     do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2);
-    ASSERT_EQ(cpu.GetTrapType(), 0);
+    ASSERT_EQ(cpu.get_trap_type(), 0);
     ASSERT_EQ(cpu.GetPSR() & LOBITS5, 7);
     u32 val; cpu.ReadReg(LOCALREG2, &val); ASSERT_EQ(val, 401);
     cpu.ReadReg(INREG0, &val); ASSERT_EQ(val, 20);
@@ -435,7 +435,7 @@ TEST_F(CPUInstructionsTest, RESTORE)
 
     do_SAVE_instr(LOCALREG0, LOCALREG1, LOCALREG2);
     ASSERT_EQ(cpu.GetPSR() & LOBITS5, 6);
-    ASSERT_EQ(cpu.GetTrapType(), 0);
+    ASSERT_EQ(cpu.get_trap_type(), 0);
     cpu.ReadReg(LOCALREG2, &val); ASSERT_EQ(val, 0);
 
     do_RESTORE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
@@ -452,7 +452,7 @@ TEST_F(CPUInstructionsTest, RESTORE)
 
     do_RESTORE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
     ASSERT_EQ(cpu.GetPSR() & LOBITS5, 0);
-    ASSERT_EQ(cpu.GetTrapType(), 0);
+    ASSERT_EQ(cpu.get_trap_type(), 0);
  
     cpu.ReadReg(LOCALREG0, &val); ASSERT_EQ(val, 200);
     cpu.ReadReg(LOCALREG1, &val); ASSERT_EQ(val, 201);
@@ -489,7 +489,7 @@ TEST_F(CPUInstructionsTest, RESTORE)
     // and cwp will remain 0
     do_RESTORE_instr(LOCALREG0, LOCALREG1, LOCALREG2); 
     ASSERT_EQ(cpu.GetPSR() & LOBITS5, 0);
-    ASSERT_EQ(cpu.GetTrapType(), SPARC_WINDOW_UNDERFLOW);
+    ASSERT_EQ(cpu.get_trap_type(), SPARC_WINDOW_UNDERFLOW);
     // Run the CPU through the trap:
     cpu.SetSingleStep(true);
     cpu.Run(0, nullptr);

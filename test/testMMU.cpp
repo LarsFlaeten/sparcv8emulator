@@ -1188,7 +1188,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
 
     cpu.ReadReg(LOCALREG3, &val);
     ASSERT_EQ(val, 0xcafebabe);
-    ASSERT_EQ(cpu.GetTrapType(), 0);
+    ASSERT_EQ(cpu.get_trap_type(), 0);
 
     // Change to user mode:
     auto psr = cpu.GetPSR(); 
@@ -1205,7 +1205,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
 
     cpu.ReadReg(LOCALREG3, &val);
     ASSERT_NE(val, 0xcafebabe);
-    ASSERT_EQ(cpu.GetTrapType(), 0x9); // SPARC_DATA_ACCESS_EXCEPTION
+    ASSERT_EQ(cpu.get_trap_type(), 0x9); // SPARC_DATA_ACCESS_EXCEPTION
     
     // Run the CPU through the trap:
     cpu.SetSingleStep(true);
@@ -1271,7 +1271,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
 
     cpu.ReadReg(LOCALREG3, &val);
     ASSERT_NE(val, 0xcafebabe);
-    ASSERT_EQ(cpu.GetTrapType(), 0x0);
+    ASSERT_EQ(cpu.get_trap_type(), 0x0);
  
 }
 

@@ -43,6 +43,9 @@ protected:
 
         // Check if test hac placed GOOD (0x900d) or BAD (0xbad) in %g7
         u32 val; cpu.ReadReg(GLOBALREG7, &val);
+        if(val == 0xbad)
+            FAIL() << "Test failed.\n";
+        
         ASSERT_EQ(val, 0x900d); 
 
 
@@ -195,6 +198,9 @@ TEST_F(INSTRTest, _xor)
 {
     do_test_assertg7("xor.aout");
 } 
+
+// Floating OP tests
+
 /*
 TEST_F(INSTRTest, _fbfcc)
 {
@@ -206,4 +212,12 @@ TEST_F(INSTRTest, _fld)
     do_test_assertg7("fld.aout");
 } 
 */
+
+
+// C - tests
+TEST_F(INSTRTest, mmu_fault_traps)
+{
+    do_test_assertg7("mmu_fault_traps.aout");
+} 
+
 

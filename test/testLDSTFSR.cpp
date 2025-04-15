@@ -110,7 +110,7 @@ TEST_F(LDSTFSRTest, C128A0DC)
         
         d.function(&cpu, &d);
         cpu.WriteBack(&d);
-        ASSERT_EQ(cpu.GetTrapType(), 0);
+        ASSERT_EQ(cpu.get_trap_type(), 0);
  
 
         // The fsr value should now be in [$g2 + 220]:
@@ -129,7 +129,7 @@ TEST_F(LDSTFSRTest, STFSRG2G3)
         cpu.WriteReg(0xbab0, GLOBALREG3); 
     
         do_STFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_EQ(cpu.GetTrapType(), 0);
+        ASSERT_EQ(cpu.get_trap_type(), 0);
         // The fsr value should now be in [$g2 + $g3]:
         u32 value;
         MMU::MemAccess<intent_load,4>(0x000fbab0, value, CROSS_ENDIAN);
@@ -145,37 +145,37 @@ TEST_F(LDSTFSRTest, STFSR_TrapUnaligned)
         cpu.WriteReg(0x0, GLOBALREG3); 
     
         do_STFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_EQ(cpu.GetTrapType(), 0);
+        ASSERT_EQ(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
 
         cpu.WriteReg(0x000f0000, GLOBALREG2); 
         cpu.WriteReg(0x1, GLOBALREG3); 
         do_STFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_GT(cpu.GetTrapType(), 0);
+        ASSERT_GT(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
  
         cpu.WriteReg(0x000f0000, GLOBALREG2); 
         cpu.WriteReg(0x2, GLOBALREG3); 
         do_STFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_GT(cpu.GetTrapType(), 0);
+        ASSERT_GT(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
  
         cpu.WriteReg(0x000f0000, GLOBALREG2); 
         cpu.WriteReg(0x3, GLOBALREG3); 
         do_STFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_GT(cpu.GetTrapType(), 0);
+        ASSERT_GT(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
  
         cpu.WriteReg(0x000f0002, GLOBALREG2); 
         cpu.WriteReg(0x1, GLOBALREG3); 
         do_STFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_GT(cpu.GetTrapType(), 0);
+        ASSERT_GT(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
          
         cpu.WriteReg(0x000f0000, GLOBALREG2); 
         cpu.WriteReg(0x0, GLOBALREG3); 
         do_STFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_EQ(cpu.GetTrapType(), 0);
+        ASSERT_EQ(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
  
 }
@@ -190,7 +190,7 @@ TEST_F(LDSTFSRTest, LDFSRG2G3)
         cpu.WriteReg(0xbab0, GLOBALREG3); 
     
         do_LDFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_EQ(cpu.GetTrapType(), 0);
+        ASSERT_EQ(cpu.get_trap_type(), 0);
         
         // The fsr value should now be cafebabe, set fro memory:
         ASSERT_EQ(cpu.GetFSR(), 0xcafebabe); 
@@ -205,7 +205,7 @@ TEST_F(LDSTFSRTest, LSDFSR_TrapUnaligned)
         cpu.WriteReg(0xbab0, GLOBALREG3); 
     
         do_LDFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_EQ(cpu.GetTrapType(), 0);
+        ASSERT_EQ(cpu.get_trap_type(), 0);
         // The fsr value should now be cafebabe, set fro memory:
         ASSERT_EQ(cpu.GetFSR(), 0xcafebabe); 
         cpu.Reset(0x0);
@@ -214,25 +214,25 @@ TEST_F(LDSTFSRTest, LSDFSR_TrapUnaligned)
         cpu.WriteReg(0x000f0000, GLOBALREG2); 
         cpu.WriteReg(0x1, GLOBALREG3); 
         do_LDFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_GT(cpu.GetTrapType(), 0);
+        ASSERT_GT(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
  
         cpu.WriteReg(0x000f0000, GLOBALREG2); 
         cpu.WriteReg(0x2, GLOBALREG3); 
         do_LDFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_GT(cpu.GetTrapType(), 0);
+        ASSERT_GT(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
  
         cpu.WriteReg(0x000f0000, GLOBALREG2); 
         cpu.WriteReg(0x3, GLOBALREG3); 
         do_LDFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_GT(cpu.GetTrapType(), 0);
+        ASSERT_GT(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
  
         cpu.WriteReg(0x000f0002, GLOBALREG2); 
         cpu.WriteReg(0x1, GLOBALREG3); 
         do_LDFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_GT(cpu.GetTrapType(), 0);
+        ASSERT_GT(cpu.get_trap_type(), 0);
         cpu.Reset(0x0);
  
 
@@ -242,7 +242,7 @@ TEST_F(LDSTFSRTest, LSDFSR_TrapUnaligned)
         cpu.WriteReg(0x000f0000, GLOBALREG2); 
         cpu.WriteReg(0xbab0, GLOBALREG3); 
         do_LDFSR_instr(GLOBALREG2, GLOBALREG3, GLOBALREG0);
-        ASSERT_EQ(cpu.GetTrapType(), 0);
+        ASSERT_EQ(cpu.get_trap_type(), 0);
         ASSERT_EQ(cpu.GetFSR(), 0xdeadbeef); 
  
 }

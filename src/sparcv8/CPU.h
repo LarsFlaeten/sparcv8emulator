@@ -121,7 +121,7 @@ class CPU
         u32 PSR;
         u32 IRL;
 
-        u32 TrapType;
+        u32 trap_type;
         u32 TBR;
         u32 WIM;
 
@@ -131,11 +131,11 @@ class CPU
         u32 fpu_fsr; // FPU state register
         ///////////////////////
         // Registers
-        u32 Globals [9];              // Global[8] is a pseudo register used only for SWAP
-        u32 Locals  [NWINDOWS * 8];
-        u32 Outs    [NWINDOWS * 8];
+        u32 globals [9];              // Global[8] is a pseudo register used only for SWAP
+        u32 locals  [NWINDOWS * 8];
+        u32 outs    [NWINDOWS * 8];
 
-        u32 *pSwapReg = &Globals[8];
+        u32 *p_swap_reg = &globals[8];
 
 
 
@@ -196,7 +196,7 @@ class CPU
         u32 GetPC() const { return PC;  }
         u32 GetnPC() const { return nPC; }
         u32 GetIRL() const { return IRL; }
-        u32 GetTrapType() const { return TrapType; }
+        u32 get_trap_type() const { return trap_type; }
         void SetIRL(u32 irl)  { IRL = (irl & 0xf); }
         u32 GetFSR() const { return fpu_fsr; }
         void SetFSR(u32 _fsr)  { fpu_fsr = _fsr; }
