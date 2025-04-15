@@ -1,5 +1,6 @@
 TODO before we start RISC-V:
 X Profiler for performance
+- Fix so we can run tests with c-code
 - Investigate busyloop
 - Inline all instructions?
 - Code cleanliness, naming convention
