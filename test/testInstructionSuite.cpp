@@ -36,13 +36,13 @@ protected:
         u32 entry_va = 0x0; 
         u32 word_count = ReadElf(path + test, cpu, entry_va); 
         ASSERT_GT(word_count, 0);
-        cpu.Reset(entry_va);
+        cpu.reset(entry_va);
         
         RunSummary rs;
-        cpu.Run(0, &rs); 
+        cpu.run(0, &rs); 
 
         // Check if test hac placed GOOD (0x900d) or BAD (0xbad) in %g7
-        u32 val; cpu.ReadReg(GLOBALREG7, &val);
+        u32 val; cpu.read_reg(GLOBALREG7, &val);
         if(val == 0xbad)
             FAIL() << "Test failed.\n";
         
@@ -59,7 +59,7 @@ INSTRTest::INSTRTest()
 
 {  
     //cpu.SetVerbose(true);
-    cpu.SetId(0);
+    cpu.set_cpu_id(0);
 
     // Set up IO mapping
     // TODO: Move this MMU functions?

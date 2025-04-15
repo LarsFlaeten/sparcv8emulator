@@ -84,9 +84,9 @@ struct DecodeStruct {
     u32 op_2_3;              // op2 or op3 value
     u32 i;                   // i, imm/rs2 indicator
 
-    u32 PC;                  // Current program counter value
-    u32 nPC;                 // Next program counter value
-    u32 PSR;                 // Program status register value
+    u32 pc;                  // Current program counter value
+    u32 npc;                 // Next program counter value
+    u32 psr;                 // Program status register value
     pPSR_t p;                   // Pointer to structured version of PSR
     WriteBackType wb_type;             // Write back flag
     u32 value;               // Write back value
@@ -115,17 +115,17 @@ class CPU
     private:
         ///////////////////////
         // Major state of model
-        u32 PC;
-        u32 nPC;
+        u32 pc;
+        u32 npc;
 
-        u32 PSR;
-        u32 IRL;
+        u32 psr;
+        u32 irl;
 
         u32 trap_type;
-        u32 TBR;
-        u32 WIM;
+        u32 tbr;
+        u32 wim;
 
-        u32 Y;
+        u32 y_reg;
 
         u32 cpu_id;
         u32 fpu_fsr; // FPU state register
@@ -159,83 +159,82 @@ class CPU
 
         // Main execution flow methods
  
-        void Reset(u32 entry_va);
+        void reset(u32 entry_va);
 
-        u32  Run(u32 ExecCount = 0, RunSummary* _rs = nullptr);
+        u32  run(u32 ExecCount = 0, RunSummary* _rs = nullptr);
         
-        bool IFetch(u32 virt_addr, pDecode_t d);
+        bool instr_fetch(u32 virt_addr, pDecode_t d);
 
-        void Decode(pDecode_t d);
+        void decode(pDecode_t d);
         
-        void WriteBack (const pDecode_t d);
+        void write_back (const pDecode_t d);
 
-        void Trap (pDecode_t d, u32 trap_no); 
+        void trap (pDecode_t d, u32 trap_no); 
 
 
         void nop() { return; } // Just for the sake of it...
 
 
         // Read/write registers
-        void ReadReg (const u32 reg_no, u32 * const value);
+        void read_reg (const u32 reg_no, u32 * const value);
         //u32  ReadRegsAll (const int reg_base); 
-        void WriteReg (const u32 value, const u32 reg_no);
+        void write_reg (const u32 value, const u32 reg_no);
         //void WriteRegAll (const int RegBase, const u32 WriteValue);
-        int  MemRead(const u32 va, const int bytes, const u32 rd, const int signext);    
-        int  MemWrite(const u32 va, const int bytes, const u32 rd);
+        int  mem_read(const u32 va, const int bytes, const u32 rd, const int signext);    
+        int  mem_write(const u32 va, const int bytes, const u32 rd);
         //u32  GetRegBase (const u32 reg_no); 
 
         // Get/Set multi-core id:
-        void SetId(u32 value) { cpu_id = value; }
-        u32 GetId() const { return cpu_id; }
+        void set_cpu_id(u32 value) { cpu_id = value; }
+        u32 get_cpu_id() const { return cpu_id; }
         // State Accessors
-        u32 GetPSR() const {return PSR;}
-        void SetPSR(u32 value) { PSR = value; }
-        u32 GetWIM() const {return WIM;}
-        u32 GetTBR() const {return TBR;}
-        u32 GetY() const {return Y;}
-        u32 GetPC() const { return PC;  }
-        u32 GetnPC() const { return nPC; }
-        u32 GetIRL() const { return IRL; }
+        u32 get_psr() const {return psr;}
+        void set_psr(u32 value) { psr = value; }
+        u32 get_wim() const {return wim;}
+        u32 get_tbr() const {return tbr;}
+        u32 get_y_reg() const {return y_reg;}
+        u32 get_pc() const { return pc;  }
+        u32 get_npc() const { return npc; }
+        u32 get_irl() const { return irl; }
         u32 get_trap_type() const { return trap_type; }
-        void SetIRL(u32 irl)  { IRL = (irl & 0xf); }
-        u32 GetFSR() const { return fpu_fsr; }
-        void SetFSR(u32 _fsr)  { fpu_fsr = _fsr; }
-        bool IsRunning() const {return running;}
-        // MMU Fault handling
-        void handleMMUFault(pDecode_t d);
+        void set_irl(u32 _irl)  { irl = (_irl & 0xf); }
+        u32 get_fsr() const { return fpu_fsr; }
+        void set_fsr(u32 _fsr)  { fpu_fsr = _fsr; }
+        bool is_running() const {return running;}
+        
 
         // Helper CC test
-        int TestCC (pDecode_t d);
+        int test_cc (pDecode_t d);
 
 
         // Emulator control and debugging
         void interrupt() { _interrupt = true; }
-        void    SetSingleStep(bool v) { single_step = v; }
-        void    SetVerbose(bool v) { verbose = v; }
-        bool    GetVerbose() const {return verbose;}
-        std::ostream& GetOStream() const { return os; }
-        void    AddUserBreakpoint(u32 bp) { breakpoints[bp] = true; }
-        bool    RemoveUserBreakpoint(u32 bp) { 
+        void    set_single_step(bool v) { single_step = v; }
+        void    set_verbose(bool v) { verbose = v; }
+        bool    get_verbose() const {return verbose;}
+        std::ostream& get_ostream() const { return os; }
+        void    add_user_breakpoint(u32 bp) { breakpoints[bp] = true; }
+        bool    remove_user_breakpoint(u32 bp) { 
             auto i = breakpoints.erase(bp); 
             if(i==0) 
                 return false; 
             else 
                 return true;}
-        const std::map<u32, bool>& GetUserBreakpoints() const {return breakpoints;}
-        void    RegisterDump (bool transpose = false); 
-        void    DispReadReg (const u32 reg_no, u32 *value); 
-        void    RegisterBusTickFunction(std::function<void()> f) {
+        const std::map<u32, bool>& get_user_breakpoints() const {return breakpoints;}
+        void    dump_regs (bool transpose = false); 
+        //void    disp_read_reg (const u32 reg_no, u32 *value); 
+        void    register_bus_tick_function(std::function<void()> f) {
             bus_tick_func = f;
         }
-        void    RegisterBreakpointFunction(std::function<void()> f) {
+        void    register_breakpoint_function(std::function<void()> f) {
             breakpoint_func = f;
         }
     public:
         
 
 	private:
-	// Common functions
-    // Implemented in CPU_functions.cpp
+	// Common instructions
+    // Implemented in CPU_instructions.cpp
 	void UNIMP   (pDecode_t d);
 	void CALL    (pDecode_t d);
 	void BICC    (pDecode_t d);
@@ -276,8 +275,8 @@ class CPU
 	void AND     (pDecode_t d);
 
     //////////////////////////////////////
-    // Extended functions
-    // Implemented in CPU_functionsExt.cpp
+    // Extended instructions
+    // Implemented in CPU_instructions_extensions.cpp
     void STA_impl   (pDecode_t d);
     void LDA_impl   (pDecode_t d);
 
@@ -345,7 +344,7 @@ class CPU
     /////////////////////////
     // ALU instruction labels
     //static constexpr char *
-    const std::string  OpByte[32] = {
+    const std::string  op_byte[32] = {
        "add     ", "and     ", "or      ", "xor     ",
        "sub     ", "andn    ", "orn     ", "xnor    ",
        "addx    ", "unip    ", "umul    ", "smul    ",
@@ -355,7 +354,7 @@ class CPU
        "addxcc  ", "unipcc  ", "umulcc  ", "smulcc  ",
        "subxcc  ", "unipcc  ", "udivcc  ", "sdivcc  "};
 
-    const std::string CondByte [16] = {
+    const std::string cond_byte [16] = {
        "n      ", "e      ", "le     ", "l       ",
        "leu    ", "cs     ", "neg    ", "vs      ",
        "a      ", "ne     ", "g      ", "ge      ",
@@ -363,7 +362,7 @@ class CPU
     };
 
 
-    const std::string TrapStr [64] = {
+    const std::string trap_str [64] = {
         "Software Reset",
         "Instruction Access Exception",
         "Illegal Instruction",

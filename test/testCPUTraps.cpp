@@ -40,13 +40,13 @@ protected:
             | (asi << ASISTARTBIT)
             | ((rs2)<< RS2STARTBIT); 
     
-        d.PSR = cpu.GetPSR(); 
-        d.p = (pPSR_t)&(d.PSR);
+        d.psr = cpu.get_psr(); 
+        d.p = (pPSR_t)&(d.psr);
        
-        cpu.Decode(&d);
+        cpu.decode(&d);
         
         d.function(&cpu, &d);
-        cpu.WriteBack(&d); 
+        cpu.write_back(&d); 
     }
 
 
@@ -76,7 +76,7 @@ void CPUTrapsTest::SetUp()
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
-    cpu.Reset(entry_va);
+    cpu.reset(entry_va);
  
 }
 
@@ -86,10 +86,10 @@ void CPUTrapsTest::TearDown()
 
 TEST_F(CPUTrapsTest, TestResetState)
 {
-    EXPECT_EQ(cpu.GetPC(), 0);
-    EXPECT_EQ(cpu.GetnPC(), 4);
+    EXPECT_EQ(cpu.get_pc(), 0);
+    EXPECT_EQ(cpu.get_npc(), 4);
 
-    u32 PSR = cpu.GetPSR(); 
+    u32 PSR = cpu.get_psr(); 
     
     // Current window pointer should be 0
     EXPECT_EQ(((pPSR_t)&PSR)->cwp , 0);
@@ -101,9 +101,9 @@ TEST_F(CPUTrapsTest, TestResetState)
     EXPECT_EQ(((pPSR_t)&PSR)->ef , 1);
 
     // reset to another memory location:
-    cpu.Reset(0x1180);
-    EXPECT_EQ(cpu.GetPC(), 0x1180);
-    EXPECT_EQ(cpu.GetnPC(), 0x1184);
+    cpu.reset(0x1180);
+    EXPECT_EQ(cpu.get_pc(), 0x1180);
+    EXPECT_EQ(cpu.get_npc(), 0x1184);
 
 
 
@@ -113,66 +113,66 @@ TEST_F(CPUTrapsTest, TestResetState)
 TEST_F(CPUTrapsTest, Traps_PSR_PS_bit)
 {
 
-    u32 PSR = cpu.GetPSR(); 
+    u32 PSR = cpu.get_psr(); 
     
     DecodeStruct d;
-    d.PSR = cpu.GetPSR(); 
-    d.p = (pPSR_t)&(d.PSR);
+    d.psr = cpu.get_psr(); 
+    d.p = (pPSR_t)&(d.psr);
 
 
     EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
     EXPECT_EQ(((pPSR_t)&PSR)->ps , 0);
  
     // Trap the CPU in supervisor mode:
-    cpu.Trap(nullptr, 9);
+    cpu.trap(nullptr, 9);
 
     // Run the CPU through the trap:
-    cpu.SetSingleStep(true);
-    cpu.Run(0, nullptr);
+    cpu.set_single_step(true);
+    cpu.run(0, nullptr);
     // Return from Trap
     do_RETT_instr(0,0,0);
         
-    PSR = cpu.GetPSR();
+    PSR = cpu.get_psr();
     EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
     EXPECT_EQ(((pPSR_t)&PSR)->ps , 1); // PS should now be set
  
     // Change to user mode:
     PSR = PSR & ~(1 << 7);
-    cpu.SetPSR(PSR);
+    cpu.set_psr(PSR);
 
     // Trap the CPU in user mode:
-    cpu.Trap(nullptr, 9);
+    cpu.trap(nullptr, 9);
     // Run the CPU through the trap:
-    cpu.SetSingleStep(true);
-    cpu.Run(0, nullptr);
+    cpu.set_single_step(true);
+    cpu.run(0, nullptr);
     // Return from Trap
     do_RETT_instr(0,0,0);
 
 
 
 
-    PSR = cpu.GetPSR();
+    PSR = cpu.get_psr();
     EXPECT_EQ(((pPSR_t)&PSR)->s , 0);
     EXPECT_EQ(((pPSR_t)&PSR)->ps , 0); // PS should not be set
  
     // Change to super mode:
     PSR = PSR | (1 << 7);
-    cpu.SetPSR(PSR);
+    cpu.set_psr(PSR);
     
     EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
     EXPECT_EQ(((pPSR_t)&PSR)->ps , 0);
  
     // Trap the CPU again in supervisor mode:
-    cpu.Trap(nullptr, 9);
+    cpu.trap(nullptr, 9);
     // Run the CPU through the trap:
-    cpu.SetSingleStep(true);
-    cpu.Run(0, nullptr);
+    cpu.set_single_step(true);
+    cpu.run(0, nullptr);
     // Return from Trap
     do_RETT_instr(0,0,0);
 
 
 
-    PSR = cpu.GetPSR();
+    PSR = cpu.get_psr();
     EXPECT_EQ(((pPSR_t)&PSR)->s , 1);
     EXPECT_EQ(((pPSR_t)&PSR)->ps , 1); // PS should now be set
  

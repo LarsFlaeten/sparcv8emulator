@@ -36,8 +36,8 @@ LEON3Test::LEON3Test()
     : cpu()
 
 {  
-    cpu.SetVerbose(true);
-    cpu.SetId(0);
+    cpu.set_verbose(true);
+    cpu.set_cpu_id(0);
 
     // Set up IO mapping
     // TODO: Move this MMU functions?
@@ -75,17 +75,17 @@ TEST_F(LEON3Test, ASR17Values)
     // g4;
     DecodeStruct d;
     d.opcode = op1;
-    cpu.Decode(&d);
+    cpu.decode(&d);
 
     EXPECT_EQ(d.rd, GLOBALREG4);
     EXPECT_EQ(d.rs1, 17);
     
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
 
     // Check asr17 values now in G4:
     u32 asr;
-    cpu.ReadReg(GLOBALREG4, &asr);
+    cpu.read_reg(GLOBALREG4, &asr);
     EXPECT_EQ((asr >> 28) & 0b1111, 0x0);   // Processor ID
     EXPECT_EQ((asr >> 26) & 0x1, 0x1);      // Support CASA
     EXPECT_EQ((asr >> 26) & 0x1, 0x1);      // Support CASA
@@ -95,16 +95,16 @@ TEST_F(LEON3Test, ASR17Values)
      
     // g1;
     d.opcode = op2;
-    cpu.Decode(&d);
+    cpu.decode(&d);
 
     EXPECT_EQ(d.rd, GLOBALREG1);
     EXPECT_EQ(d.rs1, 17);
     
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
 
     // Check asr17 values now in G1:
-    cpu.ReadReg(GLOBALREG1, &asr);
+    cpu.read_reg(GLOBALREG1, &asr);
     EXPECT_EQ((asr >> 28) & 0b1111, 0x0);   // Processor ID
     EXPECT_EQ((asr >> 26) & 0x1, 0x1);      // Support CASA
     EXPECT_EQ((asr >> 26) & 0x1, 0x1);      // Support CASA
@@ -124,11 +124,11 @@ TEST_F(LEON3Test, CASA_swap)
     DecodeStruct d;
  
     // Map the PSR structure to the decode PSR variable just once
-    d.p = (pPSR_t) &(d.PSR);
+    d.p = (pPSR_t) &(d.psr);
 
    
     d.opcode = op;
-    cpu.Decode(&d);
+    cpu.decode(&d);
 
     EXPECT_EQ(d.rd, INREG3);
     EXPECT_EQ(d.rs1, LOCALREG3);
@@ -142,29 +142,29 @@ TEST_F(LEON3Test, CASA_swap)
     MMU::MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
 
     // Write regs:
-    cpu.WriteReg(0xf04e01f4, LOCALREG3); // The address of the value in memory
-    cpu.WriteReg(0x3ffffdff, GLOBALREG1); // The value to be compared with
-    cpu.WriteReg(0x3ffffe00, INREG3); // The value to be compared with
+    cpu.write_reg(0xf04e01f4, LOCALREG3); // The address of the value in memory
+    cpu.write_reg(0x3ffffdff, GLOBALREG1); // The value to be compared with
+    cpu.write_reg(0x3ffffe00, INREG3); // The value to be compared with
     
     u32 check;
-    cpu.ReadReg(LOCALREG3, &check);
+    cpu.read_reg(LOCALREG3, &check);
     EXPECT_EQ(check, 0xf04e01f4);
-    cpu.ReadReg(GLOBALREG1, &check);
+    cpu.read_reg(GLOBALREG1, &check);
     EXPECT_EQ(check, 0x3ffffdff);
-    cpu.ReadReg(INREG3, &check);
+    cpu.read_reg(INREG3, &check);
     EXPECT_EQ(check, 0x3ffffe00);
 
     d.function(&cpu, &d);
 
     // Check compare and swap has been performed:
-    u32 l3val; cpu.ReadReg(LOCALREG3, &l3val);
+    u32 l3val; cpu.read_reg(LOCALREG3, &l3val);
     EXPECT_EQ(l3val, 0xf04e01f4);
     MMU::MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
     EXPECT_EQ(mem_value, 0x3ffffe00); // The value from rd (%i3) should now be in mwmory
                                       // at location pointed by %l3
 
     // The previus value in memory (0x3ffffdff) should now be in %i3 (rd)
-    u32 i3val; cpu.ReadReg(INREG3, &i3val);
+    u32 i3val; cpu.read_reg(INREG3, &i3val);
     EXPECT_EQ(i3val, 0x3ffffdff);
  
 
@@ -182,11 +182,11 @@ TEST_F(LEON3Test, CASA_noswap)
     DecodeStruct d;
  
     // Map the PSR structure to the decode PSR variable just once
-    d.p = (pPSR_t) &(d.PSR);
+    d.p = (pPSR_t) &(d.psr);
 
    
     d.opcode = op;
-    cpu.Decode(&d);
+    cpu.decode(&d);
 
     EXPECT_EQ(d.rd, INREG3);
     EXPECT_EQ(d.rs1, LOCALREG3);
@@ -200,29 +200,29 @@ TEST_F(LEON3Test, CASA_noswap)
     MMU::MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
 
     // Write regs:
-    cpu.WriteReg(0xf04e01f4, LOCALREG3); // The address of the value in memory
-    cpu.WriteReg(0x3ffffd0f, GLOBALREG1); // The value to be compared with
-    cpu.WriteReg(0x3ffffe00, INREG3); // The value to be compared with
+    cpu.write_reg(0xf04e01f4, LOCALREG3); // The address of the value in memory
+    cpu.write_reg(0x3ffffd0f, GLOBALREG1); // The value to be compared with
+    cpu.write_reg(0x3ffffe00, INREG3); // The value to be compared with
     
     u32 check;
-    cpu.ReadReg(LOCALREG3, &check);
+    cpu.read_reg(LOCALREG3, &check);
     EXPECT_EQ(check, 0xf04e01f4);
-    cpu.ReadReg(GLOBALREG1, &check);
+    cpu.read_reg(GLOBALREG1, &check);
     EXPECT_EQ(check, 0x3ffffd0f);
-    cpu.ReadReg(INREG3, &check);
+    cpu.read_reg(INREG3, &check);
     EXPECT_EQ(check, 0x3ffffe00);
 
     d.function(&cpu, &d);
 
     // Check compare and swap has not been performed:
-    u32 l3val; cpu.ReadReg(LOCALREG3, &l3val);
+    u32 l3val; cpu.read_reg(LOCALREG3, &l3val);
     EXPECT_EQ(l3val, 0xf04e01f4);
     MMU::MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
     EXPECT_EQ(mem_value, 0x3ffffdff); // The value in memory at location pointed by %l3
                                       // Should be same as before
 
     // The value in memory (0x3ffffdff) should also now be in %i3 (rd)
-    u32 i3val; cpu.ReadReg(INREG3, &i3val);
+    u32 i3val; cpu.read_reg(INREG3, &i3val);
     EXPECT_EQ(i3val, 0x3ffffdff);
  
 }

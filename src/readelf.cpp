@@ -20,8 +20,8 @@ typedef Elf32_Phdr* pElf32_Phdr;
 
 u32 ReadElf(const std::string& filename, CPU& cpu, u32& entry_va) {
 
-    bool verbose = cpu.GetVerbose();
-    std::ostream& os = cpu.GetOStream();
+    bool verbose = cpu.get_verbose();
+    std::ostream& os = cpu.get_ostream();
 
     unsigned int i;
     int  c;

@@ -79,13 +79,13 @@ protected:
             | (asi << ASISTARTBIT)
             | ((rs2)<< RS2STARTBIT); 
     
-        d.PSR = cpu.GetPSR(); 
-        d.p = (pPSR_t)&(d.PSR);
+        d.psr = cpu.get_psr(); 
+        d.p = (pPSR_t)&(d.psr);
        
-        cpu.Decode(&d);
+        cpu.decode(&d);
         
         d.function(&cpu, &d);
-        cpu.WriteBack(&d); 
+        cpu.write_back(&d); 
     }
 
 
@@ -126,7 +126,7 @@ void MMUTest::SetUp()
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
-    cpu.Reset(entry_va);
+    cpu.reset(entry_va);
     MMU::reset(); 
 }
 
@@ -158,9 +158,9 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
  
 
     // adress to indicate MMU op is taken from LOCALREG4
-    cpu.WriteReg(0x00011, LOCALREG0); //0x0000 is VA/adress in MMU regs
-    cpu.WriteReg(0x00000, LOCALREG4); 
-    cpu.WriteReg(0x00000, LOCALREG5); // [L4] + [l5] is value to write
+    cpu.write_reg(0x00011, LOCALREG0); //0x0000 is VA/adress in MMU regs
+    cpu.write_reg(0x00000, LOCALREG4); 
+    cpu.write_reg(0x00000, LOCALREG5); // [L4] + [l5] is value to write
 
 
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
@@ -189,16 +189,16 @@ TEST_F(MMUTest, MMUEnableDisable)
     EXPECT_FALSE(MMU::GetEnabled());
  
     // adress to indicate MMU op is taken from LOCALREG4
-    cpu.WriteReg(0x00011, LOCALREG0); //0x0000 is VA/adress in MMU regs
-    cpu.WriteReg(0x00000, LOCALREG4); 
-    cpu.WriteReg(0x00000, LOCALREG5); // [L4] + [l5] is value to write
+    cpu.write_reg(0x00011, LOCALREG0); //0x0000 is VA/adress in MMU regs
+    cpu.write_reg(0x00000, LOCALREG4); 
+    cpu.write_reg(0x00000, LOCALREG5); // [L4] + [l5] is value to write
  
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set enabled bit to 1:
     EXPECT_TRUE(MMU::GetEnabled());
 
-    cpu.WriteReg(0x00010, LOCALREG0); //0x0000 is VA/adress in MMU regs
+    cpu.write_reg(0x00010, LOCALREG0); //0x0000 is VA/adress in MMU regs
  
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
     // MMU shuld now have set enabled bit to 0:
@@ -216,9 +216,9 @@ TEST_F(MMUTest, MMUInitCtxTblPtr)
     EXPECT_EQ(MMU::GetCtxTblPtr(), 0x0);
 
     // adress to indicate MMU op is taken from LOCALREG4
-    cpu.WriteReg(0x4000200, LOCALREG0); //0x...... is value to write
-    cpu.WriteReg(0x00100, LOCALREG4); 
-    cpu.WriteReg(0x00000, LOCALREG5); // [L4] + [l5] is va adress to MMU regs
+    cpu.write_reg(0x4000200, LOCALREG0); //0x...... is value to write
+    cpu.write_reg(0x00100, LOCALREG4); 
+    cpu.write_reg(0x00000, LOCALREG5); // [L4] + [l5] is va adress to MMU regs
  
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
@@ -233,9 +233,9 @@ TEST_F(MMUTest, MMUInitSetContext)
     EXPECT_EQ(MMU::GetCtxNumber(), 0x0);
  
     // adress to indicate MMU op is taken from LOCALREG4
-    cpu.WriteReg(0x42, LOCALREG0); //0x0042 is value to write
-    cpu.WriteReg(0x00100, LOCALREG4); 
-    cpu.WriteReg(0x00100, LOCALREG5); // [L4] + [l5] is va (MMU regs)
+    cpu.write_reg(0x42, LOCALREG0); //0x0042 is value to write
+    cpu.write_reg(0x00100, LOCALREG4); 
+    cpu.write_reg(0x00100, LOCALREG5); // [L4] + [l5] is va (MMU regs)
  
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
@@ -1166,14 +1166,14 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     ASSERT_TRUE(MMU::GetEnabled());
 
     // Read MMU controlreg:
-    cpu.WriteReg(0x000,  LOCALREG1); // MMU Control reg...
-    cpu.WriteReg(0x0,  LOCALREG2); 
-    cpu.WriteReg(0x0,  LOCALREG3); 
+    cpu.write_reg(0x000,  LOCALREG1); // MMU Control reg...
+    cpu.write_reg(0x0,  LOCALREG2); 
+    cpu.write_reg(0x0,  LOCALREG3); 
    
     do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
     
     u32 mmu_ctrl;
-    cpu.ReadReg(LOCALREG3, &mmu_ctrl);
+    cpu.read_reg(LOCALREG3, &mmu_ctrl);
     ASSERT_EQ(mmu_ctrl, 0x1); // MMU Enabled..
 
     // Place some data in memory
@@ -1183,51 +1183,51 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
   
  
     // read in supervisor mode:
-    cpu.WriteReg(0x60000000,  LOCALREG1); // An address to read. Mapped with ACC = 7, so superviso access should be fine
+    cpu.write_reg(0x60000000,  LOCALREG1); // An address to read. Mapped with ACC = 7, so superviso access should be fine
     do_LD_instr(LOCALREG1, LOCALREG2, LOCALREG3);
 
-    cpu.ReadReg(LOCALREG3, &val);
+    cpu.read_reg(LOCALREG3, &val);
     ASSERT_EQ(val, 0xcafebabe);
     ASSERT_EQ(cpu.get_trap_type(), 0);
 
     // Change to user mode:
-    auto psr = cpu.GetPSR(); 
+    auto psr = cpu.get_psr(); 
     psr = psr & ~(1 << 7);
-    cpu.SetPSR(psr);
-    ASSERT_EQ((cpu.GetPSR() >> 7) & 0x1, 0);
+    cpu.set_psr(psr);
+    ASSERT_EQ((cpu.get_psr() >> 7) & 0x1, 0);
     MMU::flush();
  
     // The read of address 0x60000000 should now trap:
-    cpu.WriteReg(0x60000000,  LOCALREG1); 
-    cpu.WriteReg(0x0,  LOCALREG2); 
-    cpu.WriteReg(0x0,  LOCALREG3); 
+    cpu.write_reg(0x60000000,  LOCALREG1); 
+    cpu.write_reg(0x0,  LOCALREG2); 
+    cpu.write_reg(0x0,  LOCALREG3); 
     do_LD_instr(LOCALREG1, LOCALREG2, LOCALREG3);
 
-    cpu.ReadReg(LOCALREG3, &val);
+    cpu.read_reg(LOCALREG3, &val);
     ASSERT_NE(val, 0xcafebabe);
     ASSERT_EQ(cpu.get_trap_type(), 0x9); // SPARC_DATA_ACCESS_EXCEPTION
     
     // Run the CPU through the trap:
-    cpu.SetSingleStep(true);
-    cpu.Run(0, nullptr);
+    cpu.set_single_step(true);
+    cpu.run(0, nullptr);
  
     // We can now read fault type and address from MMUREGS:
   
     // Change to super mode:
-    psr = cpu.GetPSR(); 
+    psr = cpu.get_psr(); 
     psr = psr | (0x1 << 7);
-    cpu.SetPSR(psr);
-    ASSERT_EQ((cpu.GetPSR() >> 7) & 0x1, 0x1);
+    cpu.set_psr(psr);
+    ASSERT_EQ((cpu.get_psr() >> 7) & 0x1, 0x1);
 
-    cpu.WriteReg(0x300,  LOCALREG1); // fault status reg
-    cpu.WriteReg(0x0,  LOCALREG2); // fault status reg
-    cpu.WriteReg(0x0,  LOCALREG3); // fault status reg
+    cpu.write_reg(0x300,  LOCALREG1); // fault status reg
+    cpu.write_reg(0x0,  LOCALREG2); // fault status reg
+    cpu.write_reg(0x0,  LOCALREG3); // fault status reg
     do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
-    u32 fsr; cpu.ReadReg(LOCALREG3, &fsr);
+    u32 fsr; cpu.read_reg(LOCALREG3, &fsr);
  
-    cpu.WriteReg(0x400,  LOCALREG1); // fault address reg
+    cpu.write_reg(0x400,  LOCALREG1); // fault address reg
     do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
-    u32 far; cpu.ReadReg(LOCALREG3, &far);
+    u32 far; cpu.read_reg(LOCALREG3, &far);
     
     ASSERT_EQ( (fsr >> 1) & 0x1, 0x1); // FAV, i.e. fault address is available
     ASSERT_EQ( (fsr >> 2) & 0x7, 0x3); // FT = 3, Privelege violation
@@ -1238,17 +1238,17 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
 
     // Ok, set nofault on the MMU. We shuld still not get the value, but the MMU should not Trap
     // Read MMU controlreg:
-    cpu.WriteReg(0x000,  LOCALREG1); // MMU Control reg...
-    cpu.WriteReg(0x0,  LOCALREG2); 
-    cpu.WriteReg(0x0,  LOCALREG3); 
+    cpu.write_reg(0x000,  LOCALREG1); // MMU Control reg...
+    cpu.write_reg(0x0,  LOCALREG2); 
+    cpu.write_reg(0x0,  LOCALREG3); 
   
     ASSERT_FALSE(MMU::GetNoFault());
         
 
     do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
-    cpu.ReadReg(LOCALREG3, &mmu_ctrl);
+    cpu.read_reg(LOCALREG3, &mmu_ctrl);
     mmu_ctrl = mmu_ctrl | 0x2; // Set nofault bit
-    cpu.WriteReg(mmu_ctrl, LOCALREG3);
+    cpu.write_reg(mmu_ctrl, LOCALREG3);
     do_STA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
    
     // Check that we got the control reg right:
@@ -1257,19 +1257,19 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     ASSERT_TRUE(MMU::GetNoFault());
 
     // Change to user mode:
-    psr = cpu.GetPSR(); 
+    psr = cpu.get_psr(); 
     psr = psr & ~(0x1 << 7);
-    cpu.SetPSR(psr);
-    ASSERT_EQ((cpu.GetPSR() >> 7) & 0x1, 0x0);
+    cpu.set_psr(psr);
+    ASSERT_EQ((cpu.get_psr() >> 7) & 0x1, 0x0);
 
 
     // The read of address 0x60000000 should not trap, but we shold still have a fault:
-    cpu.WriteReg(0x60000000,  LOCALREG1); 
-    cpu.WriteReg(0x0,  LOCALREG2); 
-    cpu.WriteReg(0x0,  LOCALREG3); 
+    cpu.write_reg(0x60000000,  LOCALREG1); 
+    cpu.write_reg(0x0,  LOCALREG2); 
+    cpu.write_reg(0x0,  LOCALREG3); 
     do_LD_instr(LOCALREG1, LOCALREG2, LOCALREG3);
 
-    cpu.ReadReg(LOCALREG3, &val);
+    cpu.read_reg(LOCALREG3, &val);
     ASSERT_NE(val, 0xcafebabe);
     ASSERT_EQ(cpu.get_trap_type(), 0x0);
  

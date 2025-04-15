@@ -230,7 +230,7 @@ void GDBStubTest::SetUp()
  
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x60000000; 
-    cpu.Reset(entry_va);
+    cpu.reset(entry_va);
  
 
 }
@@ -665,7 +665,7 @@ TEST_F(GDBStubTest, GDB_set_breakpoint)
     ASSERT_TRUE(validate(ret));
  
 
-    const auto& bps = cpu.GetUserBreakpoints();
+    const auto& bps = cpu.get_user_breakpoints();
     ASSERT_TRUE(bps.find(0x60000000) != bps.end());
 
 
@@ -686,7 +686,7 @@ TEST_F(GDBStubTest, GDB_remove_breakpoint)
     ASSERT_TRUE(validate(ret));
  
 
-    const auto& bps = cpu.GetUserBreakpoints();
+    const auto& bps = cpu.get_user_breakpoints();
     ASSERT_TRUE(bps.find(0x60000000) != bps.end());
 
 

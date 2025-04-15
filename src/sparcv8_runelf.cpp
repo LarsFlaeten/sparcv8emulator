@@ -132,9 +132,9 @@ int main(int argc, char **argv)
 
     // Set up CPU
     CPU cpu(write_to_file ? os : std::cout);
-    cpu.SetVerbose(verbose);
+    cpu.set_verbose(verbose);
     if(UserBreakpoint != NO_USER_BREAK) {
-        cpu.AddUserBreakpoint(UserBreakpoint);
+        cpu.add_user_breakpoint(UserBreakpoint);
         // TODO: add bp handler here    
     }
     // RAM
@@ -149,13 +149,13 @@ int main(int argc, char **argv)
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     u32 word_count = ReadElf(fname, cpu, entry_va); 
-    cpu.Reset(entry_va);
+    cpu.reset(entry_va);
     
      
     RunSummary rs;
     if(!Disassemble && !debug_server) {
         // Run the machine
-       cpu.Run(NumRunInst, &rs);
+       cpu.run(NumRunInst, &rs);
     } else if(debug_server) {
 		int server_fd = create_server_socket(debug_port);
         int client_fd = accept(server_fd, NULL, NULL);
@@ -186,7 +186,7 @@ int main(int argc, char **argv)
         struct DecodeStruct Dec, *d=&Dec;
  
         while(count > 0) {
-            cpu.IFetch(PC, d);
+            cpu.instr_fetch(PC, d);
 
             disDecode(PC, d->opcode);
             PC += 4;
@@ -198,7 +198,7 @@ int main(int argc, char **argv)
     
     if(rs.reason == TerminateReason::UNIMPLEMENTED) {
         debug_registerdump(cpu); 
-        disDecode(cpu.GetPC(), rs.last_opcode);
+        disDecode(cpu.get_pc(), rs.last_opcode);
     } 
     
 

@@ -51,7 +51,7 @@ void CPUMemTest::SetUp()
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
-    cpu.Reset(entry_va);
+    cpu.reset(entry_va);
  
 }
 
@@ -61,10 +61,10 @@ void CPUMemTest::TearDown()
 
 TEST_F(CPUMemTest, TestResetState)
 {
-    EXPECT_EQ(cpu.GetPC(), 0);
-    EXPECT_EQ(cpu.GetnPC(), 4);
+    EXPECT_EQ(cpu.get_pc(), 0);
+    EXPECT_EQ(cpu.get_npc(), 4);
 
-    u32 PSR = cpu.GetPSR(); 
+    u32 PSR = cpu.get_psr(); 
     
     // Current window pointer should be 0
     EXPECT_EQ(((pPSR_t)&PSR)->cwp , 0);
@@ -75,9 +75,9 @@ TEST_F(CPUMemTest, TestResetState)
     EXPECT_EQ(((pPSR_t)&PSR)->ef , 1);
 
     // reset to another memory location:
-    cpu.Reset(0x1180);
-    EXPECT_EQ(cpu.GetPC(), 0x1180);
-    EXPECT_EQ(cpu.GetnPC(), 0x1184);
+    cpu.reset(0x1180);
+    EXPECT_EQ(cpu.get_pc(), 0x1180);
+    EXPECT_EQ(cpu.get_npc(), 0x1184);
 
 
 
@@ -156,7 +156,7 @@ TEST_F(CPUMemTest, Loads_LD) {
     MMU::MemAccess<intent_store,4>(0x300, value, CROSS_ENDIAN);
    
     // adress to read is taken from LOCALREG4
-    cpu.WriteReg(0x300, LOCALREG4);
+    cpu.write_reg(0x300, LOCALREG4);
     
     // Construct LD opcode
     DecodeStruct d;
@@ -167,7 +167,7 @@ TEST_F(CPUMemTest, Loads_LD) {
         ^ ((LOCALREG4) << RS1STARTBIT)
         ^ (0x0 << ISTARTBIT)
         ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
+    cpu.decode(&d);
     
     EXPECT_EQ(d.op_2_3, 0x00000);
     EXPECT_EQ(d.rd, LOCALREG0);
@@ -179,26 +179,26 @@ TEST_F(CPUMemTest, Loads_LD) {
     EXPECT_EQ(d.ev, 0x300);
     
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
-    u32 res; cpu.ReadReg(LOCALREG0, &res);
+    u32 res; cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xcafebabe);
 
     // ----------------------------------------------------
     // Same op, but construct adress from rs1 + rs2
     
     // adress to read is taken from LOCALREG4 (rs1) + LOCALREG5 (rs2)
-    cpu.WriteReg(0x200, LOCALREG4);
-    cpu.WriteReg(0x100, LOCALREG5);
+    cpu.write_reg(0x200, LOCALREG4);
+    cpu.write_reg(0x100, LOCALREG5);
     // No change to opcode
-    cpu.Decode(&d);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x300);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
-    u32 res2; cpu.ReadReg(LOCALREG0, &res2);
+    u32 res2; cpu.read_reg(LOCALREG0, &res2);
     EXPECT_EQ(res2, 0xcafebabe);
 
 
@@ -215,7 +215,7 @@ TEST_F(CPUMemTest, Loads_LDD) {
     MMU::MemAccess<intent_store,4>(0x304, value2, CROSS_ENDIAN);
    
     // adress to read is taken from LOCALREG4
-    cpu.WriteReg(0x300, LOCALREG4);
+    cpu.write_reg(0x300, LOCALREG4);
     
     // Construct LD opcode
     DecodeStruct d;
@@ -226,7 +226,7 @@ TEST_F(CPUMemTest, Loads_LDD) {
         ^ ((LOCALREG4) << RS1STARTBIT)
         ^ (0x0 << ISTARTBIT)
         ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
+    cpu.decode(&d);
     
     EXPECT_EQ(d.op_2_3, 0b000011);
     EXPECT_EQ(d.rd, LOCALREG0);
@@ -238,13 +238,13 @@ TEST_F(CPUMemTest, Loads_LDD) {
     EXPECT_EQ(d.ev, 0x300);
     
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
-    u32 res; cpu.ReadReg(LOCALREG0, &res);
+    u32 res; cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xcafebabe);
     // The value from 0x304 should now be in LOCALREG1 (rd+1):
-    u32 res2; cpu.ReadReg(LOCALREG1, &res2);
+    u32 res2; cpu.read_reg(LOCALREG1, &res2);
     EXPECT_EQ(res2, 0xbadbadff);
 
 
@@ -252,19 +252,19 @@ TEST_F(CPUMemTest, Loads_LDD) {
     // Same op, but construct adress from rs1 + rs2
     
     // adress to read is taken from LOCALREG4 (rs1) + LOCALREG5 (rs2)
-    cpu.WriteReg(0x200, LOCALREG4);
-    cpu.WriteReg(0x100, LOCALREG5);
+    cpu.write_reg(0x200, LOCALREG4);
+    cpu.write_reg(0x100, LOCALREG5);
     // No change to opcode
-    cpu.Decode(&d);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x300);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
-    u32 res3; cpu.ReadReg(LOCALREG0, &res3);
+    u32 res3; cpu.read_reg(LOCALREG0, &res3);
     EXPECT_EQ(res3, 0xcafebabe);
     // The value from 0x304 should now be in LOCALREG1 (rd+1):
-    u32 res4; cpu.ReadReg(LOCALREG1, &res4);
+    u32 res4; cpu.read_reg(LOCALREG1, &res4);
     EXPECT_EQ(res4, 0xbadbadff);
 
 
@@ -297,7 +297,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
 
 
     // adress to read is taken from LOCALREG4
-    cpu.WriteReg(0x300, LOCALREG4);
+    cpu.write_reg(0x300, LOCALREG4);
     
     // Construct LD opcode
     DecodeStruct d;
@@ -308,7 +308,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
         ^ ((LOCALREG4) << RS1STARTBIT)
         ^ (0x0 << ISTARTBIT)
         ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
+    cpu.decode(&d);
     
     EXPECT_EQ(d.op_2_3, 0b000001);
     EXPECT_EQ(d.rd, LOCALREG0);
@@ -320,80 +320,80 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     EXPECT_EQ(d.ev, 0x300);
     
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
-    u32 res; cpu.ReadReg(LOCALREG0, &res);
+    u32 res; cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xca);
 
     // continue to read bytes in memory at other adresses:
-    cpu.WriteReg(0x301, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x301, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x301);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xfe);
 
-    cpu.WriteReg(0x302, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x302, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x302);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xba);
 
-    cpu.WriteReg(0x303, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x303, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x303);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xbe);
 
-    cpu.WriteReg(0x304, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x304, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x304);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xba);
 
-    cpu.WriteReg(0x305, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x305, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x305);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xdb);
 
-    cpu.WriteReg(0x306, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x306, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x306);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xad);
 
-    cpu.WriteReg(0x307, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x307, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x307);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xff);
 
     // Test reads of halfwords 
 
     op = 0b000010; // LDUH
-    cpu.WriteReg(0x300, LOCALREG4);
+    cpu.write_reg(0x300, LOCALREG4);
     d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
         ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
         ^ ((op & LOBITS6) << OP3STARTBIT)
         ^ ((LOCALREG4) << RS1STARTBIT)
         ^ (0x0 << ISTARTBIT)
         ^ ((LOCALREG5)<< RS2STARTBIT); 
-    cpu.Decode(&d);
+    cpu.decode(&d);
      
     EXPECT_EQ(d.op_2_3, 0b000010);
     EXPECT_EQ(d.rd, LOCALREG0);
@@ -405,10 +405,10 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     EXPECT_EQ(d.ev, 0x300);
     
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xcafe);
 
     // continue to read bytes in memory at other adresses:
@@ -421,30 +421,30 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     EXPECT_EQ(res, 0xfeba);*/
 
     // continue to read bytes in memory at other adresses:
-    cpu.WriteReg(0x302, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x302, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x302);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xbabe);
 
     // continue to read bytes in memory at other adresses:
-    cpu.WriteReg(0x304, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x304, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x304);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xbadb);
 
     // continue to read bytes in memory at other adresses:
-    cpu.WriteReg(0x306, LOCALREG4);
-    cpu.Decode(&d);
+    cpu.write_reg(0x306, LOCALREG4);
+    cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x306);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
-    cpu.ReadReg(LOCALREG0, &res);
+    cpu.write_back(&d); 
+    cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xadff);
 
   
@@ -489,26 +489,26 @@ TEST_F(CPUMemTest, RD_ASR17) {
     u32 op = 0x89444000;
     DecodeStruct d;
     d.opcode = op;
-    cpu.Decode(&d);
+    cpu.decode(&d);
     
  
     
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
     u32 res;
-    cpu.ReadReg(GLOBALREG4, &res);
+    cpu.read_reg(GLOBALREG4, &res);
  
     ASSERT_EQ((d.value >> 28), 0x0);
     ASSERT_EQ(res>>28, 0x0);
 
 
 
-    cpu.SetId(3);
-    cpu.Decode(&d);
+    cpu.set_cpu_id(3);
+    cpu.decode(&d);
     d.function(&cpu, &d);
-    cpu.WriteBack(&d); 
+    cpu.write_back(&d); 
  
-    cpu.ReadReg(GLOBALREG4, &res);
+    cpu.read_reg(GLOBALREG4, &res);
  
     ASSERT_EQ((d.value >> 28), 0x03);
     ASSERT_EQ(res>>28, 0x03);

@@ -81,7 +81,7 @@ static const char * format3[128] = {
     "unimp   ", "unimp   ", "unimp   ", "unimp   "
     };
 
-static char * CondByte [16] = {
+static char * cond_byte [16] = {
    "n  ", "e  ", "le ", "l  ",
    "leu", "cs ", "neg", "vs ",
    "a  ", "ne ", "g  ", "ge ",
@@ -100,9 +100,9 @@ void disDispDecode (const pDecode_t d) {
     fprintf(ofp, "  imm_rs2   = %08x\n", d->imm_disp_rs2);
     fprintf(ofp, "  op_2_3    = %08x\n", d->op_2_3);
     fprintf(ofp, "  i         = %08x\n", d->i);
-    fprintf(ofp, "  PC        = %08x\n", d->PC);
-    fprintf(ofp, "  nPC       = %08x\n", d->nPC);
-    fprintf(ofp, "  PSR       = %08x\n", d->PSR);
+    fprintf(ofp, "  PC        = %08x\n", d->pc);
+    fprintf(ofp, "  nPC       = %08x\n", d->npc);
+    fprintf(ofp, "  PSR       = %08x\n", d->psr);
     fprintf(ofp, "  wb_type   = %08x\n", d->wb_type);
     fprintf(ofp, "  value     = %08x\n", d->value);
     fprintf(ofp, "  value1    = %08x\n", d->value1);
@@ -160,7 +160,7 @@ static void disIfetch (const u64 physaddr, u32 * const inst)
 
     if ((PA & ~ADDR_MASK) != 0) {
         fprintf(stderr, "MAIN : Trying to read instructions out of range! PA=%x\n", PA);
-        RegisterDump();
+        dump_regs();
         exit(RUNTIME_ERROR);
     }
 
@@ -232,7 +232,7 @@ void disDecode(u32 PC, u32 opcode)
             }
             fprintf(ofp, "\n");
         } else {
-            disPrintOpcode(PC, opcode, function, CondByte[rd & 0xf]);
+            disPrintOpcode(PC, opcode, function, cond_byte[rd & 0xf]);
             fprintf(ofp, "\t0x%x\n", (int)PC + (int)(sign_ext22(imm_disp_rs2*4)));
             last_sethi = 0;
         }

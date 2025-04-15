@@ -16,23 +16,23 @@ void CPU::CASA (pDecode_t d)
 {
     // Compare value of rs2 with memory location pointed by rs1
     u32 rs1_addr;
-    ReadReg(d->rs1 & LOBITS5, &rs1_addr);
+    read_reg(d->rs1 & LOBITS5, &rs1_addr);
     auto rs2 = d->imm_disp_rs2 & 0x1f; // Rs2 in 5 least sig bits
     auto imm_asi = (d->imm_disp_rs2 >> 5 ) & 0xff ; // asi in next 8 bits
 
     if (verbose)
-        os << std::format("{:#08x} casa    {} [{:#08x}] cmp {}, rd {} asi={:#08x}\n", d->PC, DispRegStr(d->rs1), d->rs1_value, DispRegStr(rs2), DispRegStr(d->rd), imm_asi);
+        os << std::format("{:#08x} casa    {} [{:#08x}] cmp {}, rd {} asi={:#08x}\n", d->pc, DispRegStr(d->rs1), d->rs1_value, DispRegStr(rs2), DispRegStr(d->rd), imm_asi);
  
     // The instruction is privileged but setting
     // ASI = 0xA (user data) will allow it to be used in user mode.
     if ((d->p->s == 0) && (imm_asi != 0xA)) 
-        Trap (d, SPARC_PRIVILEGED_INSTRUCTION);
+        trap (d, SPARC_PRIVILEGED_INSTRUCTION);
     else if (rs1_addr & LOBITS2) {
-        Trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
+        trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
     }
 
     u32 rs2_value;
-    ReadReg(rs2 & LOBITS5, &rs2_value);
+    read_reg(rs2 & LOBITS5, &rs2_value);
    
     // Get value pointed to by rs1
     u32 rs1_value, mret;
@@ -50,7 +50,7 @@ void CPU::CASA (pDecode_t d)
  
     if(mret < 0) {
         if(!MMU::GetNoFault())
-            Trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+            trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         return;
     }
 
@@ -66,28 +66,28 @@ void CPU::CASA (pDecode_t d)
 
         
         u32 rd_value;
-        ReadReg(d->rd & LOBITS5, &rd_value);
+        read_reg(d->rd & LOBITS5, &rd_value);
         //os << std::format("      Value from reg:   rd={}:                {:#08x}\n", DispRegStr(d->rd), rd_value);
 
        // Write back swapped
-        WriteReg(rs1_value, d->rd & LOBITS5);
+        write_reg(rs1_value, d->rd & LOBITS5);
         mret = MMU::MemAccess<intent_store>(rs1_addr, rd_value, CROSS_ENDIAN, super); 
         if(mret < 0) {
             if(!MMU::GetNoFault())
-                Trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+                trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
             return;
         }
 
        //os << std::format("      ..swapped rd and rs1 \n", DispRegStr(d->rd),  rs1_value);
     } else {
         // Only RD changed by content of rs1
-        WriteReg(rs1_value, d->rd & LOBITS5);
+        write_reg(rs1_value, d->rd & LOBITS5);
         //os << std::format("      writing {:#08x} to rd:{}\n", rs1_value, DispRegStr(d->rd));
  
     }
     
-    d->PC = d->nPC;
-    d->nPC += 4;
+    d->pc = d->npc;
+    d->npc += 4;
 
 
 

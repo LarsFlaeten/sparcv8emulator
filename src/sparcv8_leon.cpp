@@ -92,7 +92,7 @@ std::string uart_readline(APBUART& uart) {
 bool ParseCommand(const std::string& cmd, CPU& cpu) {
 
     if(cmd == "c") {
-        cpu.SetSingleStep(false);
+        cpu.set_single_step(false);
         std::cout << std::endl;
         return false;
     } else if(cmd == "n") {
@@ -101,10 +101,10 @@ bool ParseCommand(const std::string& cmd, CPU& cpu) {
     } else if(cmd.starts_with("bp")) {
         if(cmd.length() > 2) {
             u32 bp = std::stoul(cmd.substr(3), nullptr, 16);
-            cpu.AddUserBreakpoint(bp);
+            cpu.add_user_breakpoint(bp);
             std::cout << "\nAdded breakpoint at 0x" << std::hex << bp << std::dec << std::endl;
         } else {
-            auto& m = cpu.GetUserBreakpoints();
+            auto& m = cpu.get_user_breakpoints();
             std::cout << "\nBp adress | enabled?" << std::endl;
             for(const auto& [key, val] : m) {
                 std::cout << std::hex << "0x" << key << " | " << std::dec << val << std::endl;
@@ -112,7 +112,7 @@ bool ParseCommand(const std::string& cmd, CPU& cpu) {
 
         }   
     } else if(cmd.starts_with("dis")){
-        u32 va = cpu.GetPC();
+        u32 va = cpu.get_pc();
         u32 opcode;
 
         if(cmd.length() > 4)
@@ -229,8 +229,8 @@ int main(int argc, char **argv)
 
     // Set up CPU
     CPU cpu(write_to_file ? os : std::cout);
-    cpu.SetVerbose(verbose);
-    cpu.SetId(0);
+    cpu.set_verbose(verbose);
+    cpu.set_cpu_id(0);
     _cpu_ptr = &cpu;
     // Set Cache control regs as TSIM does
     MMU::SetCCR(0x00020000);
@@ -336,12 +336,12 @@ int main(int argc, char **argv)
     // Set up breakpoint handling (we need uart from APBctrl) 
     auto& uart = apbctrl.GetUART();
     if(UserBreakpoint != NO_USER_BREAK) {
-        cpu.AddUserBreakpoint(UserBreakpoint);
+        cpu.add_user_breakpoint(UserBreakpoint);
     } 
     
-    cpu.RegisterBreakpointFunction( [&cpu, &uart]() {
-            u32 va = cpu.GetPC();
-            cpu.SetSingleStep(true);
+    cpu.register_breakpoint_function( [&cpu, &uart]() {
+            u32 va = cpu.get_pc();
+            cpu.set_single_step(true);
             
             while(true) {
                 std::cout << "<bp 0x" << std::hex << va << std::dec << "> " << std::flush;
@@ -356,7 +356,7 @@ int main(int argc, char **argv)
 
    
     // Set up the tick, input polling and interrupt
-    cpu.RegisterBusTickFunction( [&apbctrl , &cpu]() 
+    cpu.register_bus_tick_function( [&apbctrl , &cpu]() 
         {
             GPTIMER& timer = apbctrl.GetTimer();
             IRQMP& intc = apbctrl.GetIntc();
@@ -376,7 +376,7 @@ int main(int argc, char **argv)
        
             u32 IRL = intc.GetNextIRQPending();
             if(IRL>0) {
-                cpu.SetIRL(IRL);
+                cpu.set_irl(IRL);
                 intc.ClearIRQ(IRL);
             } 
         }
@@ -389,15 +389,15 @@ int main(int argc, char **argv)
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     u32 word_count = ReadElf(fname, cpu, entry_va); 
-    cpu.Reset(entry_va);
+    cpu.reset(entry_va);
 
     // OS boot process step 1: Set stack pointer to end of ram
     u32 end_of_ram = 0x40000000 + RAM.getSizeBytes(); 
     //u32 end_of_ram = 0x41fffe80; // Value from TSIM
     //u32 end_of_ram = 0x42000000; // Value from TSIM
 
-    cpu.WriteReg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
-    cpu.WriteReg(end_of_ram, INREG6); // Write frame pointer
+    cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
+    cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
     
     // Set up handler for external SIGINTs
     struct sigaction act;
@@ -411,7 +411,7 @@ int main(int argc, char **argv)
     RunSummary rs;
     if(!Disassemble && !debug_server) {
         // Run the machine in the main thread
-       cpu.Run(NumRunInst, &rs);
+       cpu.run(NumRunInst, &rs);
 
     } else if(debug_server) {
 		int server_fd = create_server_socket(debug_port);
@@ -441,7 +441,7 @@ int main(int argc, char **argv)
         u32 count = word_count;
         struct DecodeStruct Dec, *d=&Dec;
         while(count > 0) {
-            cpu.IFetch(PC, d);
+            cpu.instr_fetch(PC, d);
             disDecode(PC, d->opcode);
             PC += 4;
             --count;
@@ -451,7 +451,7 @@ int main(int argc, char **argv)
 
     if(rs.reason == TerminateReason::UNIMPLEMENTED) {
         debug_registerdump(cpu); 
-        disDecode(cpu.GetPC(), rs.last_opcode);
+        disDecode(cpu.get_pc(), rs.last_opcode);
     } 
     
     

@@ -13,7 +13,7 @@
 //
 // Reset major state. Called when run from time 0.
 //
-void CPU::Reset(u32 entry_va = 0x0)
+void CPU::reset(u32 entry_va = 0x0)
 {
     rs.reason = TerminateReason::NORMAL;
     rs.instr_count = 0;
@@ -22,35 +22,35 @@ void CPU::Reset(u32 entry_va = 0x0)
     if(verbose)
         os << "Resetting device, entry PC = 0x" << std::hex << entry_va << "\n";
     
-    PC  = entry_va;
-    nPC = PC + 4;;
+    pc  = entry_va;
+    npc = pc + 4;;
 
     //PSR = (1 << PSR_ENABLE_TRAPS) | (1 << PSR_SUPER_MODE);
-    PSR = 0;
-    ((pPSR_t)&PSR)->et = 1;
-    ((pPSR_t)&PSR)->s  = 1;
-    ((pPSR_t)&PSR)->ps  = 0; // Previus trap supervisor bit
-    ((pPSR_t)&PSR)->ef = 1; // Enable floats by default
+    psr = 0;
+    ((pPSR_t)&psr)->et = 1;
+    ((pPSR_t)&psr)->s  = 1;
+    ((pPSR_t)&psr)->ps  = 0; // Previus trap supervisor bit
+    ((pPSR_t)&psr)->ef = 1; // Enable floats by default
 
     // Leon3 specific values:
-    ((pPSR_t)&PSR)->imp = 0xf; // Gaisler
-    ((pPSR_t)&PSR)->ver = 0x3; // Leon3
+    ((pPSR_t)&psr)->imp = 0xf; // Gaisler
+    ((pPSR_t)&psr)->ver = 0x3; // Leon3
 
     // Version 3 in bitfield 17:19
     fpu_fsr = 3 << 17; 
 
-    IRL = 0;
+    irl = 0;
 
     trap_type = 0;
-    TBR = 0;
-    WIM = 2;
+    tbr = 0;
+    wim = 2;
 }
 
-bool CPU::IFetch(u32 virt_addr, pDecode_t d){
+bool CPU::instr_fetch(u32 virt_addr, pDecode_t d){
  
     u32& opcode = d->opcode;
     
-	bool super = (PSR >> 7) & 0x1;
+	bool super = (psr >> 7) & 0x1;
     
     if(MMU::MemAccess<intent_execute, 4>(virt_addr, opcode, CROSS_ENDIAN, super) < 0)
     {
@@ -68,7 +68,7 @@ bool CPU::IFetch(u32 virt_addr, pDecode_t d){
 
         // Only throw trap if nf == 0
         if(nf == 0) { 
-            Trap(d,  SPARC_INSTRUCTION_ACCESS_EXCEPTION); 
+            trap(d,  SPARC_INSTRUCTION_ACCESS_EXCEPTION); 
         	return false;
 		} else {
 			throw std::runtime_error("Unhandled error in instruction fetch (MMU nofault == 1)");
@@ -79,7 +79,7 @@ bool CPU::IFetch(u32 virt_addr, pDecode_t d){
     return true;
 }
 
-u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
+u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
     rs.reason = TerminateReason::INSTRUCTION;
  
 #ifdef PERFORMANCE_MONITOR
@@ -89,10 +89,10 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
     u64 count = 0;
     //u32 word_count;
     struct DecodeStruct Dec, *d=&Dec;
-    pPSR_t p = (pPSR_t)&PSR;
+    pPSR_t p = (pPSR_t)&psr;
 
     // Map the PSR structure to the decode PSR variable just once
-    d->p = (pPSR_t) &(d->PSR);
+    d->p = (pPSR_t) &(d->psr);
 
     // Start executing program
     running = true;
@@ -104,15 +104,15 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
         count++;
         
         // Process interrupts
-        if (trap_type == 0 && (p->et && (IRL > p->pil))) {
+        if (trap_type == 0 && (p->et && (irl > p->pil))) {
             if (verbose)
-                os << std::format("INT  {:#x} PC={:#08x} NPC={:#08x}\n", IRL, PC, nPC);
+                os << std::format("INT  {:#x} PC={:#08x} NPC={:#08x}\n", irl, pc, npc);
 
-            trap_type = IRL + SPARC_INTERRUPT;
+            trap_type = irl + SPARC_INTERRUPT;
             // Do we clear IRL here, or handle that in interrupt handler?
             // Update - yes we absolutely have to clear it here. The interrupt handlers cannot reach IRL,
             // as it is not exposed in the machine... Hence, it was nevre cleared..
-            IRL = 0;
+            irl = 0;
         }
         
         // Process Traps
@@ -124,17 +124,17 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
             n_cwp = ((n_cwp - 1) & LOBITS5) % NWINDOWS;
             p->cwp = n_cwp;
 
-            WriteReg (PC,  LOCALREG1);
-            WriteReg (nPC, LOCALREG2);
+            write_reg (pc,  LOCALREG1);
+            write_reg (npc, LOCALREG2);
             
-            TBR = (TBR & ~(0xff0)) | ((trap_type & LOBITS8) << 4);
-            PC  = TBR;
-            nPC = TBR + 4;
+            tbr = (tbr & ~(0xff0)) | ((trap_type & LOBITS8) << 4);
+            pc  = tbr;
+            npc = tbr + 4;
             trap_type &= ~(LOBITS8);
         }
 
        
-        u32 virt_addr = (u32) PC;
+        u32 virt_addr = (u32) pc;
 
         // Service breakpoints if breakpoint_func is added and virt_addr is in breakpoints list,
         // or we are in single step mode
@@ -159,16 +159,16 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
        	// Process instruction ...
 
         // ---- IFetch ----
-        if(IFetch(virt_addr, d)) {
+        if(instr_fetch(virt_addr, d)) {
         
             // ---- Decode ----
-            Decode (d);
+            decode (d);
 
             // ---- Execute ----
             d->function(this, d);
 
             // ---- Writeback ----
-            WriteBack(d);
+            write_back(d);
 
         } else {
             // we could not fetch instruction, and no Traps occured.. Not much more to do.
@@ -197,7 +197,7 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
     }
 
 #ifdef PERFORMANCE_MONITOR
-	std::cout << "Stats for CPU # " << GetId() << "\n";	
+	std::cout << "Stats for CPU # " << get_cpu_id() << "\n";	
 	lt.printStats();
 #endif
 
@@ -216,7 +216,7 @@ u32  CPU::Run(u32 ExecCount, RunSummary* _rs) {
 //
 // Main instruction decode. Selects instc function and expands input data
 //
-void CPU::Decode(pDecode_t d)
+void CPU::decode(pDecode_t d)
 {
     u32 fmt_bits = (d->opcode >> FMTSTARTBIT) & LOBITS2;
     u32 op2      = (d->opcode >> OP2STARTBIT) & LOBITS3;
@@ -228,9 +228,9 @@ void CPU::Decode(pDecode_t d)
 
     // By default, no change to program counter and PSR, and
     // no writeback
-    d->PC      = PC;
-    d->nPC     = nPC;
-    d->PSR     = PSR;
+    d->pc      = pc;
+    d->npc     = npc;
+    d->psr     = psr;
     d->wb_type = WriteBackType::NO_WRITEBACK;
 
     switch (fmt_bits) {
@@ -267,7 +267,7 @@ void CPU::Decode(pDecode_t d)
             break; // Skip read regs for FOP1 and FOP2
         } else
         { */       
-            ReadReg (d->rs1, &d->rs1_value);
+            read_reg (d->rs1, &d->rs1_value);
         /*}*/
 
         // ev = ((RD/WR/ALU/Logic instr) ? r[rs1] : 0) + (i ? sign_ext(imm) : r[rs2])
@@ -278,7 +278,7 @@ void CPU::Decode(pDecode_t d)
            d->ev = regvalue + sign_ext13(d->imm_disp_rs2);
         else {
             
-            ReadReg(d->imm_disp_rs2 & LOBITS5, &d->ev);
+            read_reg(d->imm_disp_rs2 & LOBITS5, &d->ev);
             d->ev += regvalue;
         }
 
@@ -288,16 +288,16 @@ void CPU::Decode(pDecode_t d)
         // A store double access requires two register reads
         // from, r[rd], r[rd+1].
         if (I_idx == STORE_DBL_IDX) {
-            ReadReg (d->rd & ~LOBITS1, &d->value);
-            ReadReg ((d->rd & ~LOBITS1)+1, &d->value1);
+            read_reg (d->rd & ~LOBITS1, &d->value);
+            read_reg ((d->rd & ~LOBITS1)+1, &d->value1);
 
         // Ticc requires an r[rs2] read if i bit clear
         } else if (I_idx == TICC_IDX && !d->i)
-            ReadReg (d->imm_disp_rs2 & LOBITS5, &d->value); 
+            read_reg (d->imm_disp_rs2 & LOBITS5, &d->value); 
 
         // Memory instructions need to read r[rd]
         else if (fmt_bits & 1)
-            ReadReg (d->rd, &d->value);
+            read_reg (d->rd, &d->value);
 
         break;
    }
@@ -308,27 +308,27 @@ void CPU::Decode(pDecode_t d)
 //
 // Write back register values
 //
-void CPU::WriteBack (const pDecode_t d)
+void CPU::write_back (const pDecode_t d)
 {
-    PC  = d->PC;
-    nPC = d->nPC;
-    PSR = d->PSR;
+    pc  = d->pc;
+    npc = d->npc;
+    psr = d->psr;
 
     if (d->wb_type == WriteBackType::WRITEBACKREG) 
-        WriteReg(d->value, d->rd);
+        write_reg(d->value, d->rd);
 }
 
 
 // ------------------------------------------------
 
-void CPU::Trap(pDecode_t d, u32 trap_no) 
+void CPU::trap(pDecode_t d, u32 trap_no) 
 {
     int tn = trap_no & LOBITS8;
-    u32 npc = (TBR & ~(0xff0)) | ((tn & LOBITS8) << 4);;
+    u32 npc = (tbr & ~(0xff0)) | ((tn & LOBITS8) << 4);;
 
-    if (((pPSR_t)&PSR)->et == 0) {
+    if (((pPSR_t)&psr)->et == 0) {
          fprintf (stderr, "ERROR TRAP %x WHILE TRAPS DISABLED\n", trap_no);
-         RegisterDump();
+         dump_regs();
          //terminate = d->opcode;
          rs.last_opcode = d->opcode;
          rs.reason = TerminateReason::TRAP_CONDITIONAL;
@@ -337,13 +337,13 @@ void CPU::Trap(pDecode_t d, u32 trap_no)
 
     if (verbose) {
         if (tn < 0x40)
-            os << std::format("                   TRAP {} ({:#x}) PC={:#08x} NPC={:#08x}\n", TrapStr[tn], tn, PC, npc);
+            os << std::format("                   TRAP {} ({:#x}) PC={:#08x} NPC={:#08x}\n", trap_str[tn], tn, pc, npc);
         else if (tn >= 0x40 && tn < 0x60)
-            os << std::format("                   TRAP NO TRAP ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, PC, npc);
+            os << std::format("                   TRAP NO TRAP ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, pc, npc);
         else if (tn >= 0x60 && tn < 0x80)
-            os << std::format("                   TRAP Impl. Dep. ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, PC, npc);
+            os << std::format("                   TRAP Impl. Dep. ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, pc, npc);
         else 
-            os << std::format("                   TRAP Ticc ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, PC, npc);
+            os << std::format("                   TRAP Ticc ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, pc, npc);
     }
 /*
     // Set PS bit on PSR from S bit
@@ -384,7 +384,7 @@ std::string CPU::DispRegStr (const u32 regnum)
 }
 
 
-int CPU::TestCC (pDecode_t d) {
+int CPU::test_cc (pDecode_t d) {
 
     int cond; 
 
@@ -416,8 +416,8 @@ int CPU::TestCC (pDecode_t d) {
         return ((cond >> 3) ^ d->p->v);
         break;
     default:
-        std::cerr << "*** TestCC(): fatal error\n";
-        throw std::runtime_error("*** TestCC(): fatal error");
+        std::cerr << "*** test_cc(): fatal error\n";
+        throw std::runtime_error("*** test_cc(): fatal error");
     }
 
     return 0;
@@ -426,7 +426,7 @@ int CPU::TestCC (pDecode_t d) {
 
 //------------------------------------------------------------------------
 //
-void CPU::ReadReg (const u32 reg_no, u32 * const value) 
+void CPU::read_reg (const u32 reg_no, u32 * const value) 
 {
     int win;
 
@@ -441,13 +441,13 @@ void CPU::ReadReg (const u32 reg_no, u32 * const value)
         *value = globals[reg_no & LOBITS3];
         break;
     case 1 : // Outs
-        *value = outs [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)];
+        *value = outs [((get_psr() & LOBITS5) << 3) | (reg_no & LOBITS3)];
         break;
     case 2 : // locals
-        *value = locals [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)];
+        *value = locals [((get_psr() & LOBITS5) << 3) | (reg_no & LOBITS3)];
         break;
     case 3 : // Ins
-        win = ((GetPSR() & LOBITS5) + 1) % NWINDOWS;
+        win = ((get_psr() & LOBITS5) + 1) % NWINDOWS;
         *value = outs [(win << 3) | (reg_no & LOBITS3)];
         break;
     }
@@ -456,7 +456,7 @@ void CPU::ReadReg (const u32 reg_no, u32 * const value)
 
 //------------------------------------------------------------------------
 //
-void CPU::WriteReg (const u32 value, const u32 reg_no) 
+void CPU::write_reg (const u32 value, const u32 reg_no) 
 {
    int win = 0;
 
@@ -471,13 +471,13 @@ void CPU::WriteReg (const u32 value, const u32 reg_no)
       globals[0] = 0;
       break;
    case 1 : // Outs
-      outs [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
+      outs [((get_psr() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
       break;
    case 2 : // locals
-      locals [((GetPSR() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
+      locals [((get_psr() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
       break;
    case 3 : // Ins
-      win = ((GetPSR() & LOBITS5) + 1) % NWINDOWS;
+      win = ((get_psr() & LOBITS5) + 1) % NWINDOWS;
       outs [(win << 3) | (reg_no & LOBITS3)] = value;
       break;
    }
@@ -545,9 +545,9 @@ u32 CPU::GetRegBase (const u32 reg_no)
 
 //------------------------------------------------------------------------
 //
-int CPU::MemRead(const u32 va, const int bytes, const u32 rd, const int signext) 
+int CPU::mem_read(const u32 va, const int bytes, const u32 rd, const int signext) 
 {
-    bool super = (PSR >> 7) & 0x1 == 0x1;
+    bool super = (psr >> 7) & 0x1 == 0x1;
 
 
     u32 value, value_ext;
@@ -561,27 +561,27 @@ int CPU::MemRead(const u32 va, const int bytes, const u32 rd, const int signext)
         ret1 = MMU::MemAccess<intent_load,1>(va, value, CROSS_ENDIAN, super);
         if(ret1 == 0) {
             value |= ((signext && (value & BIT7)) ? 0xffffff00 : 0);
-            WriteReg(value, rd);
+            write_reg(value, rd);
         }
         break;
     case 2 : 
         ret1 = MMU::MemAccess<intent_load,2>(va, value, CROSS_ENDIAN, super);
         if(ret1 == 0) {
             value |= ((signext && (value & BIT15)) ? 0xffff0000 : 0);
-            WriteReg(value, rd);
+            write_reg(value, rd);
         }
         break;
     case 4 :
         ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
         if(ret1 == 0)
-            WriteReg(value, rd);
+            write_reg(value, rd);
         break;
     case 8 :
         ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
         ret2 = MMU::MemAccess<intent_load,4>(va+4, value_ext, CROSS_ENDIAN, super);
         if( (ret1 == 0) && (ret2 == 0) ) {
-            WriteReg(value, rd);
-            WriteReg(value_ext, rd+1);
+            write_reg(value, rd);
+            write_reg(value_ext, rd+1);
         }
         break;
     }
@@ -591,13 +591,13 @@ int CPU::MemRead(const u32 va, const int bytes, const u32 rd, const int signext)
 
 //------------------------------------------------------------------------
 //
-int CPU::MemWrite(const u32 va, const int bytes, const u32 rd) 
+int CPU::mem_write(const u32 va, const int bytes, const u32 rd) 
 {
     u32 value;
     int ret1, ret2;
 
     
-    ReadReg(rd, &value);
+    read_reg(rd, &value);
     
     ret1 = ret2 = 0;
     switch (bytes) {
@@ -612,7 +612,7 @@ int CPU::MemWrite(const u32 va, const int bytes, const u32 rd)
         break;
     case 8 :
         ret1 = MMU::MemAccess<intent_store,4>(va, value, CROSS_ENDIAN);
-        ReadReg(rd+1, &value);
+        read_reg(rd+1, &value);
         ret2 = MMU::MemAccess<intent_store,4>(va+4, value, CROSS_ENDIAN);
         break;
     }
@@ -624,11 +624,12 @@ int CPU::MemWrite(const u32 va, const int bytes, const u32 rd)
 
 //------------------------------------------------------------------------
 //
-void CPU::DispReadReg (const u32 reg_no, u32 *value) 
+/*
+void CPU::disp_read_reg (const u32 reg_no, u32 *value) 
 {
     u32  win;
    
-    win = (GetPSR() & LOBITS4);
+    win = (get_psr() & LOBITS4);
     globals[0] = 0;
 
     switch ((reg_no >> 3) & LOBITS2) {
@@ -642,126 +643,107 @@ void CPU::DispReadReg (const u32 reg_no, u32 *value)
         *value = locals [(win << 3) | (reg_no & LOBITS3)];
         break;
     case 3 : // Ins
-        win = (GetPSR() & LOBITS4) + 1;
+        win = (get_psr() & LOBITS4) + 1;
         *value = outs [(win << 3) | (reg_no & LOBITS3)];
         break;
     }
 }
-
+*/
 
 //------------------------------------------------------------------------
 //
-void CPU::RegisterDump (bool transpose) {
+void CPU::dump_regs (bool transpose) {
 
-    u32 a, b, c, d;
+    u32 a = 0;
+    u32 b = 0;
+    u32 c = 0;
+    u32 d = 0;
     if(!transpose) {
-        ReadReg (OUTREG6, &a);
+        read_reg (OUTREG6, &a);
         os << std::format("Ma PC={:#08x} nPC={:#08x} PSR()={:#08x} (RegWin={:#d} N={:#d} Z={:#d} V={:#d} C={:#d} PIL={:#x} IRL={:#x})\n",
-                 GetPC(), GetnPC(), GetPSR(), GetPSR() & LOBITS4,
-                 (GetPSR() >> PSR_CC_NEGATIVE) & LOBITS1,
-                 (GetPSR() >> PSR_CC_ZERO) & LOBITS1,
-                 (GetPSR() >> PSR_CC_OVERFLOW) & LOBITS1,
-                 (GetPSR() >> PSR_CC_CARRY) & LOBITS1, (GetPSR() >> PSR_INTERRUPT_LEVEL_0) & LOBITS4, GetIRL());
+                 get_pc(), get_npc(), get_psr(), get_psr() & LOBITS4,
+                 (get_psr() >> PSR_CC_NEGATIVE) & LOBITS1,
+                 (get_psr() >> PSR_CC_ZERO) & LOBITS1,
+                 (get_psr() >> PSR_CC_OVERFLOW) & LOBITS1,
+                 (get_psr() >> PSR_CC_CARRY) & LOBITS1, (get_psr() >> PSR_INTERRUPT_LEVEL_0) & LOBITS4, get_irl());
         os << std::format("Ma g0=({:#08x}) g1=({:#08x}) g2=({:#08x}) g3=({:#08x})\n",
                  globals[0], globals[1], globals[2], globals[3]);
         os << std::format("Ma g4=({:#08x}) g5=({:#08x}) g6=({:#08x}) g7=({:#08x})\n",
                  globals[4], globals[5], globals[6], globals[7]);
-        DispReadReg (OUTREG0, &a);
-        DispReadReg (OUTREG1, &b);
-        DispReadReg (OUTREG2, &c);
-        DispReadReg (OUTREG3, &d);
+        read_reg (OUTREG0, &a);
+        read_reg (OUTREG1, &b);
+        read_reg (OUTREG2, &c);
+        read_reg (OUTREG3, &d);
         os << std::format("Ma o0=({:#08x}) o1=({:#08x}) o2=({:#08x}) o3=({:#08x})\n", a, b, c, d);
-        DispReadReg (OUTREG4, &a);
-        DispReadReg (OUTREG5, &b);
-        DispReadReg (OUTREG6, &c);
-        DispReadReg (OUTREG7, &d);
+        read_reg (OUTREG4, &a);
+        read_reg (OUTREG5, &b);
+        read_reg (OUTREG6, &c);
+        read_reg (OUTREG7, &d);
         os << std::format("Ma o4=({:#08x}) o5=({:#08x}) o6=({:#08x}) o7=({:#08x})\n", a, b, c, d);
-        DispReadReg (LOCALREG0, &a);
-        DispReadReg (LOCALREG1, &b);
-        DispReadReg (LOCALREG2, &c);
-        DispReadReg (LOCALREG3, &d);
+        read_reg (LOCALREG0, &a);
+        read_reg (LOCALREG1, &b);
+        read_reg (LOCALREG2, &c);
+        read_reg (LOCALREG3, &d);
         os << std::format("Ma l0=({:#08x}) l1=({:#08x}) l2=({:#08x}) l3=({:#08x})\n", a, b, c, d);
-        DispReadReg (LOCALREG4, &a);
-        DispReadReg (LOCALREG5, &b);
-        DispReadReg (LOCALREG6, &c);
-        DispReadReg (LOCALREG7, &d);
+        read_reg (LOCALREG4, &a);
+        read_reg (LOCALREG5, &b);
+        read_reg (LOCALREG6, &c);
+        read_reg (LOCALREG7, &d);
         os << std::format("Ma l4=({:#08x}) l5=({:#08x}) l6=({:#08x}) l7=({:#08x})\n", a, b, c, d);
-        DispReadReg (INREG0, &a);
-        DispReadReg (INREG1, &b);
-        DispReadReg (INREG2, &c);
-        DispReadReg (INREG3, &d);
+        read_reg (INREG0, &a);
+        read_reg (INREG1, &b);
+        read_reg (INREG2, &c);
+        read_reg (INREG3, &d);
         os << std::format("Ma i0=({:#08x}) i1=({:#08x}) i2=({:#08x}) i3=({:#08x})\n", a, b, c, d);
-        DispReadReg (INREG4, &a);
-        DispReadReg (INREG5, &b);
-        DispReadReg (INREG6, &c);
-        DispReadReg (INREG7, &d);
+        read_reg (INREG4, &a);
+        read_reg (INREG5, &b);
+        read_reg (INREG6, &c);
+        read_reg (INREG7, &d);
         os << std::format("Ma i4=({:#08x}) i5=({:#08x}) i6=({:#08x}) i7=({:#08x})\n", a, b, c, d);
     } else {
         os << std::format("         INS         LOCALS      OUTS        GOBALS\n");
-        DispReadReg (INREG0, &a);
-        DispReadReg (LOCALREG0, &b);
-        DispReadReg (OUTREG0, &c);
+        read_reg (INREG0, &a);
+        read_reg (LOCALREG0, &b);
+        read_reg (OUTREG0, &c);
         d = globals[0];
         os << std::setfill('0') << std::hex << std::setw(8) << "     0:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
-        DispReadReg (INREG1, &a);
-        DispReadReg (LOCALREG1, &b);
-        DispReadReg (OUTREG1, &c);
+        read_reg (INREG1, &a);
+        read_reg (LOCALREG1, &b);
+        read_reg (OUTREG1, &c);
         d = globals[1];
         os << std::setfill('0') << std::hex << std::setw(8) << "     1:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
-        DispReadReg (INREG2, &a);
-        DispReadReg (LOCALREG2, &b);
-        DispReadReg (OUTREG2, &c);
+        read_reg (INREG2, &a);
+        read_reg (LOCALREG2, &b);
+        read_reg (OUTREG2, &c);
         d = globals[2];
         os << std::setfill('0') << std::hex << std::setw(8) << "     2:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
-        DispReadReg (INREG3, &a);
-        DispReadReg (LOCALREG3, &b);
-        DispReadReg (OUTREG3, &c);
+        read_reg (INREG3, &a);
+        read_reg (LOCALREG3, &b);
+        read_reg (OUTREG3, &c);
         d = globals[3];
         os << std::setfill('0') << std::hex << std::setw(8) << "     3:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
-        DispReadReg (INREG4, &a);
-        DispReadReg (LOCALREG4, &b);
-        DispReadReg (OUTREG4, &c);
+        read_reg (INREG4, &a);
+        read_reg (LOCALREG4, &b);
+        read_reg (OUTREG4, &c);
         d = globals[4];
         os << std::setfill('0') << std::hex << std::setw(8) << "     4:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
-        DispReadReg (INREG5, &a);
-        DispReadReg (LOCALREG5, &b);
-        DispReadReg (OUTREG5, &c);
+        read_reg (INREG5, &a);
+        read_reg (LOCALREG5, &b);
+        read_reg (OUTREG5, &c);
         d = globals[5];
         os << std::setfill('0') << std::hex << std::setw(8) << "     5:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
-        DispReadReg (INREG6, &a);
-        DispReadReg (LOCALREG6, &b);
-        DispReadReg (OUTREG6, &c);
+        read_reg (INREG6, &a);
+        read_reg (LOCALREG6, &b);
+        read_reg (OUTREG6, &c);
         d = globals[6];
         os << std::setfill('0') << std::hex << std::setw(8) << "     6:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
-        DispReadReg (INREG7, &a);
-        DispReadReg (LOCALREG7, &b);
-        DispReadReg (OUTREG7, &c);
+        read_reg (INREG7, &a);
+        read_reg (LOCALREG7, &b);
+        read_reg (OUTREG7, &c);
         d = globals[7];
         os << std::setfill('0') << std::hex << std::setw(8) << "     7:  0x" << std::setw(8) <<  a << "  0x" << std::setw(8) << b << "  0x" << std::setw(8) << c << "  0x" << std::setw(8) << d << "\n" << std::dec;
  
 
 
     }
-}
-
-// Handles the MMU fault by issuing a Trap, unless nofault is set
-void CPU::handleMMUFault(pDecode_t d) {
-    // Get the fault from MMU:
-    u32 f = MMU::GetFaultStatus();
-    u32 FT = (f >> 2) & 0x3;
-    if(FT == 0)
-        return; // No fault....
-        
-    // We have a fault..
-    u32 AT = (f >> 5) & 0x7;
-    // The NF field in the MMU control regs governs wether we should TRAP    
-    u32 nf = (MMU::GetControlReg() & 0x2) >> 1;
-
-    // Only throw trap if nf == 0, or if nf == 1 and ASI = 0x9 (supervisor instruction, i.e At = 3 or 7)
-    // Is ASI 0x9 not supported on LEON3? In that case nf1 should never trap
-    if(nf == 0) { // || (nf == 1 && (AT == 1 || AT == 3 || AT == 5 || AT == 7))) {
-        Trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
-        //MMU::ClearFaultStatus(); // Not to be cleared here
-    }
-
 }

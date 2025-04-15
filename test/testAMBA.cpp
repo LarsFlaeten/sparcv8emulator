@@ -227,8 +227,8 @@ TEST_F(AMBATest, AHB_setup)
 TEST_F(AMBATest, LEON_SOC_Device_enumeration) {
     // Set up CPU
     CPU cpu(std::cout);
-    cpu.SetVerbose(false);
-    cpu.SetId(0);
+    cpu.set_verbose(false);
+    cpu.set_cpu_id(0);
  
     SDRAM<0x00100000> RAM2;  // IO: 0xffd03000, 1 MB of RAM
 

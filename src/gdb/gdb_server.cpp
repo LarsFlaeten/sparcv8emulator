@@ -53,41 +53,41 @@ std::string gdb_read_regs(CPU& cpu) {
 
 		u32  value = 0;		
 		// g0 through g7
-		cpu.ReadReg(GLOBALREG0, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(GLOBALREG1, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(GLOBALREG2, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(GLOBALREG3, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(GLOBALREG4, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(GLOBALREG5, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(GLOBALREG6, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(GLOBALREG7, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(GLOBALREG0, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(GLOBALREG1, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(GLOBALREG2, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(GLOBALREG3, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(GLOBALREG4, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(GLOBALREG5, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(GLOBALREG6, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(GLOBALREG7, &value); response += u32_to_hexstr(value);	
         // OUTREGS:
-		cpu.ReadReg(OUTREG0, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(OUTREG1, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(OUTREG2, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(OUTREG3, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(OUTREG4, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(OUTREG5, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(OUTREG6, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(OUTREG7, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(OUTREG0, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(OUTREG1, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(OUTREG2, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(OUTREG3, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(OUTREG4, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(OUTREG5, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(OUTREG6, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(OUTREG7, &value); response += u32_to_hexstr(value);	
         // LOCALREGS:
-		cpu.ReadReg(LOCALREG0, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(LOCALREG1, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(LOCALREG2, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(LOCALREG3, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(LOCALREG4, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(LOCALREG5, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(LOCALREG6, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(LOCALREG7, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(LOCALREG0, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(LOCALREG1, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(LOCALREG2, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(LOCALREG3, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(LOCALREG4, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(LOCALREG5, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(LOCALREG6, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(LOCALREG7, &value); response += u32_to_hexstr(value);	
         // INPUTREGS:
-		cpu.ReadReg(INREG0, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(INREG1, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(INREG2, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(INREG3, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(INREG4, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(INREG5, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(INREG6, &value); response += u32_to_hexstr(value);	
-		cpu.ReadReg(INREG7, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(INREG0, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(INREG1, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(INREG2, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(INREG3, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(INREG4, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(INREG5, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(INREG6, &value); response += u32_to_hexstr(value);	
+		cpu.read_reg(INREG7, &value); response += u32_to_hexstr(value);	
    
         // FPU regs 
         for(int i = 0; i < 32; ++i)
@@ -97,13 +97,13 @@ std::string gdb_read_regs(CPU& cpu) {
 		// It should describe the following registers:
 
 		//- ‘y’, ‘psr’, ‘wim’, ‘tbr’, ‘pc’, ‘npc’, ‘fsr’, and ‘csr’ for sparc32
-		response += u32_to_hexstr(cpu.GetY());
-		response += u32_to_hexstr(cpu.GetPSR());
-		response += u32_to_hexstr(cpu.GetWIM());
-		response += u32_to_hexstr(cpu.GetTBR());
-		response += u32_to_hexstr(cpu.GetPC());
-		response += u32_to_hexstr(cpu.GetnPC());
-		response += u32_to_hexstr(cpu.GetFSR()); // FSR
+		response += u32_to_hexstr(cpu.get_y_reg());
+		response += u32_to_hexstr(cpu.get_psr());
+		response += u32_to_hexstr(cpu.get_wim());
+		response += u32_to_hexstr(cpu.get_tbr());
+		response += u32_to_hexstr(cpu.get_pc());
+		response += u32_to_hexstr(cpu.get_npc());
+		response += u32_to_hexstr(cpu.get_fsr()); // FSR
 		response += u32_to_hexstr(0); // CSR
  
         return response;
@@ -236,7 +236,7 @@ std::string gdb_set_bp(CPU& cpu, std::string msg) {
 	
     //std::cout << "GDB adding breakpoint at address 0x" << std::hex << addr << std::dec << " (msg: \"" << address << "\")\n";
  		
-    cpu.AddUserBreakpoint(addr);
+    cpu.add_user_breakpoint(addr);
     return "OK";
 }
 
@@ -264,7 +264,7 @@ std::string gdb_remove_bp(CPU& cpu, std::string msg) {
     //std::cout << "GDB removing breakpoint at address 0x" << std::hex << addr << std::dec << " (msg: \"" << address << "\")\n";
      
 		
-    cpu.RemoveUserBreakpoint(addr);
+    cpu.remove_user_breakpoint(addr);
     //std::cout << "GDB added breakpoint at address 0x" << std::hex << address << std::dec << "\n";
     return "OK";
 }
@@ -341,7 +341,7 @@ bool handle_gdb_packet(int client_fd, CPU& cpu, const char *packet) {
         
         // Here we start/continue execution until it hits a breakpoint:
         RunSummary rs;
-        cpu.Run(0, &rs);
+        cpu.run(0, &rs);
 
         // Lets look into runsummary why it exited.
         send_packet(client_fd, "T05thread:p01.01;");

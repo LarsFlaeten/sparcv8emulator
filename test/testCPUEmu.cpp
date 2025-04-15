@@ -51,7 +51,7 @@ void CPUEmuTest::SetUp()
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
-    cpu.Reset(entry_va);
+    cpu.reset(entry_va);
  
 }
 
@@ -61,10 +61,10 @@ void CPUEmuTest::TearDown()
 
 TEST_F(CPUEmuTest, TestResetState)
 {
-    EXPECT_EQ(cpu.GetPC(), 0);
-    EXPECT_EQ(cpu.GetnPC(), 4);
+    EXPECT_EQ(cpu.get_pc(), 0);
+    EXPECT_EQ(cpu.get_npc(), 4);
 
-    u32 PSR = cpu.GetPSR(); 
+    u32 PSR = cpu.get_psr(); 
     
     // Current window pointer should be 0
     EXPECT_EQ(((pPSR_t)&PSR)->cwp , 0);
@@ -75,9 +75,9 @@ TEST_F(CPUEmuTest, TestResetState)
     EXPECT_EQ(((pPSR_t)&PSR)->ef , 1);
 
     // reset to another memory location:
-    cpu.Reset(0x1180);
-    EXPECT_EQ(cpu.GetPC(), 0x1180);
-    EXPECT_EQ(cpu.GetnPC(), 0x1184);
+    cpu.reset(0x1180);
+    EXPECT_EQ(cpu.get_pc(), 0x1180);
+    EXPECT_EQ(cpu.get_npc(), 0x1184);
 
 
 
@@ -86,22 +86,22 @@ TEST_F(CPUEmuTest, TestResetState)
 
 TEST_F(CPUEmuTest, AddBreakpoint)
 {
-    cpu.AddUserBreakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
 
-    const auto& bps = cpu.GetUserBreakpoints();
+    const auto& bps = cpu.get_user_breakpoints();
     ASSERT_FALSE(bps.find(0x00100000) == bps.end());
 }
 
 
 TEST_F(CPUEmuTest, RemoveBreakpoint)
 {
-    cpu.AddUserBreakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
 
-    const auto& bps = cpu.GetUserBreakpoints();
+    const auto& bps = cpu.get_user_breakpoints();
     ASSERT_FALSE(bps.find(0x00100000) == bps.end());
 
 
-    cpu.RemoveUserBreakpoint(0x00100000);
+    cpu.remove_user_breakpoint(0x00100000);
     ASSERT_TRUE(bps.find(0x00100000) == bps.end());
 
 
@@ -111,23 +111,23 @@ TEST_F(CPUEmuTest, RemoveBreakpoint)
 
 TEST_F(CPUEmuTest, RemoveBreakpoint2)
 {
-    cpu.AddUserBreakpoint(0x00100000);
-    cpu.AddUserBreakpoint(0x00100000);
-    cpu.AddUserBreakpoint(0x00100000);
-    cpu.AddUserBreakpoint(0x00100000);
-    cpu.AddUserBreakpoint(0x00100000);
-    cpu.AddUserBreakpoint(0x00100000);
-    cpu.AddUserBreakpoint(0x00100000);
-    cpu.AddUserBreakpoint(0x00100000);
-    cpu.AddUserBreakpoint(0x00100000);
-    cpu.AddUserBreakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
+    cpu.add_user_breakpoint(0x00100000);
 
-    const auto& bps = cpu.GetUserBreakpoints();
+    const auto& bps = cpu.get_user_breakpoints();
     ASSERT_FALSE(bps.find(0x00100000) == bps.end());
 
 
     // All breakpoints above should be removed
-    cpu.RemoveUserBreakpoint(0x00100000);
+    cpu.remove_user_breakpoint(0x00100000);
     ASSERT_TRUE(bps.find(0x00100000) == bps.end());
 
 

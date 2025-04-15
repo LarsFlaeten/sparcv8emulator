@@ -8,10 +8,10 @@
 void CPU::LDA_impl (pDecode_t d) {
    
     if (d->p->s == 0) {
-        Trap (d, SPARC_PRIVILEGED_INSTRUCTION);
+        trap (d, SPARC_PRIVILEGED_INSTRUCTION);
         return;
     } else if( d->i == 1) {
-        Trap (d, SPARC_ILLEGAL_INSTRUCTION);
+        trap (d, SPARC_ILLEGAL_INSTRUCTION);
         return;
     }
     // First we need an extra decode here, to pull our ASI and rs2, both stored in simm13
@@ -29,15 +29,15 @@ void CPU::LDA_impl (pDecode_t d) {
    }
 
     u32 rd_value;
-    ReadReg(d->rd, &rd_value);
+    read_reg(d->rd, &rd_value);
 
     u32 r1, r2;
-    ReadReg(d->rs1, &r1);
-    ReadReg(rs2, &r2);
+    read_reg(d->rs1, &r1);
+    read_reg(rs2, &r2);
     u32 address = r1 + r2;
 
     if(verbose)
-        os << std::format("{:#08x} {}      [{:#08x}] asi: {:#08x}, {}\n", d->PC, op, address, ASI, DispRegStr(d->rd));
+        os << std::format("{:#08x} {}      [{:#08x}] asi: {:#08x}, {}\n", d->pc, op, address, ASI, DispRegStr(d->rd));
 
     u32 offset = 0x0;
  
@@ -99,8 +99,8 @@ void CPU::LDA_impl (pDecode_t d) {
     }
 
 
-    d->PC = d->nPC;
-    d->nPC= d->nPC + 4;
+    d->pc = d->npc;
+    d->npc= d->npc + 4;
 
 
 
@@ -110,10 +110,10 @@ void CPU::LDA_impl (pDecode_t d) {
 void CPU::STA_impl (pDecode_t d) {
    
     if (d->p->s == 0) {
-        Trap (d, SPARC_PRIVILEGED_INSTRUCTION);
+        trap (d, SPARC_PRIVILEGED_INSTRUCTION);
         return;
     } else if( d->i == 1) {
-        Trap (d, SPARC_ILLEGAL_INSTRUCTION);
+        trap (d, SPARC_ILLEGAL_INSTRUCTION);
         return;
     }
 
@@ -139,20 +139,20 @@ void CPU::STA_impl (pDecode_t d) {
     }
 
     u32 rd_value;
-    ReadReg(d->rd, &rd_value);
+    read_reg(d->rd, &rd_value);
 
     u32 r1, r2;
-    ReadReg(d->rs1, &r1);
-    ReadReg(rs2, &r2);
+    read_reg(d->rs1, &r1);
+    read_reg(rs2, &r2);
     u32 address = r1 + r2;
     
     if (address & LOBITS2) {
-        Trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
+        trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
         return;
     }
 
     if(verbose)
-        os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
+        os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->pc, op, DispRegStr(d->rd), rd_value, address, ASI);
             
     u32 offset = 0x0;
  
@@ -213,7 +213,7 @@ void CPU::STA_impl (pDecode_t d) {
     }
 
 
-    d->PC = d->nPC;
-    d->nPC= d->nPC + 4;
+    d->pc = d->npc;
+    d->npc= d->npc + 4;
 
 }

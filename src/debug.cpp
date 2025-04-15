@@ -81,12 +81,12 @@ void debug_dumpmemv(u32 va, int n) {
 
 void debug_registerdump(CPU& cpu) {
 
-    cpu.RegisterDump(true);
+    cpu.dump_regs(true);
     std::cout << "\n";
-    std::cout << "   psr: " << std::hex << std::setw(8) << std::setfill('0') << cpu.GetPSR();
-    std::cout << "   wim: " << std::hex << std::setw(8) << std::setfill('0') << cpu.GetWIM();
-    std::cout << "   tbr: " << std::hex << std::setw(8) << std::setfill('0') << cpu.GetTBR();
-    std::cout << "   y: " << std::hex << std::setw(8) << std::setfill('0') << cpu.GetY() << "\n";
+    std::cout << "   psr: " << std::hex << std::setw(8) << std::setfill('0') << cpu.get_psr();
+    std::cout << "   wim: " << std::hex << std::setw(8) << std::setfill('0') << cpu.get_wim();
+    std::cout << "   tbr: " << std::hex << std::setw(8) << std::setfill('0') << cpu.get_tbr();
+    std::cout << "   y: " << std::hex << std::setw(8) << std::setfill('0') << cpu.get_y_reg() << "\n";
 
 }
 
