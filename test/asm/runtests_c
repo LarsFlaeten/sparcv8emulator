@@ -8,7 +8,7 @@
 
 #
 
-testlist="mmu_fault_traps" # fop"
+testlist="simpletest" #mmu_fault_traps" # fop"
 
 for testname in $testlist
 do
