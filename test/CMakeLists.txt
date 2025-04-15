@@ -27,6 +27,13 @@ set (GTEST_LIBRARIES gtest_main)
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++20")
 message(STATUS "Using CXX flags: " ${CMAKE_CXX_FLAGS})
 
+# compile the asm tests:
+add_custom_target(run_setup_tool
+    COMMAND ${PROJECT_SOURCE_DIR}/test/asm/runtests nt
+    COMMENT "Running setup tool before tests"
+)
+
+
 # Link runTests with what we want to test and the GTest and pthread library
 file(GLOB SOURCE_FILES *.cpp)
 message(STATUS "Compiling testfiles: " ${SOURCE_FILES})
@@ -36,3 +43,7 @@ target_link_libraries(sparcv8_tests ${GTEST_LIBRARIES} sparcv8 peripherals gdbst
 #add_test(NAME sparcv8_tests COMMAND sparcv8_tests)
 include(GoogleTest)
 gtest_discover_tests(sparcv8_tests)
+
+# Ensure the setup tool runs before tests using dependencies
+add_dependencies(sparcv8_tests run_setup_tool)
+

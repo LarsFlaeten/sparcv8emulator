@@ -13,19 +13,39 @@ testlist="sethi and or xor shift add sub \
           rd_wr call jmpl ticc mulscc \
           save_rest tadd tsub"
 
+# Save the directory the script was called from
+CALL_DIR="$(pwd)"
+
+# Get the directory where the script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Change to the script's directory
+cd "$SCRIPT_DIR" || exit 1
+
+echo "Now in script dir: $(pwd)"
+
+
 for testname in $testlist
 do
     if [ "$1" != "nc" ] 
     then
-        ./compile $testname nowarn
+        $SCRIPT_DIR/compile $SCRIPT_DIR/$testname nowarn
     fi
 
-    echo "Test '$testname':"
- 
-    if ../../bin/sparcv8_runelf -f ${testname}.aout
+    
+    if [ "$1" != "nt" ] 
     then
-        echo "Test '$testname' passed."
-    else
-        echo "Test $testname failed! ***"
+        echo "Test '$testname':"
+ 
+        if $SCRIPT_DIR/../../bin/sparcv8_runelf -f $SCRIPT_DIR/${testname}.aout
+        then
+            echo "Test '$testname' passed."
+        else
+            echo "Test $testname failed! ***"
+        fi
     fi
 done
+
+# Return to where the script was called from
+cd "$CALL_DIR" || exit 1
+echo "Returned to original dir: $(pwd)"
