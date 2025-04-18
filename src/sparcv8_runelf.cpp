@@ -29,6 +29,8 @@
 #include <iostream>
 #include <iomanip>
 #include <thread>
+#include <time.h>
+
 
 
 #if !defined(_WIN32) && !defined(_WIN64)
@@ -42,7 +44,6 @@ extern char* optarg;
 #include "dis.h"
 #include "debug.h"
 #include "gdb/gdb_server.h"
-
 
 constexpr int FOREVER =           0;
 constexpr int ONCE =              1;
@@ -155,7 +156,7 @@ int main(int argc, char **argv)
     RunSummary rs;
     if(!Disassemble && !debug_server) {
         // Run the machine
-       cpu.run(NumRunInst, &rs);
+        cpu.run(NumRunInst, &rs);
     } else if(debug_server) {
 		int server_fd = create_server_socket(debug_port);
         int client_fd = accept(server_fd, NULL, NULL);
