@@ -1,3 +1,5 @@
+#include <time.h>
+
 #include "CPU.h"
 #include "MMU.h"
 
@@ -232,7 +234,24 @@ void CPU::WRY (pDecode_t d)
         if(d->rd == 19) {
             // writes to ASR19 is a nop in this simulator
             // As we have not implemnted power down...
+            // TODO: Implement busyloop with short sleep, while checking for interrupt
+            // The main clock then have to keep ticks going on a separate thread...
             nop();
+            
+            
+            // We enter a busy loop here, only breaking for interrupts:
+            // For single processor we run the tick function from here. 
+            // TODO: For PMC, maybe just don't attach bus_tick_func?
+            // Anyway, this didnt work as expected....
+            /*
+            struct timespec req = {0, 10000000}; //10 ms
+            while(irl <= ((psr >> 8)& 0xf)) {
+                nanosleep(&req,NULL);
+                
+                if(bus_tick_func)
+                    bus_tick_func();
+            }
+            */
         } else {
             UNIMP(d);
         }
