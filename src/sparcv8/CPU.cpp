@@ -8,6 +8,23 @@
 #define PERFORMANCE_MONITOR
 #endif
 
+#if 0
+#define PROFILE_INSTRUCTIONS
+#endif
+
+
+#ifdef PROFILE_INSTRUCTIONS
+#include <array>
+#include "../dis.h"
+// Counters for different format instructions
+u32 format1_counter = 0;
+std::array<u32, 8> format2_counter{};
+std::array<u32, 128> format3_counter{};
+
+
+#endif
+
+
 //------------------------------------------------------------------------
 // Reset()
 //
@@ -202,6 +219,30 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 	lt.printStats();
 #endif
 
+#ifdef PROFILE_INSTRUCTIONS
+    //Assemble all instrucions in a vector of instr, count
+    std::vector<std::pair<std::string, int>> indexedCounters;
+    for (size_t i = 0; i < format3_counter.size(); ++i) {
+        indexedCounters.emplace_back(format3_str[i], format3_counter[i]);
+    }
+    for (size_t i = 0; i < format2_counter.size(); ++i) {
+        indexedCounters.emplace_back(format2_str[i], format2_counter[i]);
+    }
+    indexedCounters.emplace_back(format1_str, format1_counter);
+
+    // Sort by value (second in the pair)
+    std::sort(indexedCounters.begin(), indexedCounters.end(),
+        [](const auto& a, const auto& b) {
+            return a.second > b.second;  // descending order
+        }); 
+
+    for(auto& m : indexedCounters) {
+        if(m.second > 0)
+            std::cout << m.first << "\t:" << m.second << " (" << (double)m.second*100.0/(double)count << "%)\n";
+    }
+
+#endif
+
     rs.instr_count = count;
     rs.last_opcode = d->opcode; 
 
@@ -237,12 +278,18 @@ void CPU::decode(pDecode_t d)
     switch (fmt_bits) {
     // CALL
     case 1:  
+#ifdef PROFILE_INSTRUCTIONS
+        ++format1_counter;    
+#endif
         d->function     = format1;                         
         d->imm_disp_rs2 = d->opcode & LOBITS30;
         break;
 
     // SETHI, Branches
     case 0:  
+#ifdef PROFILE_INSTRUCTIONS
+        ++format2_counter[op2];    
+#endif
         d->function     = format2[op2];                     
         d->rd           = (d->opcode >> RDSTARTBIT) & LOBITS5;
         d->op_2_3       = (d->opcode >> OP2STARTBIT) & LOBITS3;
@@ -252,6 +299,9 @@ void CPU::decode(pDecode_t d)
     // Memory accesses, ALU etc.
     case 3:  
     case 2:  
+ #ifdef PROFILE_INSTRUCTIONS
+        ++format3_counter[op3 + ((fmt_bits & 1) << 6)];   
+#endif
         d->function     = format3[op3 + ((fmt_bits & 1) << 6)];
         d->rd           = (d->opcode >> RDSTARTBIT)  & LOBITS5;
         d->op_2_3       = (d->opcode >> OP3STARTBIT) & LOBITS6;
