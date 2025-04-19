@@ -37,7 +37,7 @@ void CPU::reset(u32 entry_va = 0x0)
     rs.last_opcode = 0;
 
     if(verbose)
-        os << "Resetting device, entry PC = 0x" << std::hex << entry_va << "\n";
+        os << "Resetting CPU, entry PC = 0x" << std::hex << entry_va << "\n";
     
     pc  = entry_va;
     npc = pc + 4;;
@@ -648,24 +648,27 @@ int CPU::mem_write(const u32 va, const int bytes, const u32 rd)
     u32 value;
     int ret1, ret2;
 
+    bool super = ((psr >> 7) & 0x1) == 0x1;
+
+
     
     read_reg(rd, &value);
     
     ret1 = ret2 = 0;
     switch (bytes) {
     case 1 :
-        ret1 = MMU::MemAccess<intent_store,1>(va, value, CROSS_ENDIAN);
+        ret1 = MMU::MemAccess<intent_store,1>(va, value, CROSS_ENDIAN, super);
         break;
     case 2 : 
-        ret1 = MMU::MemAccess<intent_store,2>(va, value, CROSS_ENDIAN);
+        ret1 = MMU::MemAccess<intent_store,2>(va, value, CROSS_ENDIAN, super);
         break;
     case 4 :
-        ret1 = MMU::MemAccess<intent_store,4>(va, value, CROSS_ENDIAN);
+        ret1 = MMU::MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
         break;
     case 8 :
-        ret1 = MMU::MemAccess<intent_store,4>(va, value, CROSS_ENDIAN);
+        ret1 = MMU::MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
         read_reg(rd+1, &value);
-        ret2 = MMU::MemAccess<intent_store,4>(va+4, value, CROSS_ENDIAN);
+        ret2 = MMU::MemAccess<intent_store,4>(va+4, value, CROSS_ENDIAN, super);
         break;
     }
 
