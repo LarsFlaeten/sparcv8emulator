@@ -130,7 +130,7 @@ u32 MMU::get_access_type(intent rw, bool supervisor) {
 
 u32 MMU::get_PTE(u32 virt_addr, u8& level) {
     // |  IND 1  |  IND 2  |  IND 3  |  PAGE OFFSET  |
-    // 31        23        17        11              0	
+    // 31      24 23     18 17     12 11            0	
     u32 ind1 = (virt_addr >> 24) & LOBITS8;
     u32 ind2 = (virt_addr >> 18) & LOBITS6;
     u32 ind3 = (virt_addr >> 12) & LOBITS6;
