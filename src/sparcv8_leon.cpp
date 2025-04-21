@@ -118,7 +118,7 @@ bool ParseCommand(const std::string& cmd, CPU& cpu) {
         if(cmd.length() > 4)
             opcode = std::stoul(cmd.substr(4), nullptr, 16);
         else// Fetch current instruction
-            MMU::MemAccess<intent_execute, 4>(va, opcode, CROSS_ENDIAN);
+            cpu.get_mmu().MemAccess<intent_execute, 4>(va, opcode, CROSS_ENDIAN);
         
         disDecode(va, opcode);
         
@@ -228,14 +228,15 @@ int main(int argc, char **argv)
         }
 
     // Set up CPU
-    CPU cpu(write_to_file ? os : std::cout);
+    MMU mmu;
+    CPU cpu(mmu, write_to_file ? os : std::cout);
     cpu.set_verbose(verbose);
     cpu.set_cpu_id(0);
     _cpu_ptr = &cpu;
     // Set Cache control regs as TSIM does
-    MMU::SetCCR(0x00020000);
-    MMU::SetICCR(0x10220008);
-    MMU::SetDCCR(0x18220008);
+    mmu.SetCCR(0x00020000);
+    mmu.SetICCR(0x10220008);
+    mmu.SetDCCR(0x18220008);
 
 
     // RAM
@@ -261,7 +262,7 @@ int main(int argc, char **argv)
     u32 start = base_ram/0x10000;
     u32 end = (base_ram + size_ram)/0x10000;
     for(unsigned a = start; a < end; ++a)
-        MMU::IOmap[a] = { [&RAM](u32 i)          { return RAM.Read( (i-0x40000000)/4); },
+        mmu.IOmap[a] = { [&RAM](u32 i)          { return RAM.Read( (i-0x40000000)/4); },
                           [&RAM](u32 i, u32 v)   {        RAM.Write((i-0x40000000)/4, v);    } };
  
     // Set up IO mapping
@@ -293,7 +294,7 @@ int main(int argc, char **argv)
     end = (base_ram + size_ram)/0x10000;
     
     for(unsigned a = start; a < end; ++a)
-        MMU::IOmap[a] = { [&RAM3](u32 i)          { /*std::cout << "READ: " << std::hex << i << "\n";*/ return RAM3.Read(i/4); },
+        mmu.IOmap[a] = { [&RAM3](u32 i)          { /*std::cout << "READ: " << std::hex << i << "\n";*/ return RAM3.Read(i/4); },
                          [&RAM3](u32 i, u32 v)   {  /*std::cout << "WRITE: " << std::hex << i << ": " << v << "\n";*/ RAM3.Write(i/4, v);    } };
     
     // IO mapping for AMBA AHB IO AREA
@@ -304,7 +305,7 @@ int main(int argc, char **argv)
     
     for(unsigned a = start; a <= end; ++a) {
         //std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        MMU::IOmap[a] = { [&amba_ahb](u32 i)          { return amba_ahb.Read((i-0xfff00000)/4); } ,
+        mmu.IOmap[a] = { [&amba_ahb](u32 i)          { return amba_ahb.Read((i-0xfff00000)/4); } ,
                           [&amba_ahb](u32 i, u32 v)   { amba_ahb.Write((i-0xfff00000)/4, v);    } };
     }
 
@@ -316,7 +317,7 @@ int main(int argc, char **argv)
     
     for(unsigned a = start; a <= end; ++a) {
         //std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        MMU::IOmap[a] = { [&amba_apb](u32 i)          { return amba_apb.Read((i-0x800f0000)/4); } ,
+        mmu.IOmap[a] = { [&amba_apb](u32 i)          { return amba_apb.Read((i-0x800f0000)/4); } ,
                           [&amba_apb](u32 i, u32 v)   { amba_apb.Write((i-0x800f0000)/4, v);    } };
     }
 
@@ -329,7 +330,7 @@ int main(int argc, char **argv)
     
     for(unsigned a = start; a <= end; ++a) {
         //std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        MMU::IOmap[a] = { [&apbctrl](u32 i)          { return apbctrl.Read(i); } ,
+        mmu.IOmap[a] = { [&apbctrl](u32 i)          { return apbctrl.Read(i); } ,
                           [&apbctrl](u32 i, u32 v)   { apbctrl.Write(i, v);    } };
     }
 

@@ -1,6 +1,6 @@
 #ifndef _MMU_H_
 #define _MMU_H_
-
+class MMU;
 #include "CPU.h"
 
 /* Declare facilities for detecting and dealing with different byteorder */
@@ -102,17 +102,34 @@ enum intent { intent_load=0, intent_store=1, intent_execute=2 };
 
 class MMU {
     // MMUR REGS
-    static u32 control_reg;
-    static u32 ccr, iccr, dccr;        
-    static u32 ctx_tbl_ptr;
-    static u32 ctx_n, last_ctx_n;
-    static u32 fault_status_reg;
-    static u32 fault_address_reg;
+    u32 control_reg;
+    u32 ccr, iccr, dccr;        
+    u32 ctx_tbl_ptr;
+    u32 ctx_n, last_ctx_n;
+    u32 fault_status_reg;
+    u32 fault_address_reg;
 
-    //static std::vector<std::pair<u32, SDRAM2>> base_addrs_regions;
-	//static u32 base_ram;
-	//static SDRAM2 ram;
-    public:	
+    public:
+    MMU() {
+
+        control_reg = 0x0;
+        ccr = 0x0;
+        iccr = 0x0;
+        dccr = 0x0;
+        ctx_tbl_ptr = 0x0;
+        ctx_n = 0x0;
+        last_ctx_n = 0x0;
+        fault_status_reg = 0x0;
+        fault_address_reg = 0x0;
+    
+        tlb_miss = true;
+        for(int i = 0; i < 3; ++i) {
+            tlb_pos[i] = 2;
+            for(int j = 0; j < 3; ++j) {
+                tlbs[i][j] = {0,0,0};
+            }
+        }
+    }	
 	struct TLBEntry {
 		u32 va_index;
 		u32 PTE;
@@ -121,58 +138,58 @@ class MMU {
 
     private:
     
-    static TLBEntry tlbs[3][3];
-	static int tlb_pos[3];
+    TLBEntry tlbs[3][3];
+	int tlb_pos[3];
 	   
-    static bool tlb_miss;
+    bool tlb_miss;
 public:
    
-    static std::pair<  std::function<u32(u32)>,
+    std::pair<  std::function<u32(u32)>,
                 std::function<void(u32,u32)>
-             > IOmap[];
+             > IOmap[0x10000];
 
-    static void SetControlReg(u32 value) {
+    void SetControlReg(u32 value) {
         control_reg = value;
     }
-    static u32 GetControlReg() {return control_reg;}
+    u32 GetControlReg() {return control_reg;}
  
-    static bool GetEnabled() {return control_reg & 0x1;}
+    bool GetEnabled() {return control_reg & 0x1;}
  
-    static bool TLBMiss() {return tlb_miss;}
+    bool TLBMiss() {return tlb_miss;}
     
-    static bool GetNoFault() {return (MMU::GetControlReg() & 0x2) >> 1 == 0x1;};
+    bool GetNoFault() {return (control_reg & 0x2) >> 1 == 0x1;};
 
-    static void SetCCR(u32 value) {
+    void SetCCR(u32 value) {
         ccr = value;
     }
-    static u32 GetCCR() {return ccr;}
+    u32 GetCCR() {return ccr;}
      
-    static void SetICCR(u32 value) {
+    void SetICCR(u32 value) {
         iccr = value;
     }
-    static u32 GetICCR() {return iccr;}
+    u32 GetICCR() {return iccr;}
      
-    static void SetDCCR(u32 value) {
+    void SetDCCR(u32 value) {
         dccr = value;
     }
-    static u32 GetDCCR() {return dccr;}
+    u32 GetDCCR() {return dccr;}
  
-    static void SetCtxTblPtr(u32 value) {
+    void SetCtxTblPtr(u32 value) {
         ctx_tbl_ptr = value;
     }
-    static u32 GetCtxTblPtr() {return ctx_tbl_ptr;}
+    u32 GetCtxTblPtr() {return ctx_tbl_ptr;}
  
-    static void SetCtxNumber(u32 value) {
+    void SetCtxNumber(u32 value) {
         ctx_n = value;
     }
-    static u32 GetCtxNumber() {return ctx_n;}
+    u32 GetCtxNumber() {return ctx_n;}
  
-    static u32 GetFaultAddress() {return fault_address_reg;}
+    u32 GetFaultAddress() {return fault_address_reg;}
 
-    static u32 GetFaultStatus() {return fault_status_reg;}
-    static void ClearFaultStatus() {fault_status_reg = 0x0;}
+    u32 GetFaultStatus() {return fault_status_reg;}
+    void ClearFaultStatus() {fault_status_reg = 0x0;}
 
-    static void reset() {
+    void reset() {
         control_reg = 0x0;
         ccr = 0x0;
         iccr = 0x0;
@@ -192,10 +209,10 @@ public:
         }
     }
 
-    static void nop() { return; }
+    void nop() { return; }
 
     // FLush TLB
-    static void flush() { 
+    void flush() { 
         for(int i = 0; i < 3; ++i)
             for(int j = 0; j < 3; ++j) {
                 tlbs[j][i] = {0, 0, 0};
@@ -205,7 +222,7 @@ public:
         return; 
     }
 
-	static TLBEntry TLBLookup(intent rw, u32 virt_addr) {
+	TLBEntry TLBLookup(intent rw, u32 virt_addr) {
         //tlb_miss = true;
         //return 0;
 
@@ -242,7 +259,7 @@ public:
 		return {0,0,0};
 	}
 
-	static void TLBCache(intent rw, u32 virt_addr, u32 PTE, u8 level) {
+	void TLBCache(intent rw, u32 virt_addr, u32 PTE, u8 level) {
 		// Store PTE in TLB with va index
 		u32 index_va;
 		switch(level) {
@@ -261,7 +278,7 @@ public:
         last_ctx_n = ctx_n;
     }
 
-    static u32 MemAccessBypassRead4(u32 pa, bool reverse) {
+    u32 MemAccessBypassRead4(u32 pa, bool reverse) {
         auto S = [=](u32 v) -> u32
                 { return (reverse != CROSS_ENDIAN) ? SwapBytes(v,4) : v; };
         
@@ -272,19 +289,19 @@ public:
     }
 
 
-    static void MemAccessBypassWrite4(u32 pa, u32 value, bool reverse) {
+    void MemAccessBypassWrite4(u32 pa, u32 value, bool reverse) {
         auto S = [=](u32 v) -> u32
                 { return (reverse != CROSS_ENDIAN) ? SwapBytes(v,4) : v; };
         IOmap[pa/0x10000].second(pa & ~3, S(value));
     }
 
 
-    static u32 get_access_type(intent rw, bool supervisor);
+    u32 get_access_type(intent rw, bool supervisor);
     
-    static u32 get_PTE(u32 virt_addr, u8& level);
+    u32 get_PTE(u32 virt_addr, u8& level);
 
 
-    static u32 translate_va(u32 virt_addr, bool supervisor, intent rw=intent_load, bool report_faults = true);
+    u32 translate_va(u32 virt_addr, bool supervisor, intent rw=intent_load, bool report_faults = true);
       
     
     
@@ -298,7 +315,7 @@ public:
      * <0 - MMU FAULT
      */
     template<intent rw=intent_load, unsigned size = 4>
-    int static MemAccess(u32 virt_addr, u32& value, bool reverse, bool supervisor = true, bool report_faults = true)
+    int MemAccess(u32 virt_addr, u32& value, bool reverse, bool supervisor = true, bool report_faults = true)
     {
         u32 phys_addr = 0x0;
         u8 level = 0;

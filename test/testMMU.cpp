@@ -44,7 +44,7 @@ protected:
     // Code here will be called immediately after each test (right
     // before the destructor).
     virtual void TearDown();
-
+    MMU mmu;
     CPU cpu;
     //SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
     SDRAM2 RAM;  // IO: 0x0, 16 MB of RAM
@@ -93,7 +93,7 @@ protected:
 
 
 
-MMUTest::MMUTest() : RAM(0x01000000)
+MMUTest::MMUTest() : cpu(mmu), RAM(0x01000000)
 {  
    	
 
@@ -115,19 +115,19 @@ void MMUTest::SetUp()
     u32 start = base_ram/0x10000;
     u32 end = (base_ram + size_ram)/0x10000;
     for(unsigned a = start; a < end; ++a) {
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read( (i-0x60000000)/4); },
+        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read( (i-0x60000000)/4); },
                           [&](u32 i, u32 v)   {        RAM.Write((i-0x60000000)/4, v);} };
 	}   
     // Set up IO mapping
     // TODO: Move this MMU functions?
     for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
+        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
                          [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     cpu.reset(entry_va);
-    MMU::reset(); 
+    mmu.reset(); 
 }
 
 void MMUTest::TearDown()
@@ -146,7 +146,7 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
     // Set up IO mapping
     // TODO: Move this MMU functions?
     for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
+        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
                          [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset
@@ -154,7 +154,7 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
     cpu.Reset(entry_va);
  */
    
-    EXPECT_FALSE(MMU::GetEnabled());
+    EXPECT_FALSE(mmu.GetEnabled());
  
 
     // adress to indicate MMU op is taken from LOCALREG4
@@ -166,7 +166,7 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set new register value:
-    EXPECT_EQ(MMU::GetControlReg(), 0x0011);
+    EXPECT_EQ(mmu.GetControlReg(), 0x0011);
 
 
 }
@@ -178,7 +178,7 @@ TEST_F(MMUTest, MMUEnableDisable)
     // Set up IO mapping
     // TODO: Move this MMU functions?
     for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
+        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
                          [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset
@@ -186,7 +186,7 @@ TEST_F(MMUTest, MMUEnableDisable)
     cpu.Reset(entry_va);
 */ 
   
-    EXPECT_FALSE(MMU::GetEnabled());
+    EXPECT_FALSE(mmu.GetEnabled());
  
     // adress to indicate MMU op is taken from LOCALREG4
     cpu.write_reg(0x00011, LOCALREG0); //0x0000 is VA/adress in MMU regs
@@ -196,13 +196,13 @@ TEST_F(MMUTest, MMUEnableDisable)
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set enabled bit to 1:
-    EXPECT_TRUE(MMU::GetEnabled());
+    EXPECT_TRUE(mmu.GetEnabled());
 
     cpu.write_reg(0x00010, LOCALREG0); //0x0000 is VA/adress in MMU regs
  
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
     // MMU shuld now have set enabled bit to 0:
-    EXPECT_FALSE(MMU::GetEnabled());
+    EXPECT_FALSE(mmu.GetEnabled());
 
 
 }
@@ -210,10 +210,10 @@ TEST_F(MMUTest, MMUEnableDisable)
 
 TEST_F(MMUTest, MMUInitCtxTblPtr)
 {
-    MMU::reset();
+    mmu.reset();
 
     // MMU shuld now have set new register value:
-    EXPECT_EQ(MMU::GetCtxTblPtr(), 0x0);
+    EXPECT_EQ(mmu.GetCtxTblPtr(), 0x0);
 
     // adress to indicate MMU op is taken from LOCALREG4
     cpu.write_reg(0x4000200, LOCALREG0); //0x...... is value to write
@@ -223,14 +223,14 @@ TEST_F(MMUTest, MMUInitCtxTblPtr)
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set new register value:
-    EXPECT_EQ(MMU::GetCtxTblPtr(), 0x4000200);
+    EXPECT_EQ(mmu.GetCtxTblPtr(), 0x4000200);
 
 }
 
 TEST_F(MMUTest, MMUInitSetContext)
 {  
-    MMU::reset();
-    EXPECT_EQ(MMU::GetCtxNumber(), 0x0);
+    mmu.reset();
+    EXPECT_EQ(mmu.GetCtxNumber(), 0x0);
  
     // adress to indicate MMU op is taken from LOCALREG4
     cpu.write_reg(0x42, LOCALREG0); //0x0042 is value to write
@@ -240,7 +240,7 @@ TEST_F(MMUTest, MMUInitSetContext)
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now ave new context:
-    EXPECT_EQ(MMU::GetCtxNumber(), 0x42);
+    EXPECT_EQ(mmu.GetCtxNumber(), 0x42);
 
 }
 
@@ -272,21 +272,21 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite)
     u32 end = amba_end/0x10000;
 
     for(unsigned a = start; a<= end; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return amba.Read(i); },
+        mmu.IOmap[a] = { [&](u32 i)          { return amba.Read(i); },
                          [&](u32 i, u32 v)   { amba.Write(i, v);    } };
 
     amba.Write(0xfffffff0, 0x07401039);
 
-    auto v = MMU::MemAccessBypassRead4(0xfffffff0, true);
+    auto v = mmu.MemAccessBypassRead4(0xfffffff0, true);
     ASSERT_EQ(v, 0x07401039);
     ASSERT_TRUE(CROSS_ENDIAN); 
 
     for(u32 a = 0xfff00000; a < 0xfffffff0; a += 0x10) {
-        MMU::MemAccessBypassWrite4(a, a, true);
+        mmu.MemAccessBypassWrite4(a, a, true);
     }
 
     for(u32 a = 0xfff00000; a < 0xfffffff0; a += 0x10) {
-        auto v = MMU::MemAccessBypassRead4(a, true);
+        auto v = mmu.MemAccessBypassRead4(a, true);
     
         ASSERT_EQ(v, a);
     }
@@ -300,7 +300,7 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite2)
    
     // MMU shuld be off for this test, as we mix bypass
     // and normal MMU ops (without virtual mapping):
-    EXPECT_FALSE(MMU::GetEnabled());
+    EXPECT_FALSE(mmu.GetEnabled());
 
 
     AMBA_mock amba;
@@ -313,21 +313,21 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite2)
     u32 end = amba_end/0x10000;
 
     for(unsigned a = start; a<= end; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return amba.Read(i); },
+        mmu.IOmap[a] = { [&](u32 i)          { return amba.Read(i); },
                          [&](u32 i, u32 v)   { amba.Write(i, v);    } };
 
     amba.Write(0xfffffff0, 0x07401039);
 
-    u32 v; MMU::MemAccess<intent_load>(0xfffffff0, v, true);
+    u32 v; mmu.MemAccess<intent_load>(0xfffffff0, v, true);
     ASSERT_EQ(v, 0x07401039);
     ASSERT_TRUE(CROSS_ENDIAN); 
 
     for(u32 a = 0xfff00000; a < 0xfffffff0; a += 0x10) {
-        MMU::MemAccessBypassWrite4(a, a, true);
+        mmu.MemAccessBypassWrite4(a, a, true);
     }
 
     for(u32 a = 0xfff00000; a < 0xfffffff0; a += 0x10) {
-        u32 v; MMU::MemAccess<intent_load>(a, v, true);
+        u32 v; mmu.MemAccess<intent_load>(a, v, true);
     
         ASSERT_EQ(v, a);
     }
@@ -338,9 +338,9 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite2)
 
 TEST_F(MMUTest, CacheControlregs)
 {
-    u32 ccr = MMU::GetCCR();
-    u32 iccr = MMU::GetICCR();
-    u32 dccr = MMU::GetDCCR();
+    u32 ccr = mmu.GetCCR();
+    u32 iccr = mmu.GetICCR();
+    u32 dccr = mmu.GetDCCR();
 
     ASSERT_EQ(ccr, 0);
     ASSERT_EQ(iccr, 0);
@@ -354,14 +354,14 @@ TEST_F(MMUTest, CacheControlregs)
     // dcfg         Dcache config register            0x18220008
     // asr17        Processor config register         0x00000d07
 
-    MMU::SetCCR(0x00020000);
-    MMU::SetICCR(0x10220008);
-    MMU::SetDCCR(0x18220008);
+    mmu.SetCCR(0x00020000);
+    mmu.SetICCR(0x10220008);
+    mmu.SetDCCR(0x18220008);
 
 
-    ccr = MMU::GetCCR();
-    iccr = MMU::GetICCR();
-    dccr = MMU::GetDCCR();
+    ccr = mmu.GetCCR();
+    iccr = mmu.GetICCR();
+    dccr = mmu.GetDCCR();
 
     ASSERT_EQ(ccr, 0x00020000);
     ASSERT_EQ(iccr, 0x10220008);
@@ -376,106 +376,106 @@ TEST_F(MMUTest, CacheControlregs)
 // Check TLB on 4Kb page sizes (lvl 3) with different intents, one context
 TEST_F(MMUTest, MMUTLBCacheLvl3)
 {
-    ASSERT_EQ(MMU::GetCtxNumber(), 0);
+    ASSERT_EQ(mmu.GetCtxNumber(), 0);
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x600001e;
 
-	auto tlb = MMU::TLBLookup(intent_execute, va);
+	auto tlb = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 	// Cache the pa:
-	MMU::TLBCache(intent_execute, va, PTE, 3);
+	mmu.TLBCache(intent_execute, va, PTE, 3);
  
-	auto tlb3 = MMU::TLBLookup(intent_execute, va);
+	auto tlb3 = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 	
 	// Another intent, same context
-	auto tlb4 = MMU::TLBLookup(intent_load, va);
+	auto tlb4 = mmu.TLBLookup(intent_load, va);
 	ASSERT_EQ(tlb4.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 	
-	MMU::TLBCache(intent_load, va, PTE, 3);
- 	auto tlb5 = MMU::TLBLookup(intent_load, va);
+	mmu.TLBCache(intent_load, va, PTE, 3);
+ 	auto tlb5 = mmu.TLBLookup(intent_load, va);
 	ASSERT_EQ(tlb5.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
 	// Go through a whole memory page, should all get back TLB on the same page
 	va = 0x60000000;
 	for(int i = 0; i < 0xfff/4; i++) {
 	 	va += 4;
-		auto tlb_i= MMU::TLBLookup(intent_load, va);
+		auto tlb_i= mmu.TLBLookup(intent_load, va);
 		ASSERT_EQ(tlb_i.PTE, PTE);
-		ASSERT_FALSE(MMU::TLBMiss());
+		ASSERT_FALSE(mmu.TLBMiss());
 	}
 
 	va += 4; // This should tip over to next page, and result in a miss
-	auto tlb_n= MMU::TLBLookup(intent_load, va);
+	auto tlb_n= mmu.TLBLookup(intent_load, va);
 	ASSERT_EQ(tlb_n.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 	
 	// Cache a few other pages:
-	MMU::TLBCache(intent_load, 0x60001000, 0x600011e, 3);
-	MMU::TLBCache(intent_load, 0x60002000, 0x600021e, 3);
-	MMU::TLBCache(intent_load, 0x60003000, 0x600031e, 3);
+	mmu.TLBCache(intent_load, 0x60001000, 0x600011e, 3);
+	mmu.TLBCache(intent_load, 0x60002000, 0x600021e, 3);
+	mmu.TLBCache(intent_load, 0x60003000, 0x600031e, 3);
 
-	tlb_n= MMU::TLBLookup(intent_load, 0x60001ff0);
+	tlb_n= mmu.TLBLookup(intent_load, 0x60001ff0);
 	ASSERT_EQ(tlb_n.PTE,  0x600011e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 	
-	tlb_n= MMU::TLBLookup(intent_load, 0x60002ff0);
+	tlb_n= mmu.TLBLookup(intent_load, 0x60002ff0);
 	ASSERT_EQ(tlb_n.PTE,  0x600021e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 	
-	tlb_n= MMU::TLBLookup(intent_load, 0x60003ff0);
+	tlb_n= mmu.TLBLookup(intent_load, 0x60003ff0);
 	ASSERT_EQ(tlb_n.PTE,  0x600031e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
 	// The first page shuold now be out of the cache	
-	tlb_n= MMU::TLBLookup(intent_load, 0x60000d90);
+	tlb_n= mmu.TLBLookup(intent_load, 0x60000d90);
 	ASSERT_EQ(tlb_n.PTE,  0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
 
 	// Cache on another intent, check that intent_load is unaffected:
 	// Cache a few other pages:
-	MMU::TLBCache(intent_store, 0x60007000, 0x600071e, 3);
-	MMU::TLBCache(intent_store, 0x60008000, 0x600081e, 3);
-	MMU::TLBCache(intent_store, 0x60009000, 0x600091e, 3);
+	mmu.TLBCache(intent_store, 0x60007000, 0x600071e, 3);
+	mmu.TLBCache(intent_store, 0x60008000, 0x600081e, 3);
+	mmu.TLBCache(intent_store, 0x60009000, 0x600091e, 3);
 
 
-	tlb_n= MMU::TLBLookup(intent_load, 0x60001ff0);
+	tlb_n= mmu.TLBLookup(intent_load, 0x60001ff0);
 	ASSERT_EQ(tlb_n.PTE,  0x600011e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 	
-	tlb_n= MMU::TLBLookup(intent_load, 0x60002ff0);
+	tlb_n= mmu.TLBLookup(intent_load, 0x60002ff0);
 	ASSERT_EQ(tlb_n.PTE,  0x600021e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 	
-	tlb_n= MMU::TLBLookup(intent_load, 0x60003ff0);
+	tlb_n= mmu.TLBLookup(intent_load, 0x60003ff0);
 	ASSERT_EQ(tlb_n.PTE,  0x600031e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-	tlb_n= MMU::TLBLookup(intent_load, 0x60000d90);
+	tlb_n= mmu.TLBLookup(intent_load, 0x60000d90);
 	ASSERT_EQ(tlb_n.PTE,  0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-	tlb_n= MMU::TLBLookup(intent_store, 0x60007ff0);
+	tlb_n= mmu.TLBLookup(intent_store, 0x60007ff0);
 	ASSERT_EQ(tlb_n.PTE,  0x600071e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 	
-	tlb_n= MMU::TLBLookup(intent_store, 0x60008ff0);
+	tlb_n= mmu.TLBLookup(intent_store, 0x60008ff0);
 	ASSERT_EQ(tlb_n.PTE,  0x600081e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 	
-	tlb_n= MMU::TLBLookup(intent_store, 0x60009ff0);
+	tlb_n= mmu.TLBLookup(intent_store, 0x60009ff0);
 	ASSERT_EQ(tlb_n.PTE,  0x600091e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-	tlb_n = MMU::TLBLookup(intent_execute, 0x600000aa);
+	tlb_n = mmu.TLBLookup(intent_execute, 0x600000aa);
 	ASSERT_EQ(tlb_n.PTE,  0x600001e);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 	
 	
 }
@@ -483,65 +483,65 @@ TEST_F(MMUTest, MMUTLBCacheLvl3)
 // Check TLB on all lvls, without direct mapping va to phys 
 TEST_F(MMUTest, MMUTLBCacheAllLvls)
 {
-    ASSERT_EQ(MMU::GetCtxNumber(), 0);
+    ASSERT_EQ(mmu.GetCtxNumber(), 0);
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x200001e;
 
-	auto tlb2 = MMU::TLBLookup(intent_execute, va);
+	auto tlb2 = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb2.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 	// Cache the PTE on lvel 1:
-	MMU::TLBCache(intent_execute, va, PTE, 1);
+	mmu.TLBCache(intent_execute, va, PTE, 1);
  
     // we should now be bale to look up across 16 MB of linear memory without a TLB miss
-	auto tlb3 = MMU::TLBLookup(intent_execute, va);
+	auto tlb3 = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x60ffffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
 	// Cache an new PTE on level 2, 0x61000000 - 0x61003FFF, 256 KB range
     PTE = 0x110001e;
-    MMU::TLBCache(intent_execute, 0x61000000, PTE, 2);
+    mmu.TLBCache(intent_execute, 0x61000000, PTE, 2);
  
     // we should now be able to look up across 256 kb of linear memory without a TLB miss
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x6103ffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61040000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
 	// Cache an new PTE on level 3, 0x61000000 - 0x61003FFF, 4 KB range
     PTE = 0xf00001e;
-    MMU::TLBCache(intent_execute, 0x62000000, PTE, 3);
+    mmu.TLBCache(intent_execute, 0x62000000, PTE, 3);
  
     // we should now be able to look up across 4 kb of linear memory without a TLB miss
-    tlb3 = MMU::TLBLookup(intent_execute, 0x62000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x62000000);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x62000fff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x62000fff);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x62001000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x62001000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
 
 }
@@ -550,75 +550,75 @@ TEST_F(MMUTest, MMUTLBCacheAllLvls)
 // Check TLB on lvls 1-2
 TEST_F(MMUTest, MMUTLBCacheLvl12)
 {
-    ASSERT_EQ(MMU::GetCtxNumber(), 0);
+    ASSERT_EQ(mmu.GetCtxNumber(), 0);
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x600001e;
 
-	auto tlb2 = MMU::TLBLookup(intent_execute, va);
+	auto tlb2 = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb2.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 	// Cache the PTE on lvel 1:
-	MMU::TLBCache(intent_execute, va, PTE, 1);
+	mmu.TLBCache(intent_execute, va, PTE, 1);
  
     // we should now be bale to look up across 16 MB of linear memory without a TLB miss
-	auto tlb3 = MMU::TLBLookup(intent_execute, va);
+	auto tlb3 = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x60ffffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
 	// Cache an new PTE on level 2, 0x61000000 - 0x61003FFF, 256 KB range
     PTE = 0x610001e;
-    MMU::TLBCache(intent_execute, 0x61000000, PTE, 2);
+    mmu.TLBCache(intent_execute, 0x61000000, PTE, 2);
  
     // we should now be able to look up across 156 kb MB of linear memory without a TLB miss
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x6103ffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61040000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
     // Switch context, all TLBS should now be invalid
-    MMU::SetCtxNumber(42);
-	ASSERT_EQ(MMU::GetCtxNumber(), 42);
+    mmu.SetCtxNumber(42);
+	ASSERT_EQ(mmu.GetCtxNumber(), 42);
 	
-    tlb3 = MMU::TLBLookup(intent_execute, va);
+    tlb3 = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x60ffffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x6103ffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61040000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
 
 
@@ -627,74 +627,74 @@ TEST_F(MMUTest, MMUTLBCacheLvl12)
 
 TEST_F(MMUTest, MMUTLBCacheFlush)
 {
-    ASSERT_EQ(MMU::GetCtxNumber(), 0);
+    ASSERT_EQ(mmu.GetCtxNumber(), 0);
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x600001e;
 
-	auto tlb2 = MMU::TLBLookup(intent_execute, va);
+	auto tlb2 = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb2.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 	// Cache the PTE on lvel 1:
-	MMU::TLBCache(intent_execute, va, PTE, 1);
+	mmu.TLBCache(intent_execute, va, PTE, 1);
  
     // we should now be bale to look up across 16 MB of linear memory without a TLB miss
-	auto tlb3 = MMU::TLBLookup(intent_execute, va);
+	auto tlb3 = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x60ffffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
 	// Cache an new PTE on level 2, 0x61000000 - 0x61003FFF, 256 KB range
     PTE = 0x610001e;
-    MMU::TLBCache(intent_execute, 0x61000000, PTE, 2);
+    mmu.TLBCache(intent_execute, 0x61000000, PTE, 2);
  
     // we should now be able to look up across 156 kb MB of linear memory without a TLB miss
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x6103ffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
 	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(MMU::TLBMiss());
+	ASSERT_FALSE(mmu.TLBMiss());
 
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61040000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
     // Flush Cache, all TLBS should now be invalid
-    MMU::flush();
+    mmu.flush();
 	
-    tlb3 = MMU::TLBLookup(intent_execute, va);
+    tlb3 = mmu.TLBLookup(intent_execute, va);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x60ffffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61000000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x6103ffff);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
-    tlb3 = MMU::TLBLookup(intent_execute, 0x61040000);
+    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
 	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(MMU::TLBMiss());
+	ASSERT_TRUE(mmu.TLBMiss());
 
 
 
@@ -704,7 +704,7 @@ TEST_F(MMUTest, MMUTLBCacheFlush)
 
 
 void mmu_table_init(u32 end_of_mem);
-void mmu_init(void);
+void mmu_init(MMU& mmu);
 
 #define SRMMU_PGDIR_MASK (~(SRMMU_PGDIR_SIZE-1))
 #define SRMMU_PGDIR_SIZE (1UL << SRMMU_PGDIR_SHIFT)
@@ -738,7 +738,7 @@ void mmu_init(void);
 TEST_F(MMUTest, MMUTables)
 {
     // MMU shuld be off in the start
-    ASSERT_FALSE(MMU::GetEnabled());
+    ASSERT_FALSE(mmu.GetEnabled());
 
  	// Point the MMU table pointer to the correct location in RAM:
 	// MUMU Tables base: 0x60002000 (ctx)
@@ -748,13 +748,13 @@ TEST_F(MMUTest, MMUTables)
 	_mmu_ctx0_ffd_level3 =  reinterpret_cast<u32*>(RAM.getPtr(0x2900 / 4));
 
     // Test some values are written to correct location
-    MMU::MemAccessBypassWrite4(0x60002000, 0xcafebabe, CROSS_ENDIAN);
+    mmu.MemAccessBypassWrite4(0x60002000, 0xcafebabe, CROSS_ENDIAN);
     ASSERT_EQ(_mmu_ctx_table[0], 0xcafebabe);
 
     _mmu_ctx0_level1[0] = 0xbaccecaf;
     _mmu_ctx0_level1[255] = 0xdeadbeef;
-    u32 r1 = MMU::MemAccessBypassRead4(0x60002400, CROSS_ENDIAN);
-    u32 r2 = MMU::MemAccessBypassRead4(0x600027fc, CROSS_ENDIAN);
+    u32 r1 = mmu.MemAccessBypassRead4(0x60002400, CROSS_ENDIAN);
+    u32 r2 = mmu.MemAccessBypassRead4(0x600027fc, CROSS_ENDIAN);
     ASSERT_EQ(r1, 0xbaccecaf);
     ASSERT_EQ(r2, 0xdeadbeef);
 
@@ -762,25 +762,25 @@ TEST_F(MMUTest, MMUTables)
 
 
 	mmu_table_init(0x61000000);
-	mmu_init();
+	mmu_init(mmu);
 
 
-    ASSERT_TRUE(MMU::GetEnabled());
+    ASSERT_TRUE(mmu.GetEnabled());
 
     // Fill up RAM with the values of each words physical address:
     for(u32 pa = 0x60010000; pa < 0x61000000; pa += 4)
-       MMU::MemAccessBypassWrite4(pa, pa, CROSS_ENDIAN); 
+       mmu.MemAccessBypassWrite4(pa, pa, CROSS_ENDIAN); 
 
     // Check values
     for(u32 pa = 0x60010000; pa < 0x61000000; pa += 4) {
-        u32 val = MMU::MemAccessBypassRead4(pa, CROSS_ENDIAN);
+        u32 val = mmu.MemAccessBypassRead4(pa, CROSS_ENDIAN);
         ASSERT_EQ(val, pa);
     }
 
     // Read memory through MMU translation for main range (maps 1-1 to physical)
     for(u32 va = 0x60010000; va < 0x61000000; va += 4) {
         u32 val;
-        int ret = MMU::MemAccess<intent_load>(va, val, CROSS_ENDIAN);
+        int ret = mmu.MemAccess<intent_load>(va, val, CROSS_ENDIAN);
         ASSERT_EQ(ret, 0);
         ASSERT_EQ(val, va);
     }
@@ -792,7 +792,7 @@ TEST_F(MMUTest, MMUTables)
     // 0xf1000000 - 0xfbffffff mapped to 0x61000000 ++ (but will fail, outside physical memory)
     for(u32 va = 0xF0010000; va < 0xF1000000; va += 4) {
         u32 val;
-        int ret = MMU::MemAccess<intent_load>(va, val, CROSS_ENDIAN);
+        int ret = mmu.MemAccess<intent_load>(va, val, CROSS_ENDIAN);
         //std::cout << std::hex << "0x" << va << " --> " << "0x" << val << "(" << std::dec << ret << ")\n";
        if(va >= 0xf0010000 && va < 0xf1000000) { // Same as 0x60010000 ++
             ASSERT_EQ(ret, 0);
@@ -803,38 +803,38 @@ TEST_F(MMUTest, MMUTables)
     
     // Area 0xF1000000 - 0xFBFFFFFF mapped, but no physical memory there
     u32 val;
-    int ret = MMU::MemAccess<intent_load>(0xF1000000, val, CROSS_ENDIAN);
+    int ret = mmu.MemAccess<intent_load>(0xF1000000, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xF1000000);
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xF1000000);
 
-    ret = MMU::MemAccess<intent_load>(0xFBFFFFFC, val, CROSS_ENDIAN);
+    ret = mmu.MemAccess<intent_load>(0xFBFFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xFBFFF000); // Corresponing page
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xFBFFF000); // Corresponing page
 
     // Area not mapped,  * 0xFC000000-0xFFCFFFFF: Not Mapped
-    ret = MMU::MemAccess<intent_load>(0xFC000000, val, CROSS_ENDIAN);
+    ret = mmu.MemAccess<intent_load>(0xFC000000, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xFC000000);
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xFC000000);
 
-    ret = MMU::MemAccess<intent_load>(0xFFCFFFFC, val, CROSS_ENDIAN);
+    ret = mmu.MemAccess<intent_load>(0xFFCFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xFFCFF000);
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFCFF000);
 
 
     // Area not mapped,   * 0xFFD3FFFF-0xFFFFFFFF: Not Mapped
-    ret = MMU::MemAccess<intent_load>(0xFFD3FFFC, val, CROSS_ENDIAN);
+    ret = mmu.MemAccess<intent_load>(0xFFD3FFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xFFD3F000);
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFD3F000);
 
-    ret = MMU::MemAccess<intent_load>(0xFFFFFFFC, val, CROSS_ENDIAN);
+    ret = mmu.MemAccess<intent_load>(0xFFFFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xFFFFF000);
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFFFF000);
 
  
     // Read memory through MMU translation for 81 kb PROM (mapped to end of ram)
     for(u32 va = 0xFFD00000; va < 0xFFD14000; va += 4) {
         u32 val;
-        u32 ret = MMU::MemAccess<intent_load>(va, val, CROSS_ENDIAN);
+        u32 ret = mmu.MemAccess<intent_load>(va, val, CROSS_ENDIAN);
         //std::cout << std::hex << "0x" << va << " --> " << "0x" << val << "(" << std::dec << ret << ")\n";
         ASSERT_EQ(ret, 0);
         
@@ -845,7 +845,7 @@ TEST_F(MMUTest, MMUTables)
     // ps_move_startup 00008820  ffd03170  60c5c8a0  
     // TODO: Revisit this test, it faild but not sure it is correct
     
-    //ret = MMU::MemAccess<intent_execute>(0xffd03170, val, CROSS_ENDIAN);
+    //ret = mmu.MemAccess<intent_execute>(0xffd03170, val, CROSS_ENDIAN);
     //ASSERT_EQ(val, 0x60c5c8a0); 
 
 
@@ -855,7 +855,7 @@ TEST_F(MMUTest, MMUTables)
 TEST_F(MMUTest, MMUFaults)
 {
     // MMU shuld be off in the start
-    ASSERT_FALSE(MMU::GetEnabled());
+    ASSERT_FALSE(mmu.GetEnabled());
 
  	// Point the MMU table pointer to the correct location in RAM:
 	// MUMU Tables base: 0x60002000 (ctx)
@@ -865,8 +865,8 @@ TEST_F(MMUTest, MMUFaults)
 	_mmu_ctx0_ffd_level3 =  reinterpret_cast<u32*>(RAM.getPtr(0x2900 / 4));
 
 	mmu_table_init(0x61000000);
-	mmu_init();
-    ASSERT_TRUE(MMU::GetEnabled());
+	mmu_init(mmu);
+    ASSERT_TRUE(mmu.GetEnabled());
 
 
 
@@ -874,9 +874,9 @@ TEST_F(MMUTest, MMUFaults)
     u32 val;
     int ret;
     // Should flag unaligned:
-    ret = MMU::MemAccess<intent_load>(0xF, val, CROSS_ENDIAN);
+    ret = mmu.MemAccess<intent_load>(0xF, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -3);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0x0); // Corresponding page
+    ASSERT_EQ(mmu.GetFaultAddress(), 0x0); // Corresponding page
 
     // Get a level 3 and level 1 physical address we can play with
     u32 pa_l3 = _mmu_ctx0_ffd_level3[0] >> 8;
@@ -884,49 +884,49 @@ TEST_F(MMUTest, MMUFaults)
 
 
     // Create supervisor page @ va 0xffd00000, try to access with user:
-    MMU::flush();
+    mmu.flush();
     _mmu_ctx0_ffd_level3[0] = (pa_l3 << 8) | SRMMU_ACC_S_ALL | SRMMU_ET_PTE;
-    ret = MMU::MemAccess<intent_load>(0xffd00000, val, CROSS_ENDIAN, false);
+    ret = mmu.MemAccess<intent_load>(0xffd00000, val, CROSS_ENDIAN, false);
     
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xffd00000);
-    ASSERT_EQ((MMU::GetFaultStatus() >> 2) & 0x7, 3); // Privilege error
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xffd00000);
+    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x7, 3); // Privilege error
 
     // Lvl 3 Supervisor page read only. Execute and write should fail, load shuold be fine
-    MMU::flush();
+    mmu.flush();
     _mmu_ctx0_ffd_level3[0] = (pa_l3 << 8) | (0x0 << 2) | SRMMU_ET_PTE;
-    ret = MMU::MemAccess<intent_load>(0xffd00000, val, CROSS_ENDIAN, true);
+    ret = mmu.MemAccess<intent_load>(0xffd00000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0xffd00000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0xffd00000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xffd00000);
-    ASSERT_EQ((MMU::GetFaultStatus() >> 2) & 0x7, 2); // Protection error
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xffd00000);
+    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x7, 2); // Protection error
 
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0xffd00000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0xffd00000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0xffd00000);
-    ASSERT_EQ((MMU::GetFaultStatus() >> 2) & 0x3, 2); // Protection error
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xffd00000);
+    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x3, 2); // Protection error
 
     // Lvl 1 Supervisor page read only. Execute and write should fail, load shuold be fine
-    MMU::flush();
+    mmu.flush();
     _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x0 << 2) | SRMMU_ET_PTE;
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(MMU::GetFaultAddress(),  0x60000000);
-    ASSERT_EQ((MMU::GetFaultStatus() >> 2) & 0x7, 2); // Protection error
+    ASSERT_EQ(mmu.GetFaultAddress(),  0x60000000);
+    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x7, 2); // Protection error
 
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(MMU::GetFaultAddress(), 0x60000000);
-    ASSERT_EQ((MMU::GetFaultStatus() >> 2) & 0x7, 2); // Protection error
+    ASSERT_EQ(mmu.GetFaultAddress(), 0x60000000);
+    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x7, 2); // Protection error
 
     // All Access types
     
@@ -934,217 +934,217 @@ TEST_F(MMUTest, MMUFaults)
     // ACC 0 - User and super read only
     _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x0 << 2) | SRMMU_ET_PTE;
     
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
     // ACC 1 - User and super read/write
     _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x1 << 2) | SRMMU_ET_PTE;
     
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
     // ACC 2 - User and super read/execute
     _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x2 << 2) | SRMMU_ET_PTE;
     
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
     // ACC 3 - User and super read/write/execute
     _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x3 << 2) | SRMMU_ET_PTE;
     
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
     // ACC 4 - User and super execute only
     _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x4 << 2) | SRMMU_ET_PTE;
     
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
     // ACC 5 - User read only, super read/write
     _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x5 << 2) | SRMMU_ET_PTE;
     
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
     // ACC 6 - User no access, super read/execute
     _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x6 << 2) | SRMMU_ET_PTE;
     
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
     // ACC 7 - User no access, super read/write/execute
     _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x7 << 2) | SRMMU_ET_PTE;
     
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
-    MMU::flush();
-    ret = MMU::MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
+    mmu.flush();
+    ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
  
 }   
@@ -1152,7 +1152,7 @@ TEST_F(MMUTest, MMUFaults)
 TEST_F(MMUTest, MMUFaults_cpuOP)
 {
     // MMU shuld be off in the start
-    ASSERT_FALSE(MMU::GetEnabled());
+    ASSERT_FALSE(mmu.GetEnabled());
 
  	// Point the MMU table pointer to the correct location in RAM:
 	// MUMU Tables base: 0x60002000 (ctx)
@@ -1162,8 +1162,8 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
 	_mmu_ctx0_ffd_level3 =  reinterpret_cast<u32*>(RAM.getPtr(0x2900 / 4));
 
 	mmu_table_init(0x61000000);
-	mmu_init();
-    ASSERT_TRUE(MMU::GetEnabled());
+	mmu_init(mmu);
+    ASSERT_TRUE(mmu.GetEnabled());
 
     // Read MMU controlreg:
     cpu.write_reg(0x000,  LOCALREG1); // MMU Control reg...
@@ -1178,7 +1178,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
 
     // Place some data in memory
     u32 val = 0xcafebabe;
-    u32 ret = MMU::MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
+    u32 ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
   
  
@@ -1195,7 +1195,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     psr = psr & ~(1 << 7);
     cpu.set_psr(psr);
     ASSERT_EQ((cpu.get_psr() >> 7) & 0x1, 0);
-    MMU::flush();
+    mmu.flush();
  
     // The read of address 0x60000000 should now trap:
     cpu.write_reg(0x60000000,  LOCALREG1); 
@@ -1233,7 +1233,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     ASSERT_EQ( (fsr >> 2) & 0x7, 0x3); // FT = 3, Privelege violation
     ASSERT_EQ( (fsr >> 5) & 0x7, 0x0); // AT = 0, Load from user data space
     ASSERT_EQ( far, 0x60000000); // The page
-    MMU::flush();
+    mmu.flush();
 
 
     // Ok, set nofault on the MMU. We shuld still not get the value, but the MMU should not Trap
@@ -1242,7 +1242,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     cpu.write_reg(0x0,  LOCALREG2); 
     cpu.write_reg(0x0,  LOCALREG3); 
   
-    ASSERT_FALSE(MMU::GetNoFault());
+    ASSERT_FALSE(mmu.GetNoFault());
         
 
     do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
@@ -1252,9 +1252,9 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     do_STA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
    
     // Check that we got the control reg right:
-    u32 c = MMU::GetControlReg();
+    u32 c = mmu.GetControlReg();
     ASSERT_EQ( c & 0x2, 0x2);
-    ASSERT_TRUE(MMU::GetNoFault());
+    ASSERT_TRUE(mmu.GetNoFault());
 
     // Change to user mode:
     psr = cpu.get_psr(); 
@@ -1372,18 +1372,18 @@ void mmu_table_init(u32 end_of_mem)
 }
 
 
-void mmu_init(void)
+void mmu_init(MMU& mmu)
 {
 
-	MMU::SetCtxTblPtr((0x60002000 >> 4) & 0xfffffff0);
+	mmu.SetCtxTblPtr((0x60002000 >> 4) & 0xfffffff0);
     
     // Flush TLB
-    MMU::flush();
+    mmu.flush();
 
     // Enable MMU:
-    u32 creg = MMU::GetControlReg();
+    u32 creg = mmu.GetControlReg();
     creg = creg | 0x1;
-    MMU::SetControlReg(creg);
+    mmu.SetControlReg(creg);
  
 /*
 	// Setup MMU

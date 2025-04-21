@@ -70,10 +70,10 @@ bool CPU::instr_fetch(u32 virt_addr, pDecode_t d){
     
 	bool super = (psr >> 7) & 0x1;
     
-    if(MMU::MemAccess<intent_execute, 4>(virt_addr, opcode, CROSS_ENDIAN, super) < 0)
+    if(mmu.MemAccess<intent_execute, 4>(virt_addr, opcode, CROSS_ENDIAN, super) < 0)
     {
         // Get the fault from MMU:
-        u32 f = MMU::GetFaultStatus();
+        u32 f = mmu.GetFaultStatus();
             
         // We have a fault..
         u32 AT = (f >> 5) & 0x7;
@@ -82,7 +82,7 @@ bool CPU::instr_fetch(u32 virt_addr, pDecode_t d){
             throw std::runtime_error("AT != 2 | 3 is not possible in an instruction fetch!");
    
         // The NF field in the MMU control regs governs wether we should TRAP    
-        u32 nf = (MMU::GetControlReg() & 0x2) >> 1;
+        u32 nf = (mmu.GetControlReg() & 0x2) >> 1;
 
         // Only throw trap if nf == 0
         if(nf == 0) { 
@@ -610,27 +610,27 @@ int CPU::mem_read(const u32 va, const int bytes, const u32 rd, const int signext
 
     switch (bytes) {
     case 1 :
-        ret1 = MMU::MemAccess<intent_load,1>(va, value, CROSS_ENDIAN, super);
+        ret1 = mmu.MemAccess<intent_load,1>(va, value, CROSS_ENDIAN, super);
         if(ret1 == 0) {
             value |= ((signext && (value & BIT7)) ? 0xffffff00 : 0);
             write_reg(value, rd);
         }
         break;
     case 2 : 
-        ret1 = MMU::MemAccess<intent_load,2>(va, value, CROSS_ENDIAN, super);
+        ret1 = mmu.MemAccess<intent_load,2>(va, value, CROSS_ENDIAN, super);
         if(ret1 == 0) {
             value |= ((signext && (value & BIT15)) ? 0xffff0000 : 0);
             write_reg(value, rd);
         }
         break;
     case 4 :
-        ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
+        ret1 = mmu.MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
         if(ret1 == 0)
             write_reg(value, rd);
         break;
     case 8 :
-        ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
-        ret2 = MMU::MemAccess<intent_load,4>(va+4, value_ext, CROSS_ENDIAN, super);
+        ret1 = mmu.MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
+        ret2 = mmu.MemAccess<intent_load,4>(va+4, value_ext, CROSS_ENDIAN, super);
         if( (ret1 == 0) && (ret2 == 0) ) {
             write_reg(value, rd);
             write_reg(value_ext, rd+1);
@@ -657,18 +657,18 @@ int CPU::mem_write(const u32 va, const int bytes, const u32 rd)
     ret1 = ret2 = 0;
     switch (bytes) {
     case 1 :
-        ret1 = MMU::MemAccess<intent_store,1>(va, value, CROSS_ENDIAN, super);
+        ret1 = mmu.MemAccess<intent_store,1>(va, value, CROSS_ENDIAN, super);
         break;
     case 2 : 
-        ret1 = MMU::MemAccess<intent_store,2>(va, value, CROSS_ENDIAN, super);
+        ret1 = mmu.MemAccess<intent_store,2>(va, value, CROSS_ENDIAN, super);
         break;
     case 4 :
-        ret1 = MMU::MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
+        ret1 = mmu.MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
         break;
     case 8 :
-        ret1 = MMU::MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
+        ret1 = mmu.MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
         read_reg(rd+1, &value);
-        ret2 = MMU::MemAccess<intent_store,4>(va+4, value, CROSS_ENDIAN, super);
+        ret2 = mmu.MemAccess<intent_store,4>(va+4, value, CROSS_ENDIAN, super);
         break;
     }
 

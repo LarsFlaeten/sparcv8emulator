@@ -45,20 +45,20 @@ void CPU::LDA_impl (pDecode_t d) {
         case(ASI_M_MMUREGS):
             switch(address) {
                 case(0x0):
-                    d->value = MMU::GetControlReg();
+                    d->value = mmu.GetControlReg();
                     break;
                 case(0x100):
-                    d->value = MMU::GetCtxTblPtr();
+                    d->value = mmu.GetCtxTblPtr();
                     break;
                 case(0x200):
-                    d->value = MMU::GetCtxNumber();
+                    d->value = mmu.GetCtxNumber();
                     break;
                 case(0x300):
-                    d->value = MMU::GetFaultStatus();
-                    MMU::ClearFaultStatus(); // Clear on read, ref turboSparc
+                    d->value = mmu.GetFaultStatus();
+                    mmu.ClearFaultStatus(); // Clear on read, ref turboSparc
                     break;
                 case(0x400):
-                    d->value = MMU::GetFaultAddress();
+                    d->value = mmu.GetFaultAddress();
                     break;
                 default:
                     throw not_implemented_leon_exception("Address not implemented for MMU access"); 
@@ -76,13 +76,13 @@ void CPU::LDA_impl (pDecode_t d) {
             offset = address & 0xf;
             switch(offset) {
                 case(0x0):
-                    d->value = MMU::GetCCR();
+                    d->value = mmu.GetCCR();
                     break;
                 case(0x8):
-                    d->value = MMU::GetICCR();
+                    d->value = mmu.GetICCR();
                     break;
                 case(0xc):
-                    d->value = MMU::GetDCCR();
+                    d->value = mmu.GetDCCR();
                     break;
                 default:
                     throw std::runtime_error("ASI=0x2 with offset != 0,8,c not implemented");
@@ -90,7 +90,7 @@ void CPU::LDA_impl (pDecode_t d) {
             d->wb_type = WriteBackType::WRITEBACKREG;
             break;
         case(ASI_LEON_BYPASS):
-            d->value = MMU::MemAccessBypassRead4(address, CROSS_ENDIAN);
+            d->value = mmu.MemAccessBypassRead4(address, CROSS_ENDIAN);
             d->wb_type = WriteBackType::WRITEBACKREG;
 
             break;
@@ -161,14 +161,14 @@ void CPU::STA_impl (pDecode_t d) {
             //os << std::hex << (address & ~0xff) << "\n";
             switch(address) {
                 case(0x000):
-                    MMU::SetControlReg(rd_value);
+                    mmu.SetControlReg(rd_value);
                     break;
                 case(0x100):
-                    MMU::SetCtxTblPtr(rd_value);
+                    mmu.SetCtxTblPtr(rd_value);
                     //os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
                     break;
                 case(0x200):
-                    MMU::SetCtxNumber(rd_value);
+                    mmu.SetCtxNumber(rd_value);
                     //os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
                     break;
                 default:
@@ -187,26 +187,26 @@ void CPU::STA_impl (pDecode_t d) {
             offset = address & 0xf;
             switch(offset) {
                 case(0x0):
-                    MMU::SetCCR(rd_value);
+                    mmu.SetCCR(rd_value);
                     break;
                 case(0x8):
-                    MMU::SetICCR(rd_value);
+                    mmu.SetICCR(rd_value);
                     break;
                 case(0xc):
-                    MMU::SetDCCR(rd_value);
+                    mmu.SetDCCR(rd_value);
                     break;
                 default:
                     throw std::runtime_error("ASI=0x2 with offset != 0,8,c not implemented");
             }
             break;
         case(ASI_LEON_DFLUSH):
-            MMU::nop();
+            mmu.nop();
             break;
         case(ASI_LEON_MMUFLUSH):
-            MMU::flush();
+            mmu.flush();
             break;
         case(ASI_LEON_BYPASS):
-            MMU::MemAccessBypassWrite4(address, rd_value, CROSS_ENDIAN);
+            mmu.MemAccessBypassWrite4(address, rd_value, CROSS_ENDIAN);
             break;
         default:
             throw std::runtime_error("ASI assignment not implemented");

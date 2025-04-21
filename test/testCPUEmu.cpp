@@ -22,6 +22,7 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    MMU mmu;
     CPU cpu;
     SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
 
@@ -29,7 +30,7 @@ protected:
 
 
 
-CPUEmuTest::CPUEmuTest()
+CPUEmuTest::CPUEmuTest() : cpu(mmu)
 {  
    	
 
@@ -46,7 +47,7 @@ void CPUEmuTest::SetUp()
     // Set up IO mapping
     // TODO: Move this MMU functions?
     for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
+        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
                          [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset

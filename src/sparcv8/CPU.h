@@ -34,6 +34,7 @@ constexpr u32 BREAK_SINGLE_STEP = 0xfffffffe;
 
 #include "CPU_defines.h"
 #include "CPU_instr_map.h"
+
 typedef struct {
     unsigned int cwp : 5;       // Current window pointer
     unsigned int et  : 1;       // Enable traps
@@ -56,6 +57,7 @@ typedef struct {
 
 // Defer structure definition
 class CPU;
+#include "MMU.h"
 struct  DecodeStruct;
 #include "../debug.h"
 
@@ -152,10 +154,12 @@ class CPU
 
         std::function<void()> bus_tick_func;
         std::function<void()> breakpoint_func;
-        bool _interrupt;         
+        bool _interrupt; 
+        MMU& mmu;        
    public:
-        CPU(std::ostream& out = std::cout) : cpu_id(0), os(out), running(false), verbose(false), single_step(false), breakpoint(NO_USER_BREAK), _interrupt(false)
-        {  }
+        CPU(MMU& mmu, std::ostream& out = std::cout) : cpu_id(0), os(out), running(false), verbose(false), single_step(false), breakpoint(NO_USER_BREAK), _interrupt(false), mmu(mmu)
+        { 
+        }
 
         // Main execution flow methods
  
@@ -212,6 +216,7 @@ class CPU
         void    set_single_step(bool v) { single_step = v; }
         void    set_verbose(bool v) { verbose = v; }
         bool    get_verbose() const {return verbose;}
+        MMU&    get_mmu() {return mmu;}
         std::ostream& get_ostream() const { return os; }
         void    add_user_breakpoint(u32 bp) { breakpoints[bp] = true; }
         bool    remove_user_breakpoint(u32 bp) { 

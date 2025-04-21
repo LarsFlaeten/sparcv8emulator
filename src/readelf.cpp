@@ -147,7 +147,7 @@ u32 ReadElf(const std::string& filename, CPU& cpu, u32& entry_va) {
             word |= (c << ((3-(bytecount&3)) * 8));
             if ((bytecount&3) == 3) {
                 //cpu.LoadMemWord(SwapBytes(h2[pcount]->p_vaddr, 4) + i, word);
-                MMU::MemAccessBypassWrite4(pa + i, word, CROSS_ENDIAN);
+                cpu.get_mmu().MemAccessBypassWrite4(pa + i, word, CROSS_ENDIAN);
                 i+=4;
                 word = 0;
                 
@@ -161,7 +161,7 @@ u32 ReadElf(const std::string& filename, CPU& cpu, u32& entry_va) {
            u32 zero = 0;
            for(u32 j = 0; j < wsize; j = j+4)
                  try {
-                     MMU::MemAccessBypassWrite4(pa + i + j, zero, CROSS_ENDIAN);
+                     cpu.get_mmu().MemAccessBypassWrite4(pa + i + j, zero, CROSS_ENDIAN);
                  } catch (...) {
                      
                      /*

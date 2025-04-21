@@ -167,6 +167,7 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    MMU mmu;
     CPU cpu;
     SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
 
@@ -198,7 +199,7 @@ void gdb_server(int server_fd, CPU& cpu) {
 
 // create server and start in separate thread
 GDBStubTest::GDBStubTest()
-    : debug_port(1234), 
+    : cpu(mmu), debug_port(1234), 
     server_socket(create_server_socket(debug_port)), 
     t1(gdb_server, server_socket, std::ref(cpu))
 
@@ -225,7 +226,7 @@ void GDBStubTest::SetUp()
     u32 start = base_ram/0x10000;
     u32 end = (base_ram + size_ram)/0x10000;
     for(unsigned a = start; a < end; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read( (i-0x60000000)/4); },
+        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read( (i-0x60000000)/4); },
                           [&](u32 i, u32 v)   {        RAM.Write((i-0x60000000)/4, v);    } };
  
     // Read the ELF and get the entry point, then reset
@@ -343,7 +344,7 @@ TEST_F(GDBStubTest, GDB_read_registers)
 TEST_F(GDBStubTest, GDB_read_memory)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
 
     // Send read reuest for valid memory locations
 	ASSERT_TRUE(tcp_send(client_socket, "m60000000,4"));
@@ -374,11 +375,11 @@ TEST_F(GDBStubTest, GDB_read_memory)
 TEST_F(GDBStubTest, GDB_read_memory_long)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
 
     // Send read reuest for valid memory locations
@@ -428,11 +429,11 @@ TEST_F(GDBStubTest, GDB_read_memory_long)
 TEST_F(GDBStubTest, GDB_read_memory_short)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
 
     // Send read reuest for valid memory locations
@@ -482,11 +483,11 @@ TEST_F(GDBStubTest, GDB_read_memory_short)
 TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_4)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
     std::string ret;
 
@@ -500,11 +501,11 @@ TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_4)
 TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_1)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
     std::string ret;
 
@@ -518,11 +519,11 @@ TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_1)
 TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_2)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
     std::string ret;
 
@@ -536,11 +537,11 @@ TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_2)
 TEST_F(GDBStubTest, GDB_read_memory_unaligned_2_4)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
     std::string ret;
 
@@ -557,11 +558,11 @@ TEST_F(GDBStubTest, GDB_read_memory_unaligned_2_4)
 TEST_F(GDBStubTest, GDB_read_memory_unaligned_2_8)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
     std::string ret;
 
@@ -577,11 +578,11 @@ TEST_F(GDBStubTest, GDB_read_memory_unaligned_2_8)
 TEST_F(GDBStubTest, GDB_read_memory_unaligned_2_16)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
     std::string ret;
 
@@ -597,11 +598,11 @@ TEST_F(GDBStubTest, GDB_read_memory_unaligned_2_16)
 TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_16)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
     std::string ret;
 
@@ -617,11 +618,11 @@ TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_16)
 TEST_F(GDBStubTest, GDB_read_memory_unaligned_3_16)
 {
 
-	MMU::MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
-	MMU::MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000004, 0xbaccecaf, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000008, 0x11223344, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x6000000c, 0x55667788, CROSS_ENDIAN);
+	mmu.MemAccessBypassWrite4(0x60000010, 0x99aabbcc, CROSS_ENDIAN);
 
     std::string ret;
 

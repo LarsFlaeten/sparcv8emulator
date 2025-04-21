@@ -27,7 +27,7 @@ protected:
     virtual void TearDown();
         
     SDRAM<0x01000000> RAM;   // IO: 0xf0000000, 16 MB of RAM
- 
+    MMU mmu; 
     CPU cpu;
     
     
@@ -55,7 +55,7 @@ protected:
 
 
 INSTRTest::INSTRTest()
-    : cpu()
+    : cpu(mmu)
 
 {  
     //cpu.SetVerbose(true);
@@ -68,7 +68,7 @@ INSTRTest::INSTRTest()
     u32 start = base_ram/0x10000;
     u32 end = (base_ram + size_ram)/0x10000;
     for(unsigned a = start; a < end; ++a)
-        MMU::IOmap[a] = { [&RAM = RAM](u32 i)          { return RAM.Read( (i-0x00000000)/4); },
+        mmu.IOmap[a] = { [&RAM = RAM](u32 i)          { return RAM.Read( (i-0x00000000)/4); },
                           [&RAM = RAM](u32 i, u32 v)   {        RAM.Write((i-0x00000000)/4, v);    } };
    
 }

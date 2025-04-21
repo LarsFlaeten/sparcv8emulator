@@ -132,7 +132,23 @@ int main(int argc, char **argv)
         }
 
     // Set up CPU
-    CPU cpu(write_to_file ? os : std::cout);
+    std::cout << "CPU: Sparc V8 32 bit (LEON3)\n";
+    std::cout << "Endianess:\n";
+    std::cout << "\tHost:  Little endian : " << LITTLE_ENDIAN_HOST << "\n";
+    std::cout << "\tGuest: Little endian : " << LITTLE_ENDIAN_SLAVE << " (Big endian)\n";
+    std::cout << "\t-> CROSS ENDIAN      : " << CROSS_ENDIAN << "\n";
+    bool reverse = CROSS_ENDIAN;
+    u32 value = 0xCAFEBABE;
+    
+    auto S = [=](u32 v) -> u32
+        { return (reverse != CROSS_ENDIAN) ? SwapBytes(v,4) : v; };
+    std::cout << "\t-> The value 0x" << std::hex << value << " is therefore stored on the host as: 0x" << S(value) << "\n"; 
+
+
+
+
+    MMU mmu; 
+    CPU cpu(mmu, write_to_file ? os : std::cout);
     cpu.set_verbose(verbose);
     if(UserBreakpoint != NO_USER_BREAK) {
         cpu.add_user_breakpoint(UserBreakpoint);
@@ -144,7 +160,7 @@ int main(int argc, char **argv)
     // Set up IO mapping
     // TODO: Move this MMU functions?
     for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&RAM](u32 i)          { return RAM.Read(i/4); },
+        mmu.IOmap[a] = { [&RAM](u32 i)          { return RAM.Read(i/4); },
                          [&RAM](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset

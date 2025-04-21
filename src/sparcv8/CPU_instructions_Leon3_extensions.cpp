@@ -47,10 +47,10 @@ void CPU::CASA (pDecode_t d)
         mret = -1;
     }
         
-    mret = MMU::MemAccess<intent_load>(rs1_addr, rs1_value, CROSS_ENDIAN, super);
+    mret = mmu.MemAccess<intent_load>(rs1_addr, rs1_value, CROSS_ENDIAN, super);
  
     if(mret < 0) {
-        if(!MMU::GetNoFault())
+        if(!mmu.GetNoFault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         return;
     }
@@ -72,9 +72,9 @@ void CPU::CASA (pDecode_t d)
 
        // Write back swapped
         write_reg(rs1_value, d->rd & LOBITS5);
-        mret = MMU::MemAccess<intent_store>(rs1_addr, rd_value, CROSS_ENDIAN, super); 
+        mret = mmu.MemAccess<intent_store>(rs1_addr, rd_value, CROSS_ENDIAN, super); 
         if(mret < 0) {
-            if(!MMU::GetNoFault())
+            if(!mmu.GetNoFault())
                 trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
             return;
         }

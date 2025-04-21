@@ -14,7 +14,7 @@ void CPU::fpu_STFSR (pDecode_t d)
     } else {
         u32 va = d->ev;
         u32 value = fpu_fsr;
-        u32 ret1 = MMU::MemAccess<intent_store,4>(va, value, CROSS_ENDIAN);
+        u32 ret1 = mmu.MemAccess<intent_store,4>(va, value, CROSS_ENDIAN);
         if(ret1 < 0)
             throw("fix this"); //handleMMUFault(d);
         else {
@@ -38,7 +38,7 @@ void CPU::fpu_LDFSR (pDecode_t d)
     } else {
         u32 va = d->ev;
         u32 value = 0; // To avoid warning
-        u32 ret1 = MMU::MemAccess<intent_load,4>(va, value, CROSS_ENDIAN);
+        u32 ret1 = mmu.MemAccess<intent_load,4>(va, value, CROSS_ENDIAN);
         if(ret1 < 0)
             throw("fix this"); //handleMMUFault(d);
         else {

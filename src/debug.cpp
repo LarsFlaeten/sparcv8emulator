@@ -6,8 +6,11 @@
 
 
 
+static MMU* debug_mmu_ptr = nullptr;
 
-
+void set_active_mmu(MMU* mmu) {
+    debug_mmu_ptr = mmu;
+}
 
 void debug_dumpmem(u32 pa, int n) {
     if(n < 0) n = 1;
@@ -20,7 +23,7 @@ void debug_dumpmem(u32 pa, int n) {
         std::cout << std::hex << "0x" << pa + 4*i*4;
         std::string strrep;
         for(int j = 0; j < 4; ++j) {
-            u32 v = MMU::MemAccessBypassRead4(pa + 4*(i*4 + j), CROSS_ENDIAN);
+            u32 v = debug_mmu_ptr->MemAccessBypassRead4(pa + 4*(i*4 + j), CROSS_ENDIAN);
             std::cout <<  "  " << std::setfill('0') << std::setw(8) << v;
             char a = v & 0xff;
             char b = (v & 0xff00) >> 8;
@@ -55,7 +58,7 @@ void debug_dumpmemv(u32 va, int n) {
         std::string strrep;
         for(int j = 0; j < 4; ++j) {
             u32 v = 0; // supress warning
-            MMU::MemAccess(va + 4*(i*4 + j), v, CROSS_ENDIAN, true);
+            debug_mmu_ptr->MemAccess(va + 4*(i*4 + j), v, CROSS_ENDIAN, true);
             std::cout <<  "  " << std::setfill('0') << std::setw(8) << v;
             char a = v & 0xff;
             char b = (v & 0xff00) >> 8;
@@ -144,13 +147,13 @@ void debug_mmu_tables() {
 
     std::vector<TR> trs;
 
-    auto ctx_tbl_ptr = MMU::GetCtxTblPtr();
-    auto ctx_n = MMU::GetCtxNumber();
+    auto ctx_tbl_ptr = debug_mmu_ptr->GetCtxTblPtr();
+    auto ctx_n = debug_mmu_ptr->GetCtxNumber();
     std::cout << "MMU table for CPU 0, ctx " << std::hex << ctx_n << "\n";
         
     // Fetch PTD from the context table 
     u32 l1_tbl_ptr = (ctx_tbl_ptr << 4) + ctx_n * 4;
-    u32 ptd = MMU::MemAccessBypassRead4(l1_tbl_ptr, CROSS_ENDIAN);
+    u32 ptd = debug_mmu_ptr->MemAccessBypassRead4(l1_tbl_ptr, CROSS_ENDIAN);
     //std::cout << "  PTE " << lx << "\n";
     
     u32 et = ptd & 0x3;
@@ -163,7 +166,7 @@ void debug_mmu_tables() {
 
     // Level 1 page table is 1024 bytes
     for(int i = 0; i < 1024; i += 4) {
-        ptd = MMU::MemAccessBypassRead4(ptp + i, CROSS_ENDIAN);
+        ptd = debug_mmu_ptr->MemAccessBypassRead4(ptp + i, CROSS_ENDIAN);
         et = ptd & 0x3;
         // i = bits 24-31 of virtual address
         if(et == 2) {
@@ -179,7 +182,7 @@ void debug_mmu_tables() {
            //PTD
            u32 ptp_l1 = ptd >> 2;
            for(int j = 0; j < 256; j += 4) {
-                u32 ptd_l2 = MMU::MemAccessBypassRead4((ptp_l1 << 6) + j, CROSS_ENDIAN);
+                u32 ptd_l2 = debug_mmu_ptr->MemAccessBypassRead4((ptp_l1 << 6) + j, CROSS_ENDIAN);
                 u32 et_l2 = ptd_l2 & 0x3;
                 if(et_l2 == 2) {
                     // PTE
@@ -194,7 +197,7 @@ void debug_mmu_tables() {
                 } else if(et_l2 == 1) {
                     u32 ptp_l2 = ptd_l2 >> 2;
                     for(int k = 0; k < 256; k += 4) {
-                        u32 ptd_l3 = MMU::MemAccessBypassRead4((ptp_l2 << 6) + k, CROSS_ENDIAN);
+                        u32 ptd_l3 = debug_mmu_ptr->MemAccessBypassRead4((ptp_l2 << 6) + k, CROSS_ENDIAN);
                         u32 et_l3 = ptd_l3 & 0x3;
                         if(et_l3 == 2) {
                             // PTE

@@ -22,6 +22,7 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    MMU mmu;
     CPU cpu;
     SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
 
@@ -29,7 +30,7 @@ protected:
 
 
 
-CPUMemTest::CPUMemTest()
+CPUMemTest::CPUMemTest() : cpu(mmu)
 {  
    	
 
@@ -46,7 +47,7 @@ void CPUMemTest::SetUp()
     // Set up IO mapping
     // TODO: Move this MMU functions?
     for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
+        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
                          [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset
@@ -107,39 +108,39 @@ TEST_F(CPUMemTest, MemAccess_ReadWrite)
 
     // Checl WORD sized loads and stores, and replace individual bytes
     u32 value = 0xff00ffff;
-    MMU::MemAccess<intent_store, 4>(0x100, value, CROSS_ENDIAN); 
+    mmu.MemAccess<intent_store, 4>(0x100, value, CROSS_ENDIAN); 
 
     u32 value2;
-    MMU::MemAccess<intent_load, 4>(0x100, value2, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load, 4>(0x100, value2, CROSS_ENDIAN);
 
     EXPECT_EQ(value, value2);
 
     u32 bv1, bv2, bv3, bv4;
-    MMU::MemAccess<intent_load, 1>(0x100, bv1, CROSS_ENDIAN);
-    MMU::MemAccess<intent_load, 1>(0x101, bv2, CROSS_ENDIAN);
-    MMU::MemAccess<intent_load, 1>(0x102, bv3, CROSS_ENDIAN);
-    MMU::MemAccess<intent_load, 1>(0x103, bv4, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load, 1>(0x100, bv1, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load, 1>(0x101, bv2, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load, 1>(0x102, bv3, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load, 1>(0x103, bv4, CROSS_ENDIAN);
 
     EXPECT_EQ(bv1, 0xff);
     EXPECT_EQ(bv2, 0x00);
     EXPECT_EQ(bv3, 0xff);
     EXPECT_EQ(bv4, 0xff);
-    MMU::MemAccess<intent_load,4>(0x100, value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,4>(0x100, value, CROSS_ENDIAN);
     EXPECT_EQ(value, 0xff00ffff);
  
-    MMU::MemAccess<intent_store,1>(0x101, bv1, CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,4>(0x100, value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,1>(0x101, bv1, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,4>(0x100, value, CROSS_ENDIAN);
     EXPECT_EQ(value, 0xffffffff);
    
     u32 v3 = 0xcafebabe;
     u32 v4 = 0xbadbadba;
 
-    MMU::MemAccess<intent_store,4>(0x200, v3, CROSS_ENDIAN);
-    MMU::MemAccess<intent_store,4>(0x204, v4, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,4>(0x200, v3, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,4>(0x204, v4, CROSS_ENDIAN);
     
     
-    MMU::MemAccess<intent_load,4>(0x200, value, CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,4>(0x204, value2, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,4>(0x200, value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,4>(0x204, value2, CROSS_ENDIAN);
     EXPECT_EQ(value, 0xcafebabe);
     EXPECT_EQ(value2, 0xbadbadba);
     
@@ -153,7 +154,7 @@ TEST_F(CPUMemTest, Loads_LD) {
     // Put some data in memory
     //
     u32 value = 0xcafebabe;
-    MMU::MemAccess<intent_store,4>(0x300, value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,4>(0x300, value, CROSS_ENDIAN);
    
     // adress to read is taken from LOCALREG4
     cpu.write_reg(0x300, LOCALREG4);
@@ -210,9 +211,9 @@ TEST_F(CPUMemTest, Loads_LDD) {
     // Put some data in memory
     //
     u32 value = 0xcafebabe;
-    MMU::MemAccess<intent_store,4>(0x300, value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,4>(0x300, value, CROSS_ENDIAN);
     u32 value2 = 0xbadbadff;
-    MMU::MemAccess<intent_store,4>(0x304, value2, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,4>(0x304, value2, CROSS_ENDIAN);
    
     // adress to read is taken from LOCALREG4
     cpu.write_reg(0x300, LOCALREG4);
@@ -277,15 +278,15 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     // Put some data in memory
     //
     u32 value = 0xcafebabe;
-    MMU::MemAccess<intent_store,4>(0x300, value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,4>(0x300, value, CROSS_ENDIAN);
     u32 value2 = 0xbadbadff;
-    MMU::MemAccess<intent_store,4>(0x304, value2, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,4>(0x304, value2, CROSS_ENDIAN);
   
     u32 tmp1, tmp2, tmp3, tmp4;
-    MMU::MemAccess<intent_load,2>(0x300, tmp1, CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,2>(0x302, tmp2, CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,2>(0x304, tmp3, CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,2>(0x306, tmp4, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,2>(0x300, tmp1, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,2>(0x302, tmp2, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,2>(0x304, tmp3, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,2>(0x306, tmp4, CROSS_ENDIAN);
     EXPECT_EQ(tmp1, 0xcafe);
     EXPECT_EQ(tmp2, 0xbabe);
     EXPECT_EQ(tmp3, 0xbadb);
@@ -458,19 +459,19 @@ TEST_F(CPUMemTest, Loads_bytes) {
     // Put some data in memory
     //
     u32 value = 0xcafebabe;
-    MMU::MemAccess<intent_store,4>(0x500, value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,4>(0x500, value, CROSS_ENDIAN);
     u32 value2 = 0xbadbadff;
-    MMU::MemAccess<intent_store,4>(0x504, value2, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store,4>(0x504, value2, CROSS_ENDIAN);
   
     u32 tmp[8];
-    MMU::MemAccess<intent_load,1>(0x500, tmp[0], CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,1>(0x501, tmp[1], CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,1>(0x502, tmp[2], CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,1>(0x503, tmp[3], CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,1>(0x504, tmp[4], CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,1>(0x505, tmp[5], CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,1>(0x506, tmp[6], CROSS_ENDIAN);
-    MMU::MemAccess<intent_load,1>(0x507, tmp[7], CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,1>(0x500, tmp[0], CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,1>(0x501, tmp[1], CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,1>(0x502, tmp[2], CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,1>(0x503, tmp[3], CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,1>(0x504, tmp[4], CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,1>(0x505, tmp[5], CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,1>(0x506, tmp[6], CROSS_ENDIAN);
+    mmu.MemAccess<intent_load,1>(0x507, tmp[7], CROSS_ENDIAN);
     EXPECT_EQ(tmp[0], 0xca);
     EXPECT_EQ(tmp[1], 0xfe);
     EXPECT_EQ(tmp[2], 0xba);

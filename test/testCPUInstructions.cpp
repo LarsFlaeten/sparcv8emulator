@@ -21,7 +21,7 @@ protected:
     // Code here will be called immediately after each test (right
     // before the destructor).
     virtual void TearDown();
-
+    MMU mmu;
     CPU cpu;
     SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
 
@@ -59,7 +59,7 @@ protected:
 
 
 
-CPUInstructionsTest::CPUInstructionsTest()
+CPUInstructionsTest::CPUInstructionsTest() : cpu(mmu)
 {  
    	
 
@@ -76,7 +76,7 @@ void CPUInstructionsTest::SetUp()
     // Set up IO mapping
     // TODO: Move this MMU functions?
     for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
+        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
                          [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset
@@ -126,7 +126,7 @@ TEST_F(CPUInstructionsTest, LDSTUB_noMMU)
         // TEst swapping the values from $o0 and a value in memory, pointed by $g2 
         
         u32 value = 0xab;
-        MMU::MemAccess<intent_store, 1>(0x100, value, CROSS_ENDIAN); 
+        mmu.MemAccess<intent_store, 1>(0x100, value, CROSS_ENDIAN); 
         cpu.write_reg(0x100, GLOBALREG2); 
         cpu.write_reg(0x000, LOCALREG0); 
 
@@ -136,7 +136,7 @@ TEST_F(CPUInstructionsTest, LDSTUB_noMMU)
 
         
         u32 val1; cpu.read_reg(OUTREG0, &val1);
-        u32 val2; MMU::MemAccess<intent_load, 1>(0x100, val2, CROSS_ENDIAN); 
+        u32 val2; mmu.MemAccess<intent_load, 1>(0x100, val2, CROSS_ENDIAN); 
      
 
 
@@ -157,7 +157,7 @@ TEST_F(CPUInstructionsTest, SWAP_noMMU)
         cpu.write_reg(0x0610c041, OUTREG0); 
         
         u32 value = 0xff00ffff;
-        MMU::MemAccess<intent_store, 4>(0x100, value, CROSS_ENDIAN); 
+        mmu.MemAccess<intent_store, 4>(0x100, value, CROSS_ENDIAN); 
         cpu.write_reg(0x100, GLOBALREG2); 
         cpu.write_reg(0x000, LOCALREG0); 
 
@@ -167,7 +167,7 @@ TEST_F(CPUInstructionsTest, SWAP_noMMU)
 
         
         u32 val1; cpu.read_reg(OUTREG0, &val1);
-        u32 val2; MMU::MemAccess<intent_load, 4>(0x100, val2, CROSS_ENDIAN); 
+        u32 val2; mmu.MemAccess<intent_load, 4>(0x100, val2, CROSS_ENDIAN); 
      
 
 

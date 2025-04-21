@@ -26,14 +26,14 @@ protected:
     virtual void TearDown();
         
     SDRAM<0x01000000> RAM;   // IO: 0xf0000000, 16 MB of RAM
- 
+    MMU mmu; 
     CPU cpu;
 };
 
 
 
 LEON3Test::LEON3Test()
-    : cpu()
+    : cpu(mmu)
 
 {  
     cpu.set_verbose(true);
@@ -46,7 +46,7 @@ LEON3Test::LEON3Test()
     u32 start = base_ram/0x10000;
     u32 end = (base_ram + size_ram)/0x10000;
     for(unsigned a = start; a < end; ++a)
-        MMU::IOmap[a] = { [&RAM = RAM](u32 i)          { return RAM.Read( (i-0xf0000000)/4); },
+        mmu.IOmap[a] = { [&RAM = RAM](u32 i)          { return RAM.Read( (i-0xf0000000)/4); },
                           [&RAM = RAM](u32 i, u32 v)   {        RAM.Write((i-0xf0000000)/4, v);    } };
    
 }
@@ -135,11 +135,11 @@ TEST_F(LEON3Test, CASA_swap)
     EXPECT_EQ(d.imm_disp_rs2 & 0x1f, GLOBALREG1);
     
     // Verify MMU is turned off for this test:
-    ASSERT_FALSE(MMU::GetEnabled());
+    ASSERT_FALSE(mmu.GetEnabled());
  
     // Write something to memory:
     u32 mem_value = 0x3ffffdff;
-    MMU::MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
 
     // Write regs:
     cpu.write_reg(0xf04e01f4, LOCALREG3); // The address of the value in memory
@@ -159,7 +159,7 @@ TEST_F(LEON3Test, CASA_swap)
     // Check compare and swap has been performed:
     u32 l3val; cpu.read_reg(LOCALREG3, &l3val);
     EXPECT_EQ(l3val, 0xf04e01f4);
-    MMU::MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
     EXPECT_EQ(mem_value, 0x3ffffe00); // The value from rd (%i3) should now be in mwmory
                                       // at location pointed by %l3
 
@@ -193,11 +193,11 @@ TEST_F(LEON3Test, CASA_noswap)
     EXPECT_EQ(d.imm_disp_rs2 & 0x1f, GLOBALREG1);
     
     // Verify MMU is turned off for this test:
-    ASSERT_FALSE(MMU::GetEnabled());
+    ASSERT_FALSE(mmu.GetEnabled());
  
     // Write something to memory:
     u32 mem_value = 0x3ffffdff;
-    MMU::MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
 
     // Write regs:
     cpu.write_reg(0xf04e01f4, LOCALREG3); // The address of the value in memory
@@ -217,7 +217,7 @@ TEST_F(LEON3Test, CASA_noswap)
     // Check compare and swap has not been performed:
     u32 l3val; cpu.read_reg(LOCALREG3, &l3val);
     EXPECT_EQ(l3val, 0xf04e01f4);
-    MMU::MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
+    mmu.MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
     EXPECT_EQ(mem_value, 0x3ffffdff); // The value in memory at location pointed by %l3
                                       // Should be same as before
 

@@ -30,6 +30,7 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    MMU mmu;
 
 };
 
@@ -70,7 +71,7 @@ TEST_F(AMBATest, AHB_setup)
     
     for(unsigned a = start; a <= end; ++a) {
         std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        MMU::IOmap[a] = { [&amba_ahb](u32 i)          { return amba_ahb.Read((i-0xfff00000)/4); } ,
+        mmu.IOmap[a] = { [&amba_ahb](u32 i)          { return amba_ahb.Read((i-0xfff00000)/4); } ,
                           [&amba_ahb](u32 i, u32 v)   { amba_ahb.Write((i-0xfff00000)/4, v);    } };
     }
 
@@ -82,7 +83,7 @@ TEST_F(AMBATest, AHB_setup)
     
     for(unsigned a = start; a <= end; ++a) {
         std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        MMU::IOmap[a] = { [&amba_apb](u32 i)          { return amba_apb.Read((i-0x800f0000)/4); } ,
+        mmu.IOmap[a] = { [&amba_apb](u32 i)          { return amba_apb.Read((i-0x800f0000)/4); } ,
                           [&amba_apb](u32 i, u32 v)   { amba_apb.Write((i-0x800f0000)/4, v);    } };
     }
 
@@ -91,7 +92,7 @@ TEST_F(AMBATest, AHB_setup)
 
     // Find the system version
     //ASSERT_EQ(MMU::MemAccessBypassRead4(0xfffffff0, CROSS_ENDIAN), GR740_REV1_SYSTEMID);  
-    ASSERT_EQ(MMU::MemAccessBypassRead4(0xfffffff0, CROSS_ENDIAN), 0x0); 
+    ASSERT_EQ(mmu.MemAccessBypassRead4(0xfffffff0, CROSS_ENDIAN), 0x0); 
 
 
 
@@ -226,7 +227,7 @@ TEST_F(AMBATest, AHB_setup)
 
 TEST_F(AMBATest, LEON_SOC_Device_enumeration) {
     // Set up CPU
-    CPU cpu(std::cout);
+    CPU cpu(mmu, std::cout);
     cpu.set_verbose(false);
     cpu.set_cpu_id(0);
  

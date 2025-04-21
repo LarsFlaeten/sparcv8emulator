@@ -22,6 +22,7 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    MMU mmu;
     CPU cpu;
     SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
 
@@ -59,7 +60,7 @@ protected:
 
 
 
-LDSTFSRTest::LDSTFSRTest()
+LDSTFSRTest::LDSTFSRTest() : cpu(mmu)
 {  
    	
 
@@ -76,7 +77,7 @@ void LDSTFSRTest::SetUp()
     // Set up IO mapping
     // TODO: Move this MMU functions?
     for(unsigned a = 0x0; a < 0x100; ++a)
-        MMU::IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
+        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
                          [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset
@@ -115,7 +116,7 @@ TEST_F(LDSTFSRTest, C128A0DC)
 
         // The fsr value should now be in [$g2 + 220]:
         u32 value;
-        MMU::MemAccess<intent_load,4>(0x000f03dc, value, CROSS_ENDIAN);
+        mmu.MemAccess<intent_load,4>(0x000f03dc, value, CROSS_ENDIAN);
         ASSERT_EQ(value, 0xcafebabe); 
 }    
 
@@ -132,7 +133,7 @@ TEST_F(LDSTFSRTest, STFSRG2G3)
         ASSERT_EQ(cpu.get_trap_type(), 0);
         // The fsr value should now be in [$g2 + $g3]:
         u32 value;
-        MMU::MemAccess<intent_load,4>(0x000fbab0, value, CROSS_ENDIAN);
+        mmu.MemAccess<intent_load,4>(0x000fbab0, value, CROSS_ENDIAN);
         ASSERT_EQ(value, 0xcafebabe); 
 }  
 
@@ -184,7 +185,7 @@ TEST_F(LDSTFSRTest, STFSR_TrapUnaligned)
 TEST_F(LDSTFSRTest, LDFSRG2G3)
 {
         u32 value = 0xcafebabe;
-        MMU::MemAccess<intent_store,4>(0x000fbab0, value, CROSS_ENDIAN);
+        mmu.MemAccess<intent_store,4>(0x000fbab0, value, CROSS_ENDIAN);
          
         cpu.write_reg(0x000f0000, GLOBALREG2); 
         cpu.write_reg(0xbab0, GLOBALREG3); 
@@ -199,7 +200,7 @@ TEST_F(LDSTFSRTest, LDFSRG2G3)
 TEST_F(LDSTFSRTest, LSDFSR_TrapUnaligned)
 {
         u32 value = 0xcafebabe;
-        MMU::MemAccess<intent_store,4>(0x000fbab0, value, CROSS_ENDIAN);
+        mmu.MemAccess<intent_store,4>(0x000fbab0, value, CROSS_ENDIAN);
  
         cpu.write_reg(0x000f0000, GLOBALREG2); 
         cpu.write_reg(0xbab0, GLOBALREG3); 
@@ -237,7 +238,7 @@ TEST_F(LDSTFSRTest, LSDFSR_TrapUnaligned)
  
 
         value = 0xdeadbeef;
-        MMU::MemAccess<intent_store,4>(0x000fbab0, value, CROSS_ENDIAN);
+        mmu.MemAccess<intent_store,4>(0x000fbab0, value, CROSS_ENDIAN);
          
         cpu.write_reg(0x000f0000, GLOBALREG2); 
         cpu.write_reg(0xbab0, GLOBALREG3); 
