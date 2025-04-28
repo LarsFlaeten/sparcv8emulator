@@ -25,8 +25,7 @@ protected:
     MCtrl mctrl;
     MMU mmu;
     CPU cpu;
-    SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
-
+    
 };
 
 
@@ -47,12 +46,6 @@ void CPUMemTest::SetUp()
 {
 
     mctrl.attach_bank<RamBank>(0x0, 1*1024*1024); // 1 MB @ 0x0
-    
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    //for(unsigned a = 0x0; a < 0x100; ++a)
-    //    mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
-    //                     [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
@@ -88,25 +81,6 @@ TEST_F(CPUMemTest, TestResetState)
 
 }
 
-/*TEST_F(CPUMemTest, CheckRegBase)
-{
-    std::cout << "RegNo -> RegBase\n";
-
-    // Expect current window pointer to be 0 
-    u32 PSR = cpu.GetPSR(); 
-    EXPECT_EQ(((pPSR_t)&PSR)->cwp , 0);;
-    
-    for(u32 r = 0; r < 32; ++r)
-    {
-        if( r < 0x8 ) { EXPECT_EQ(cpu.GetRegBase(r), r + 0x100); continue; }
-        if( r < 0x10 ) { EXPECT_EQ(cpu.GetRegBase(r), r - 0x8); continue; }
-        if( r < 0x18 ) { EXPECT_EQ(cpu.GetRegBase(r), r + 0x70); continue; }
-        if( r < 0x20 ) { EXPECT_EQ(cpu.GetRegBase(r), r - 0x10); continue; }
-    }        
-
-    
-}
-*/
 TEST_F(CPUMemTest, MemAccess_ReadWrite)
 {
 

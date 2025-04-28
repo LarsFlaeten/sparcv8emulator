@@ -25,8 +25,7 @@ protected:
     MCtrl mctrl;
     MMU mmu;
     CPU cpu;
-    SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
-
+ 
     void do_RETT_instr(u32 rs1, u32 rs2, u32 rd) {
         u32 op3 = 0b111001; // RETT
         do_op3_instr(2, op3, rs1, rs2, rd, 0);
@@ -72,12 +71,6 @@ void CPUTrapsTest::SetUp()
 {
     mctrl.attach_bank<RamBank>(0x0, 1*1024*1024); // 1 MB @ 0x0
     
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    //for(unsigned a = 0x0; a < 0x100; ++a)
-    //    mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
-    //                     [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
-
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     cpu.reset(entry_va);

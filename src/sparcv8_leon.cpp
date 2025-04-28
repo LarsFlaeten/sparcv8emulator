@@ -240,102 +240,21 @@ int main(int argc, char **argv)
     mmu.SetDCCR(0x18220008);
 
 
-    // RAM
-    //SDRAM<0x08000000> RAM;   // IO: 0x40000000, 32 MB of RAM
+    // Main RAM bank
     mctrl.attach_bank<RamBank>(0x40000000, 32 * 1024 * 1024); // Main memory
-    //SDRAM<0x00100000> RAM2;  // IO: 0xffd03000, 1 MB of RAM
-    //SDRAM<0x00800000> RAM3;  // IO: 0x00000000, 8 MB of RAM
-    //SDRAM<0x00800000> RAM4;  // IO: 0x40000000, 8 MB of RAM
-
-
-
-    // Set up amba IO area:
-    //SDRAM2 amba_ahb(0x100000); // AMBA resides from 0xfff00000 -> 0xfffffff0 (+ u32)
-    //  SDRAM2 amba_apb(0x010000); // AMBA resides from 0x80000000 -> 0x800ffff0 (+ u32)
-    
+ 
+    // Amba PNP area
     mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
     mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
-    
     
     amba_ahb_pnp_setup(mctrl);
     amba_apb_pnp_setup(mctrl);
 
 
-/*
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    u32 base_ram = 0x40000000;
-    u32 size_ram = RAM.getSizeBytes();
-    u32 start = base_ram/0x10000;
-    u32 end = (base_ram + size_ram)/0x10000;
-    for(unsigned a = start; a < end; ++a)
-        mmu.IOmap[a] = { [&RAM](u32 i)          { return RAM.Read( (i-0x40000000)/4); },
-                          [&RAM](u32 i, u32 v)   {        RAM.Write((i-0x40000000)/4, v);    } };
- */
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-/*
-    u32 base4_ram = 0x40000000;
-    u32 size4_ram = RAM4.getSizeBytes();
-    u32 start4 = base4_ram/0x10000;
-    u32 end4 = (base4_ram + size4_ram)/0x10000;
-    for(unsigned a = start4; a < end4; ++a)
-        MMU::IOmap[a] = { [&RAM4](u32 i)          { return RAM4.Read( (i-0x40000000)/4); },
-                          [&RAM4](u32 i, u32 v)   {        RAM4.Write((i-0x40000000)/4, v);    } };
-*/    
-    // This area is only used for a bss section in the ELF. Should really not be needed
-    // bu cant be avoided as ELFreader trier to allocate memory at this location
-/*    base_ram = 0xffd00000;
-    size_ram = RAM2.getSizeBytes();
-    start = base_ram/0x10000;
-    end = (base_ram + size_ram)/0x10000;
-    
-    for(unsigned a = start; a < end; ++a)
-        MMU::IOmap[a] = { [&RAM2](u32 i)          {  return RAM2.Read((i-0xffd00000)/4); },
-                         [&RAM2](u32 i, u32 v)   {   RAM2.Write((i-0xffd00000)/4, v);    } };
- */
-    
-    /*
-  // IO mapping for AMBA AHB IO AREA
-    u32 base_amba_ahb_io = 0xfff00000;
-    u32 end_amba_ahb_io =  0xffffffff;
-    start = base_amba_ahb_io/0x10000;
-    end =    end_amba_ahb_io/0x10000;
-    
-    for(unsigned a = start; a <= end; ++a) {
-        //std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        mmu.IOmap[a] = { [&amba_ahb](u32 i)          { return amba_ahb.Read((i-0xfff00000)/4); } ,
-                          [&amba_ahb](u32 i, u32 v)   { amba_ahb.Write((i-0xfff00000)/4, v);    } };
-    }
-
-    // IO mapping for AMBA APB pnp IO AREA
-    u32 base_amba_apb_io = 0x800f0000;
-    u32 end_amba_apb_io =  0x800fffff;
-    start = base_amba_apb_io/0x10000;
-    end =    end_amba_apb_io/0x10000;
-    
-    for(unsigned a = start; a <= end; ++a) {
-        //std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        mmu.IOmap[a] = { [&amba_apb](u32 i)          { return amba_apb.Read((i-0x800f0000)/4); } ,
-                          [&amba_apb](u32 i, u32 v)   { amba_apb.Write((i-0x800f0000)/4, v);    } };
-    }
-*/
     mctrl.attach_bank<APBCTRL>(0x80000000);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
 
-/**    APBCTRL apbctrl;
-    // IO mapping for AMBA APB bus IO AREA
-    u32 base_apbctrl_io = 0x80000000;
-    u32 end_apbctrl_io =  0x800effff;
-    start = base_apbctrl_io/0x10000;
-    end =    end_apbctrl_io/0x10000;
-    
-    for(unsigned a = start; a <= end; ++a) {
-        //std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        mmu.IOmap[a] = { [&apbctrl](u32 i)          { return apbctrl.Read(i); } ,
-                          [&apbctrl](u32 i, u32 v)   { apbctrl.Write(i, v);    } };
-    }
-*/
+
     mctrl.debug_list_banks();
 
     // Set up breakpoint handling (we need uart from APBctrl) 
@@ -399,10 +318,7 @@ int main(int argc, char **argv)
 
     // OS boot process step 1: Set stack pointer to end of ram
     u32 end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
-
-    //u32 end_of_ram = 0x41fffe80; // Value from TSIM
-    //u32 end_of_ram = 0x42000000; // Value from TSIM
-
+    
     cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
     cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
     

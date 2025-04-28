@@ -24,8 +24,7 @@ protected:
     MCtrl mctrl;
     MMU mmu;
     CPU cpu;
-    SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
-
+ 
     void do_SAVE_instr(u32 rs1, u32 rs2, u32 rd) {
         u32 op3 = 0b111100; // SAVE
         do_op3_instr(2, op3, rs1, rs2, rd);

@@ -17,7 +17,7 @@ class APBCTRL : public IMemoryBank {
         size_t size;
         u32 base;
 
-        SDRAM2  mem;
+        std::unique_ptr<IMemoryBank> mem;
         APBUART apbuart;
         IRQMP   irq;
         GPTIMER timer;
@@ -31,7 +31,7 @@ class APBCTRL : public IMemoryBank {
         APBCTRL(u32 base, Endian endian = Endian::Big) : IMemoryBank(endian),
             size(1 * 1024 * 1024 - 4096), // Allways 1 MB - 4096 high bytes
             base(base),
-            mem(0x100), 
+            mem(std::make_unique<RamBank>(0x0, 0x100)), 
             apbuart(),
             irq(),
             timer(8, 31),
@@ -60,7 +60,7 @@ class APBCTRL : public IMemoryBank {
             if ( (va & 0xfff00) >> 8 == 0x000) {
                 // Return data from 255 bytes Memory range 000-0ff;
                 std::cout << "Read APBCTRL, va = " << std::hex << va << std::dec << "\n";
-                return mem.Read((va & 0x0ff)/4);        
+                return mem->read32((va & 0x0ff));        
             } else if ( (va & 0xfff00) >> 8 == 0x001) {
                 // Return data from slv 1 (APBUART)
                 //std::cout << "Read APBCTRL(APBUART), va = " << std::hex << va << std::dec << "\n";
@@ -91,7 +91,7 @@ class APBCTRL : public IMemoryBank {
             if ( (va & 0xfff00) >> 8 == 0x000) {
                 std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 // Return data from 255 bytes Memory range 000-0ff;
-                mem.Write((va & 0x0ff)/4, value);        
+                mem->write32((va & 0x0ff), value);        
             } else if ( (va & 0xfff00) >> 8 == 0x001) {
                 // Return data from slv 1 (APBUART)
                 apbuart.write(va & 0x0ff, value);        

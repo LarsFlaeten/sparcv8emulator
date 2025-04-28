@@ -25,8 +25,6 @@ protected:
     MCtrl mctrl;
     MMU mmu;
     CPU cpu;
-    SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
-
 };
 
 

@@ -34,6 +34,7 @@ static unsigned SwapBytes(unsigned value, unsigned size)
 /* The following data structures provide templated access
  * of different data sizes within a 32-bit integer.
  */
+/*
 template<unsigned size, typename T=void>
 struct MemDataRef
 {
@@ -97,7 +98,7 @@ class SDRAM2
             return size_bytes;
         }
 };
-
+*/
 
 enum intent { intent_load=0, intent_store=1, intent_execute=2 };
 
