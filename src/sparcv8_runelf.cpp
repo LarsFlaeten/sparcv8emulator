@@ -1,26 +1,6 @@
 //=============================================================
 // 
-// Copyright (c) 2004 Simon Southwell
-//
-// Date: 13th October 2004
-//
-// This file is part of sparc_iss.
-//
-// sparc_iss is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// sparc_iss is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with sparc_iss. If not, see <http://www.gnu.org/licenses/>.
-//
-// $Id: sparc_iss.c,v 1.5 2016-10-18 05:53:31 simon Exp $
-// $Source: /home/simon/CVS/src/cpu/sparc/src/sparc_iss.c,v $
+// Copyright (c) 2015 Lars Flæten
 //
 //=============================================================
 
@@ -40,6 +20,7 @@ extern char* optarg;
 #endif
 #include "sparcv8/CPU.h"
 #include "sparcv8/MMU.h"
+#include "peripherals/MCTRL.h"
 #include "readelf.h"
 #include "dis.h"
 #include "debug.h"
@@ -132,36 +113,18 @@ int main(int argc, char **argv)
         }
 
     // Set up CPU
-    std::cout << "CPU: Sparc V8 32 bit (LEON3)\n";
-    std::cout << "Endianess:\n";
-    std::cout << "\tHost:  Little endian : " << LITTLE_ENDIAN_HOST << "\n";
-    std::cout << "\tGuest: Little endian : " << LITTLE_ENDIAN_SLAVE << " (Big endian)\n";
-    std::cout << "\t-> CROSS ENDIAN      : " << CROSS_ENDIAN << "\n";
-    bool reverse = CROSS_ENDIAN;
-    u32 value = 0xCAFEBABE;
-    
-    auto S = [=](u32 v) -> u32
-        { return (reverse != CROSS_ENDIAN) ? SwapBytes(v,4) : v; };
-    std::cout << "\t-> The value 0x" << std::hex << value << " is therefore stored on the host as: 0x" << S(value) << "\n"; 
-
-
-
-
-    MMU mmu; 
+    MCtrl mctrl;
+    MMU mmu(mctrl); 
     CPU cpu(mmu, write_to_file ? os : std::cout);
     cpu.set_verbose(verbose);
     if(UserBreakpoint != NO_USER_BREAK) {
         cpu.add_user_breakpoint(UserBreakpoint);
         // TODO: add bp handler here    
     }
-    // RAM
-    SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
 
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    for(unsigned a = 0x0; a < 0x100; ++a)
-        mmu.IOmap[a] = { [&RAM](u32 i)          { return RAM.Read(i/4); },
-                         [&RAM](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
+    // Setup RAM
+    mctrl.attach_bank<RamBank>(0x00000000, 1 * 1024 * 1024);
+    mctrl.debug_list_banks();
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 

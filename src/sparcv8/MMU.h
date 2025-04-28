@@ -2,6 +2,7 @@
 #define _MMU_H_
 class MMU;
 #include "CPU.h"
+#include "../peripherals/MCTRL.h"
 
 /* Declare facilities for detecting and dealing with different byteorder */
 #include <endian.h>
@@ -20,7 +21,7 @@ class MMU;
 #define SRMMU_ACC_S_ALL	(0x7 << 2)
 #define SRMMU_ACC_U_ALL	(0x3 << 2)
 
-
+/*
 static unsigned SwapBytes(unsigned value, unsigned size)
 {
         if(size >= 2) value = ((value & 0xFF00FF00u) >> 8)
@@ -28,7 +29,7 @@ static unsigned SwapBytes(unsigned value, unsigned size)
             if(size >= 4) value = (value >> 16) | (value << 16);
                 return value;
 }
-
+*/
 
 /* The following data structures provide templated access
  * of different data sizes within a 32-bit integer.
@@ -101,6 +102,7 @@ class SDRAM2
 enum intent { intent_load=0, intent_store=1, intent_execute=2 };
 
 class MMU {
+    MCtrl& mctrl;
     // MMUR REGS
     u32 control_reg;
     u32 ccr, iccr, dccr;        
@@ -110,7 +112,7 @@ class MMU {
     u32 fault_address_reg;
 
     public:
-    MMU() {
+    MMU(MCtrl& mc) : mctrl(mc){
 
         control_reg = 0x0;
         ccr = 0x0;
@@ -144,10 +146,6 @@ class MMU {
     bool tlb_miss;
 public:
    
-    std::pair<  std::function<u32(u32)>,
-                std::function<void(u32,u32)>
-             > IOmap[0x10000];
-
     void SetControlReg(u32 value) {
         control_reg = value;
     }
@@ -278,21 +276,13 @@ public:
         last_ctx_n = ctx_n;
     }
 
-    u32 MemAccessBypassRead4(u32 pa, bool reverse) {
-        auto S = [=](u32 v) -> u32
-                { return (reverse != CROSS_ENDIAN) ? SwapBytes(v,4) : v; };
-        
-        MemDataRef<4> data;
-        data.d.value = IOmap[pa/0x10000].first(pa & ~3);
-    
-        return S(data.d.value);
+    u32 MemAccessBypassRead4(u32 pa) {
+        return mctrl.read32(pa);
     }
 
 
-    void MemAccessBypassWrite4(u32 pa, u32 value, bool reverse) {
-        auto S = [=](u32 v) -> u32
-                { return (reverse != CROSS_ENDIAN) ? SwapBytes(v,4) : v; };
-        IOmap[pa/0x10000].second(pa & ~3, S(value));
+    void MemAccessBypassWrite4(u32 pa, u32 value) {
+        mctrl.write32(pa, value);
     }
 
 
@@ -355,40 +345,45 @@ public:
         } else {
             // MMU disabled - phys addr == virt addr
             phys_addr = virt_addr;
-
         }
 
-
-       try
+        try
         {
-            // An "E" bit in a TLB reverses the endianess for that page (except in opcode lookups).
-            // NOt for SPARCif(rw != intent_execute) reverse ^= e_bit;
-            // This macro byteswaps if needed due to host/guest endian differences or the reverse bit.
-            auto S = [=](u32 v) -> u32
-                { return size>1 && (reverse != CROSS_ENDIAN) ? SwapBytes(v,size) : v; };
-            // Read full 32 bits from the memory/device,
-            // unless we're going to replace it entirely.
-            MemDataRef<size> data;
-            if(rw != intent_store || size != 4)
-            {
-                NOfprintf(stderr,"IOread(%08X) = ", (unsigned)phys_addr);
-                data.d.value = IOmap[phys_addr/0x10000].first(phys_addr & ~3);
-                NOfprintf(stderr, "%08X\n", (unsigned)data.d.value);
-            }
-            // Create a reference to the relevant data
-            auto& r = data.reffun( (phys_addr & (4-size)) ^ (reverse ? (4-size) : 0) );
             if(rw==intent_store)
             {
-                // Write to the relevant data, and commit
-                // the entire 32-bit word the memory/device. Byteswap if needed.
-                r = S(value);
-                NOfprintf(stderr,"IOwrite(%08X,%08X)\n",(unsigned)phys_addr,(unsigned)data.d.value);
-                IOmap[phys_addr/0x10000].second(phys_addr & ~3, data.d.value);
+                switch(size) {
+                    case(1):
+                        mctrl.write8(phys_addr, value);
+                        break;
+                    case(2):
+                        mctrl.write16(phys_addr, value);
+                        break;
+                    case(4):
+                        mctrl.write32(phys_addr, value);
+                        break;
+                    default:
+                        throw std::runtime_error("Error write size != {1,2,4}");
+                }
             }
             else
-                value = S(r); // Read the relevant data. Byteswap if needed.
+            {
+                switch(size) {
+                    case(1):
+                        value = mctrl.read8(phys_addr);
+                        break;
+                    case(2):
+                        value = mctrl.read16(phys_addr);
+                        break;
+                    case(4):
+                        value = mctrl.read32(phys_addr);
+                        break;
+                    default:
+                        throw std::runtime_error("Error read size != {1,2,4}");
+                }
+            }
+
         }
-        catch(const std::bad_function_call& c)
+        catch(const std::out_of_range& c)
         {
             //fprintf(stderr, "MemAccess(virt=%08X,phys=%08X,size=%u,reverse=%s,mode=%s,UM=%d,VM=%d> failed because of bad function call!\n",
             u8 FT = 1;
@@ -399,6 +394,7 @@ public:
             }
             return -FT;
         }
+        
         return 0;
     }
 

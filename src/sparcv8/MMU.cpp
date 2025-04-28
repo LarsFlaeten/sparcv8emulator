@@ -102,7 +102,7 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
     u32 ind3 = (virt_addr >> 12) & LOBITS6;
 
     u32 l1_tbl_ptr = (ctx_tbl_ptr << 4) + ctx_n * 4;
-    u32 lx = MMU::MemAccessBypassRead4(l1_tbl_ptr, CROSS_ENDIAN);
+    u32 lx = MMU::MemAccessBypassRead4(l1_tbl_ptr);
 
     u32 ET = lx & 3;
     u32 PTP = (lx & ~3) >> 2;	
@@ -112,14 +112,14 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
     // MMU Table walk
     if( ET == 1) { // PTD, continue to level 1
         pa = (PTP << 6) + (ind1 * 4);
-        lx = MMU::MemAccessBypassRead4(pa, CROSS_ENDIAN);
+        lx = MMU::MemAccessBypassRead4(pa);
         
         ET = lx & 3;
         PTP = (lx & ~3) >> 2;
         level = 1;	
         if( ET == 1) { // PTD, continue to level 2
             pa = (PTP << 6) + (ind2 * 4);
-            lx = MMU::MemAccessBypassRead4(pa, CROSS_ENDIAN);
+            lx = MMU::MemAccessBypassRead4(pa);
             
             ET = lx & 3;
             PTP = (lx & ~3) >> 2;
@@ -127,7 +127,7 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
             if( ET == 1) {
                 // PTD, continue to level 3
                 pa = (PTP << 6) + (ind3 * 4);
-                lx = MMU::MemAccessBypassRead4(pa, CROSS_ENDIAN);
+                lx = MMU::MemAccessBypassRead4(pa);
                 
                 ET = lx & 3;
                 PTP = (lx & ~3) >> 2;

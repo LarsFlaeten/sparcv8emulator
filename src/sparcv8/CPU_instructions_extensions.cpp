@@ -90,7 +90,7 @@ void CPU::LDA_impl (pDecode_t d) {
             d->wb_type = WriteBackType::WRITEBACKREG;
             break;
         case(ASI_LEON_BYPASS):
-            d->value = mmu.MemAccessBypassRead4(address, CROSS_ENDIAN);
+            d->value = mmu.MemAccessBypassRead4(address);
             d->wb_type = WriteBackType::WRITEBACKREG;
 
             break;
@@ -206,7 +206,7 @@ void CPU::STA_impl (pDecode_t d) {
             mmu.flush();
             break;
         case(ASI_LEON_BYPASS):
-            mmu.MemAccessBypassWrite4(address, rd_value, CROSS_ENDIAN);
+            mmu.MemAccessBypassWrite4(address, rd_value);
             break;
         default:
             throw std::runtime_error("ASI assignment not implemented");

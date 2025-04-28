@@ -22,6 +22,7 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    MCtrl mctrl;
     MMU mmu;
     CPU cpu;
     SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
@@ -55,7 +56,7 @@ protected:
 
 
 
-CPUTrapsTest::CPUTrapsTest() : cpu(mmu)
+CPUTrapsTest::CPUTrapsTest() : mmu(mctrl), cpu(mmu)
 {  
    	
 
@@ -69,11 +70,13 @@ CPUTrapsTest::~CPUTrapsTest()
 
 void CPUTrapsTest::SetUp()
 {
+    mctrl.attach_bank<RamBank>(0x0, 1*1024*1024); // 1 MB @ 0x0
+    
     // Set up IO mapping
     // TODO: Move this MMU functions?
-    for(unsigned a = 0x0; a < 0x100; ++a)
-        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
-                         [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
+    //for(unsigned a = 0x0; a < 0x100; ++a)
+    //    mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
+    //                     [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 

@@ -23,7 +23,7 @@ void debug_dumpmem(u32 pa, int n) {
         std::cout << std::hex << "0x" << pa + 4*i*4;
         std::string strrep;
         for(int j = 0; j < 4; ++j) {
-            u32 v = debug_mmu_ptr->MemAccessBypassRead4(pa + 4*(i*4 + j), CROSS_ENDIAN);
+            u32 v = debug_mmu_ptr->MemAccessBypassRead4(pa + 4*(i*4 + j));
             std::cout <<  "  " << std::setfill('0') << std::setw(8) << v;
             char a = v & 0xff;
             char b = (v & 0xff00) >> 8;
@@ -153,7 +153,7 @@ void debug_mmu_tables() {
         
     // Fetch PTD from the context table 
     u32 l1_tbl_ptr = (ctx_tbl_ptr << 4) + ctx_n * 4;
-    u32 ptd = debug_mmu_ptr->MemAccessBypassRead4(l1_tbl_ptr, CROSS_ENDIAN);
+    u32 ptd = debug_mmu_ptr->MemAccessBypassRead4(l1_tbl_ptr);
     //std::cout << "  PTE " << lx << "\n";
     
     u32 et = ptd & 0x3;
@@ -166,7 +166,7 @@ void debug_mmu_tables() {
 
     // Level 1 page table is 1024 bytes
     for(int i = 0; i < 1024; i += 4) {
-        ptd = debug_mmu_ptr->MemAccessBypassRead4(ptp + i, CROSS_ENDIAN);
+        ptd = debug_mmu_ptr->MemAccessBypassRead4(ptp + i);
         et = ptd & 0x3;
         // i = bits 24-31 of virtual address
         if(et == 2) {
@@ -182,7 +182,7 @@ void debug_mmu_tables() {
            //PTD
            u32 ptp_l1 = ptd >> 2;
            for(int j = 0; j < 256; j += 4) {
-                u32 ptd_l2 = debug_mmu_ptr->MemAccessBypassRead4((ptp_l1 << 6) + j, CROSS_ENDIAN);
+                u32 ptd_l2 = debug_mmu_ptr->MemAccessBypassRead4((ptp_l1 << 6) + j);
                 u32 et_l2 = ptd_l2 & 0x3;
                 if(et_l2 == 2) {
                     // PTE
@@ -197,7 +197,7 @@ void debug_mmu_tables() {
                 } else if(et_l2 == 1) {
                     u32 ptp_l2 = ptd_l2 >> 2;
                     for(int k = 0; k < 256; k += 4) {
-                        u32 ptd_l3 = debug_mmu_ptr->MemAccessBypassRead4((ptp_l2 << 6) + k, CROSS_ENDIAN);
+                        u32 ptd_l3 = debug_mmu_ptr->MemAccessBypassRead4((ptp_l2 << 6) + k);
                         u32 et_l3 = ptd_l3 & 0x3;
                         if(et_l3 == 2) {
                             // PTE

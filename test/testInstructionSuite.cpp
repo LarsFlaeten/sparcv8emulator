@@ -26,7 +26,7 @@ protected:
     // before the destructor).
     virtual void TearDown();
         
-    SDRAM<0x01000000> RAM;   // IO: 0xf0000000, 16 MB of RAM
+    MCtrl mctrl;
     MMU mmu; 
     CPU cpu;
     
@@ -55,22 +55,13 @@ protected:
 
 
 INSTRTest::INSTRTest()
-    : cpu(mmu)
+    : mmu(mctrl), cpu(mmu)
 
 {  
     //cpu.SetVerbose(true);
     cpu.set_cpu_id(0);
 
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    u32 base_ram = 0x00000000;
-    u32 size_ram = RAM.getSizeBytes();
-    u32 start = base_ram/0x10000;
-    u32 end = (base_ram + size_ram)/0x10000;
-    for(unsigned a = start; a < end; ++a)
-        mmu.IOmap[a] = { [&RAM = RAM](u32 i)          { return RAM.Read( (i-0x00000000)/4); },
-                          [&RAM = RAM](u32 i, u32 v)   {        RAM.Write((i-0x00000000)/4, v);    } };
-   
+    mctrl.attach_bank<RamBank>(0x0, 16*1024*1024); // 16 MB @ 0x0
 }
 
 INSTRTest::~INSTRTest()

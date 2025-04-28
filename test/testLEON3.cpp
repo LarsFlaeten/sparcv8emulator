@@ -25,7 +25,7 @@ protected:
     // before the destructor).
     virtual void TearDown();
         
-    SDRAM<0x01000000> RAM;   // IO: 0xf0000000, 16 MB of RAM
+    MCtrl mctrl;
     MMU mmu; 
     CPU cpu;
 };
@@ -33,22 +33,14 @@ protected:
 
 
 LEON3Test::LEON3Test()
-    : cpu(mmu)
+    : mmu(mctrl), cpu(mmu)
 
 {  
     cpu.set_verbose(true);
     cpu.set_cpu_id(0);
-
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    u32 base_ram = 0xf0000000;
-    u32 size_ram = RAM.getSizeBytes();
-    u32 start = base_ram/0x10000;
-    u32 end = (base_ram + size_ram)/0x10000;
-    for(unsigned a = start; a < end; ++a)
-        mmu.IOmap[a] = { [&RAM = RAM](u32 i)          { return RAM.Read( (i-0xf0000000)/4); },
-                          [&RAM = RAM](u32 i, u32 v)   {        RAM.Write((i-0xf0000000)/4, v);    } };
-   
+    cpu.reset(0x0);
+    
+    mctrl.attach_bank<RamBank>(0xf0400000, 1*1024*1024); // 1 MB @ 0x0
 }
 
 LEON3Test::~LEON3Test()
@@ -122,6 +114,8 @@ TEST_F(LEON3Test, CASA_swap)
      
     // g4;
     DecodeStruct d;
+    
+    d.psr = cpu.get_psr();
  
     // Map the PSR structure to the decode PSR variable just once
     d.p = (pPSR_t) &(d.psr);
@@ -139,7 +133,8 @@ TEST_F(LEON3Test, CASA_swap)
  
     // Write something to memory:
     u32 mem_value = 0x3ffffdff;
-    mmu.MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
+    auto ret = mmu.MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
+    ASSERT_EQ(ret, 0);
 
     // Write regs:
     cpu.write_reg(0xf04e01f4, LOCALREG3); // The address of the value in memory
@@ -159,7 +154,9 @@ TEST_F(LEON3Test, CASA_swap)
     // Check compare and swap has been performed:
     u32 l3val; cpu.read_reg(LOCALREG3, &l3val);
     EXPECT_EQ(l3val, 0xf04e01f4);
-    mmu.MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
+    ret = mmu.MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
+    ASSERT_EQ(ret, 0);
+    
     EXPECT_EQ(mem_value, 0x3ffffe00); // The value from rd (%i3) should now be in mwmory
                                       // at location pointed by %l3
 
@@ -180,6 +177,7 @@ TEST_F(LEON3Test, CASA_noswap)
      
     // g4;
     DecodeStruct d;
+    d.psr = cpu.get_psr();
  
     // Map the PSR structure to the decode PSR variable just once
     d.p = (pPSR_t) &(d.psr);
@@ -197,8 +195,9 @@ TEST_F(LEON3Test, CASA_noswap)
  
     // Write something to memory:
     u32 mem_value = 0x3ffffdff;
-    mmu.MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
-
+    auto ret = mmu.MemAccess<intent_store>(0xf04e01f4, mem_value, CROSS_ENDIAN);
+    ASSERT_EQ(ret, 0);
+    
     // Write regs:
     cpu.write_reg(0xf04e01f4, LOCALREG3); // The address of the value in memory
     cpu.write_reg(0x3ffffd0f, GLOBALREG1); // The value to be compared with
@@ -217,7 +216,9 @@ TEST_F(LEON3Test, CASA_noswap)
     // Check compare and swap has not been performed:
     u32 l3val; cpu.read_reg(LOCALREG3, &l3val);
     EXPECT_EQ(l3val, 0xf04e01f4);
-    mmu.MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
+    ret = mmu.MemAccess<intent_load>(l3val, mem_value, CROSS_ENDIAN);
+    ASSERT_EQ(ret, 0);
+    
     EXPECT_EQ(mem_value, 0x3ffffdff); // The value in memory at location pointed by %l3
                                       // Should be same as before
 

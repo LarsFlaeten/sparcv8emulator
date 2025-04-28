@@ -59,8 +59,9 @@ class Console
 // UART lite, lite version
 class APBUART
 {
-    bool enabled, ints_enabled, tx_emptied_int_pending, overrun;
-    struct { u8 len, pos, fifo[8]; } in;
+    bool enabled, ints_enabled, tx_emptied_int_pending;
+    mutable bool overrun;
+    mutable struct { u8 len, pos, fifo[8]; } in;
     // List of supported status and control bits in status REG
     enum { DREADY=1, TS_EMPTY=2, TFIFO_EMPTY=4, OVERRUN=16, RCNT_shift=26};
     enum { RE = 1, TE = 2, RI = 4, TI = 8, FA = (1<< 31) }; 
@@ -72,7 +73,7 @@ class APBUART
     Console console;
 public:
     APBUART(): ints_enabled(false), overrun(false), in{0,0,{0}}, scaler(0xff) { }
-    u32 Read(u32 offset)
+    u32 read(u32 offset) const
     {
         // Read data reg
         u32 result = 0;
@@ -101,7 +102,7 @@ public:
         }
        return result;
     }
-    void Write(u32 offset, u32 value)
+    void write(u32 offset, u32 value)
     {
         switch(offset) {
             case(0x0):

@@ -8,7 +8,7 @@ int main() {
         uart.Input();
 
         u32 index = 0;
-        u32 r = uart.Read(index);
+        u32 r = uart.read(index);
 
         if(r == 10) {
             std::cout << "\n>";
@@ -19,7 +19,7 @@ int main() {
 
         } else if(r > 0) {
             command.push_back(r);
-            uart.Write(index, r);
+            uart.write(index, r);
         }
 
     }

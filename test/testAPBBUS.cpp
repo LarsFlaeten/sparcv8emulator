@@ -1,6 +1,6 @@
 #include "../src/sparcv8/CPU.h"
 #include "../src/sparcv8/MMU.h"
-#include "../src/peripherals/APBMST.h"
+#include "../src/peripherals/APBCTRL.h"
 
 
 
@@ -58,7 +58,7 @@ void APBBUSTest::TearDown()
 
 TEST_F(APBBUSTest, AHB_setup)
 {
-    APBCTRL apbctrl;
+    //APBCTRL apbctrl;
 
 
    

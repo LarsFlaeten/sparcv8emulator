@@ -17,6 +17,13 @@ typedef Elf32_Phdr* pElf32_Phdr;
 
 #define BASE_MEM    0x0000000
 
+static unsigned SwapBytes(unsigned value, unsigned size)
+{
+        if(size >= 2) value = ((value & 0xFF00FF00u) >> 8)
+                                    | ((value & 0x00FF00FFu) << 8);
+            if(size >= 4) value = (value >> 16) | (value << 16);
+                return value;
+}
 
 u32 ReadElf(const std::string& filename, CPU& cpu, u32& entry_va) {
 
@@ -147,7 +154,7 @@ u32 ReadElf(const std::string& filename, CPU& cpu, u32& entry_va) {
             word |= (c << ((3-(bytecount&3)) * 8));
             if ((bytecount&3) == 3) {
                 //cpu.LoadMemWord(SwapBytes(h2[pcount]->p_vaddr, 4) + i, word);
-                cpu.get_mmu().MemAccessBypassWrite4(pa + i, word, CROSS_ENDIAN);
+                cpu.get_mmu().MemAccessBypassWrite4(pa + i, word);
                 i+=4;
                 word = 0;
                 
@@ -161,7 +168,7 @@ u32 ReadElf(const std::string& filename, CPU& cpu, u32& entry_va) {
            u32 zero = 0;
            for(u32 j = 0; j < wsize; j = j+4)
                  try {
-                     cpu.get_mmu().MemAccessBypassWrite4(pa + i + j, zero, CROSS_ENDIAN);
+                     cpu.get_mmu().MemAccessBypassWrite4(pa + i + j, zero);
                  } catch (...) {
                      
                      /*

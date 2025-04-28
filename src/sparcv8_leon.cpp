@@ -40,7 +40,7 @@ extern char* optarg;
 #include "sparcv8/MMU.h"
 #include "peripherals/Peripherals.h"
 #include "peripherals/Amba.h"
-#include "peripherals/APBMST.h"
+#include "peripherals/APBCTRL.h"
 #include "gdb/gdb_server.h"
 
 
@@ -73,14 +73,14 @@ std::string uart_readline(APBUART& uart) {
         uart.Input();
 
         u32 index = 0;
-        u32 r = uart.Read(index);
+        u32 r = uart.read(index);
 
         if(r == 10) {
             return command;
 
         } else if(r > 0) {
             command.push_back(r);
-            uart.Write(index, r);
+            uart.write(index, r);
         }
 
     }
@@ -228,7 +228,8 @@ int main(int argc, char **argv)
         }
 
     // Set up CPU
-    MMU mmu;
+    MCtrl mctrl;
+    MMU mmu(mctrl);
     CPU cpu(mmu, write_to_file ? os : std::cout);
     cpu.set_verbose(verbose);
     cpu.set_cpu_id(0);
@@ -240,21 +241,27 @@ int main(int argc, char **argv)
 
 
     // RAM
-    SDRAM<0x08000000> RAM;   // IO: 0x40000000, 32 MB of RAM
-    SDRAM<0x00100000> RAM2;  // IO: 0xffd03000, 1 MB of RAM
-    SDRAM<0x00800000> RAM3;  // IO: 0x00000000, 8 MB of RAM
-    SDRAM<0x00800000> RAM4;  // IO: 0x40000000, 8 MB of RAM
+    //SDRAM<0x08000000> RAM;   // IO: 0x40000000, 32 MB of RAM
+    mctrl.attach_bank<RamBank>(0x40000000, 32 * 1024 * 1024); // Main memory
+    //SDRAM<0x00100000> RAM2;  // IO: 0xffd03000, 1 MB of RAM
+    //SDRAM<0x00800000> RAM3;  // IO: 0x00000000, 8 MB of RAM
+    //SDRAM<0x00800000> RAM4;  // IO: 0x40000000, 8 MB of RAM
 
 
 
     // Set up amba IO area:
-    SDRAM2 amba_ahb(0x100000); // AMBA resides from 0xfff00000 -> 0xfffffff0 (+ u32)
-    amba_ahb_setup(amba_ahb);
-    SDRAM2 amba_apb(0x010000); // AMBA resides from 0x80000000 -> 0x800ffff0 (+ u32)
-    amba_apb_setup(amba_apb, 0x800f0000);
+    //SDRAM2 amba_ahb(0x100000); // AMBA resides from 0xfff00000 -> 0xfffffff0 (+ u32)
+    //  SDRAM2 amba_apb(0x010000); // AMBA resides from 0x80000000 -> 0x800ffff0 (+ u32)
+    
+    mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
+    mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
+    
+    
+    amba_ahb_pnp_setup(mctrl);
+    amba_apb_pnp_setup(mctrl);
 
 
-
+/*
     // Set up IO mapping
     // TODO: Move this MMU functions?
     u32 base_ram = 0x40000000;
@@ -264,7 +271,7 @@ int main(int argc, char **argv)
     for(unsigned a = start; a < end; ++a)
         mmu.IOmap[a] = { [&RAM](u32 i)          { return RAM.Read( (i-0x40000000)/4); },
                           [&RAM](u32 i, u32 v)   {        RAM.Write((i-0x40000000)/4, v);    } };
- 
+ */
     // Set up IO mapping
     // TODO: Move this MMU functions?
 /*
@@ -287,17 +294,9 @@ int main(int argc, char **argv)
         MMU::IOmap[a] = { [&RAM2](u32 i)          {  return RAM2.Read((i-0xffd00000)/4); },
                          [&RAM2](u32 i, u32 v)   {   RAM2.Write((i-0xffd00000)/4, v);    } };
  */
-    // Test 8MB of low RAM
-    base_ram = 0x00000000;
-    size_ram = RAM3.getSizeBytes();
-    start = base_ram/0x10000;
-    end = (base_ram + size_ram)/0x10000;
     
-    for(unsigned a = start; a < end; ++a)
-        mmu.IOmap[a] = { [&RAM3](u32 i)          { /*std::cout << "READ: " << std::hex << i << "\n";*/ return RAM3.Read(i/4); },
-                         [&RAM3](u32 i, u32 v)   {  /*std::cout << "WRITE: " << std::hex << i << ": " << v << "\n";*/ RAM3.Write(i/4, v);    } };
-    
-    // IO mapping for AMBA AHB IO AREA
+    /*
+  // IO mapping for AMBA AHB IO AREA
     u32 base_amba_ahb_io = 0xfff00000;
     u32 end_amba_ahb_io =  0xffffffff;
     start = base_amba_ahb_io/0x10000;
@@ -320,8 +319,11 @@ int main(int argc, char **argv)
         mmu.IOmap[a] = { [&amba_apb](u32 i)          { return amba_apb.Read((i-0x800f0000)/4); } ,
                           [&amba_apb](u32 i, u32 v)   { amba_apb.Write((i-0x800f0000)/4, v);    } };
     }
+*/
+    mctrl.attach_bank<APBCTRL>(0x80000000);
+    auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
 
-    APBCTRL apbctrl;
+/**    APBCTRL apbctrl;
     // IO mapping for AMBA APB bus IO AREA
     u32 base_apbctrl_io = 0x80000000;
     u32 end_apbctrl_io =  0x800effff;
@@ -333,6 +335,8 @@ int main(int argc, char **argv)
         mmu.IOmap[a] = { [&apbctrl](u32 i)          { return apbctrl.Read(i); } ,
                           [&apbctrl](u32 i, u32 v)   { apbctrl.Write(i, v);    } };
     }
+*/
+    mctrl.debug_list_banks();
 
     // Set up breakpoint handling (we need uart from APBctrl) 
     auto& uart = apbctrl.GetUART();
@@ -357,6 +361,7 @@ int main(int argc, char **argv)
 
    
     // Set up the tick, input polling and interrupt
+    
     cpu.register_bus_tick_function( [&apbctrl , &cpu]() 
         {
             GPTIMER& timer = apbctrl.GetTimer();
@@ -364,7 +369,7 @@ int main(int argc, char **argv)
             APBUART& uart1 = apbctrl.GetUART();
             APBUART& uart9 = apbctrl.GetUART9();
             timer.Tick();
-            uart1.Input();
+            //uart1.Input();
 
             // It seems like the kernel clears the interrupts, and we dont need to do it here
             if(timer.CheckInterrupt(false)) 
@@ -393,7 +398,8 @@ int main(int argc, char **argv)
     cpu.reset(entry_va);
 
     // OS boot process step 1: Set stack pointer to end of ram
-    u32 end_of_ram = 0x40000000 + RAM.getSizeBytes(); 
+    u32 end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
+
     //u32 end_of_ram = 0x41fffe80; // Value from TSIM
     //u32 end_of_ram = 0x42000000; // Value from TSIM
 

@@ -30,13 +30,14 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+	MCtrl mctrl;
     MMU mmu;
 
 };
 
 
 
-AMBATest::AMBATest()
+AMBATest::AMBATest() : mmu(mctrl)
 {  
    	
 
@@ -60,6 +61,9 @@ void AMBATest::TearDown()
 
 TEST_F(AMBATest, AHB_setup)
 {
+	mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
+    mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
+/*
     SDRAM2 amba_ahb(0x100000); // AMBA resides from 0xfff00000 -> 0xfffffff0 (+ u32)
     SDRAM2 amba_apb(0x100000);
 
@@ -86,23 +90,21 @@ TEST_F(AMBATest, AHB_setup)
         mmu.IOmap[a] = { [&amba_apb](u32 i)          { return amba_apb.Read((i-0x800f0000)/4); } ,
                           [&amba_apb](u32 i, u32 v)   { amba_apb.Write((i-0x800f0000)/4, v);    } };
     }
-
-    amba_ahb_setup(amba_ahb);
-    amba_apb_setup(amba_apb, base_amba_apb_io);
+*/
+    amba_ahb_pnp_setup(mctrl);
+    amba_apb_pnp_setup(mctrl);
 
     // Find the system version
-    //ASSERT_EQ(MMU::MemAccessBypassRead4(0xfffffff0, CROSS_ENDIAN), GR740_REV1_SYSTEMID);  
-    ASSERT_EQ(mmu.MemAccessBypassRead4(0xfffffff0, CROSS_ENDIAN), 0x0); 
+    ASSERT_EQ(mmu.MemAccessBypassRead4(0xfffffff0), 0x0); 
 
 
 
     // mst0 Find the LEON processor
-    auto p = amba_ahb.getPtr(0x000ff000/4);
-    ambapp_pnp_ahb* ahb = reinterpret_cast<ambapp_pnp_ahb*>(p); 
- 	ASSERT_EQ(ambapp_pnp_vendor(ahb->id), VENDOR_GAISLER);
- 	ASSERT_EQ(ambapp_pnp_device(ahb->id), GAISLER_LEON3);
- 	ASSERT_EQ(ambapp_pnp_ver(ahb->id), 0x0);
- 	ASSERT_EQ(ambapp_pnp_irq(ahb->id), 0x0);
+	u32 ahb_id = mmu.MemAccessBypassRead4(0xfffff000);
+    ASSERT_EQ(ambapp_pnp_vendor(ahb_id), VENDOR_GAISLER);
+ 	ASSERT_EQ(ambapp_pnp_device(ahb_id), GAISLER_LEON3);
+ 	ASSERT_EQ(ambapp_pnp_ver(ahb_id), 0x0);
+ 	ASSERT_EQ(ambapp_pnp_irq(ahb_id), 0x0);
 
     // mst1 Find the AHB UART
 /*    p = amba_ahb.getPtr(0x000ff020/4);
@@ -113,9 +115,13 @@ TEST_F(AMBATest, AHB_setup)
  	ASSERT_EQ(ambapp_pnp_irq(ahb->id), 0x0);
 */
     // slv0 Find the Memory Controller
-    p = amba_ahb.getPtr(0x000ff820/4);
-
-	ahb = reinterpret_cast<ambapp_pnp_ahb*>(p); 
+	ambapp_pnp_ahb ahbpp;
+	ahbpp.id = mctrl.read32(0xfffff820);
+	ahbpp.mbar[0] = mctrl.read32(0xfffff830);
+	ahbpp.mbar[1] = mctrl.read32(0xfffff834);
+	ahbpp.mbar[2] = mctrl.read32(0xfffff838);
+    
+	auto ahb = &ahbpp; 
  	ASSERT_EQ(ambapp_pnp_vendor(ahb->id), VENDOR_ESA);
  	ASSERT_EQ(ambapp_pnp_device(ahb->id), ESA_MCTRL);
  	ASSERT_EQ(ambapp_pnp_ver(ahb->id), 0x0);
@@ -132,11 +138,13 @@ TEST_F(AMBATest, AHB_setup)
 
 
 
-    // slv1 Find the APB Bridge
-    p = amba_ahb.getPtr(0x000ff800/4);
+    // slv1 Find the APB Bridge @ 0xfffff800
+    ahbpp.id = mctrl.read32(0xfffff800);
+	ahbpp.mbar[0] = mctrl.read32(0xfffff810);
+	ahbpp.mbar[1] = mctrl.read32(0xfffff814);
+	ahbpp.mbar[2] = mctrl.read32(0xfffff818);
 
-	ahb = reinterpret_cast<ambapp_pnp_ahb*>(p); 
- 	ASSERT_EQ(ambapp_pnp_vendor(ahb->id), VENDOR_GAISLER);
+	ASSERT_EQ(ambapp_pnp_vendor(ahb->id), VENDOR_GAISLER);
  	ASSERT_EQ(ambapp_pnp_device(ahb->id), GAISLER_APBMST);
  	ASSERT_EQ(ambapp_pnp_ver(ahb->id), 0x0);
  	ASSERT_EQ(ambapp_pnp_irq(ahb->id), 0x0);
@@ -145,8 +153,10 @@ TEST_F(AMBATest, AHB_setup)
 	ASSERT_EQ(ambapp_pnp_mbar_type(ahb->mbar[0]), AMBA_TYPE_MEM); //AMBA_TYPE_APBIO);
 
     // slv1 Find the slaves under the APB Bridge
-    p = amba_apb.getPtr((0x800ff000-base_amba_apb_io)/4);
-	ambapp_pnp_apb* apb = reinterpret_cast<ambapp_pnp_apb*>(p); 
+	ambapp_pnp_apb apbpp;
+	apbpp.id = mctrl.read32(0x800ff000);
+	apbpp.iobar = mctrl.read32(0x800ff004);
+    ambapp_pnp_apb* apb = &apbpp; 
  	ASSERT_EQ(ambapp_pnp_vendor(apb->id), VENDOR_ESA);
  	ASSERT_EQ(ambapp_pnp_device(apb->id), ESA_MCTRL);
  	ASSERT_EQ(ambapp_pnp_ver(apb->id), 0x0);
@@ -156,8 +166,8 @@ TEST_F(AMBATest, AHB_setup)
 	ASSERT_EQ(ambapp_pnp_mbar_type(apb->iobar), AMBA_TYPE_APBIO);
 
     // slv2 
-    p = amba_apb.getPtr((0x800ff008-base_amba_apb_io)/4);
-	apb = reinterpret_cast<ambapp_pnp_apb*>(p); 
+	apbpp.id = mctrl.read32(0x800ff008);
+	apbpp.iobar = mctrl.read32(0x800ff00c);
  	ASSERT_EQ(ambapp_pnp_vendor(apb->id), VENDOR_GAISLER);
  	ASSERT_EQ(ambapp_pnp_device(apb->id), GAISLER_APBUART);
  	ASSERT_EQ(ambapp_pnp_ver(apb->id), 0x1);
@@ -167,8 +177,8 @@ TEST_F(AMBATest, AHB_setup)
 	ASSERT_EQ(ambapp_pnp_mbar_type(apb->iobar), AMBA_TYPE_APBIO);
 
     // slv3 
-    p = amba_apb.getPtr((0x800ff010-base_amba_apb_io)/4);
-	apb = reinterpret_cast<ambapp_pnp_apb*>(p); 
+ 	apbpp.id = mctrl.read32(0x800ff010);
+	apbpp.iobar = mctrl.read32(0x800ff014);
  	ASSERT_EQ(ambapp_pnp_vendor(apb->id), VENDOR_GAISLER);
  	ASSERT_EQ(ambapp_pnp_device(apb->id), GAISLER_IRQMP);
  	ASSERT_EQ(ambapp_pnp_ver(apb->id), 0x0);
@@ -178,8 +188,8 @@ TEST_F(AMBATest, AHB_setup)
 	ASSERT_EQ(ambapp_pnp_mbar_type(apb->iobar), AMBA_TYPE_APBIO);
 
     // slv4 
-    p = amba_apb.getPtr((0x800ff018-base_amba_apb_io)/4);
-	apb = reinterpret_cast<ambapp_pnp_apb*>(p); 
+ 	apbpp.id = mctrl.read32(0x800ff018);
+	apbpp.iobar = mctrl.read32(0x800ff01c);
  	ASSERT_EQ(ambapp_pnp_vendor(apb->id), VENDOR_GAISLER);
  	ASSERT_EQ(ambapp_pnp_device(apb->id), GAISLER_GPTIMER);
  	ASSERT_EQ(ambapp_pnp_ver(apb->id), 0x0);
@@ -189,8 +199,8 @@ TEST_F(AMBATest, AHB_setup)
 	ASSERT_EQ(ambapp_pnp_mbar_type(apb->iobar), AMBA_TYPE_APBIO);
 
     // slv5 
-    p = amba_apb.getPtr((0x800ff020-base_amba_apb_io)/4);
-	apb = reinterpret_cast<ambapp_pnp_apb*>(p); 
+ 	apbpp.id = mctrl.read32(0x800ff020);
+	apbpp.iobar = mctrl.read32(0x800ff024);
  	ASSERT_EQ(ambapp_pnp_vendor(apb->id), VENDOR_GAISLER);
  	ASSERT_EQ(ambapp_pnp_device(apb->id), GAISLER_APBUART);
  	ASSERT_EQ(ambapp_pnp_ver(apb->id), 0x1);
@@ -224,23 +234,3 @@ TEST_F(AMBATest, AHB_setup)
 #define ambapp_pnp_apb_mask(iobar) \
 	((~(ambapp_pnp_mbar_mask(iobar)<<8) & 0x000fffff) + 1)
 */
-
-TEST_F(AMBATest, LEON_SOC_Device_enumeration) {
-    // Set up CPU
-    CPU cpu(mmu, std::cout);
-    cpu.set_verbose(false);
-    cpu.set_cpu_id(0);
- 
-    SDRAM<0x00100000> RAM2;  // IO: 0xffd03000, 1 MB of RAM
-
-    // Set up amba IO area:
-    SDRAM2 amba_ahb(0x100000); // AMBA resides from 0xfff00000 -> 0xfffffff0 (+ u32)
-    amba_ahb_setup(amba_ahb);
-    SDRAM2 amba_apb(0x010000); // AMBA resides from 0x80000000 -> 0x800ffff0 (+ u32)
-    amba_apb_setup(amba_apb, 0x800f0000);
-
-
-
-
-
-}

@@ -7,10 +7,10 @@
 #include <cmath>
 
 /* MMU Tables provided by the Linker script */
-u32 * _mmu_ctx_table; //[256];
-u32 * _mmu_ctx0_level1; //[256];
-u32 * _mmu_ctx0_fc_level2; //[64];
-u32 * _mmu_ctx0_ffd_level3; //[64];
+u32 _mmu_ctx_table[256];
+u32 _mmu_ctx0_level1[256];
+u32 _mmu_ctx0_fc_level2[64];
+u32 _mmu_ctx0_ffd_level3[64];
 
 
 
@@ -44,11 +44,10 @@ protected:
     // Code here will be called immediately after each test (right
     // before the destructor).
     virtual void TearDown();
+    MCtrl mctrl;
     MMU mmu;
     CPU cpu;
-    //SDRAM<0x01000000> RAM;  // IO: 0x0, 16 MB of RAM
-    SDRAM2 RAM;  // IO: 0x0, 16 MB of RAM
-
+    
     void do_LDA_instr(u32 rs1, u32 rs2, u32 rd, u32 asi) {
         u32 op3 = 0b010000; // LDA
         do_op3_instr(3, op3, rs1, rs2, rd, asi);
@@ -93,7 +92,7 @@ protected:
 
 
 
-MMUTest::MMUTest() : cpu(mmu), RAM(0x01000000)
+MMUTest::MMUTest() : mmu(mctrl), cpu(mmu)
 {  
    	
 
@@ -107,7 +106,10 @@ MMUTest::~MMUTest()
 
 void MMUTest::SetUp()
 {
- 
+    mctrl.attach_bank<RamBank>(0x60000000, 0x01000000);
+    mctrl.attach_bank<RamBank>(0x00000000, 1024 * 1024);
+    
+    /*
     // Set up IO mapping
     // TODO: Move this MMU functions?
     u32 base_ram = 0x60000000;
@@ -123,7 +125,7 @@ void MMUTest::SetUp()
     for(unsigned a = 0x0; a < 0x100; ++a)
         mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
                          [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
-
+*/
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     cpu.reset(entry_va);
@@ -262,7 +264,8 @@ TEST_F(MMUTest, MMUAMBAMock)
 TEST_F(MMUTest, MMUBypassRAMReadWrite)
 {   
    
-    AMBA_mock amba;
+    mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
+    /*AMBA_mock amba;
 
     // Set up IO mapping
     // Replicate LEON AMBA IO Area
@@ -274,19 +277,20 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite)
     for(unsigned a = start; a<= end; ++a)
         mmu.IOmap[a] = { [&](u32 i)          { return amba.Read(i); },
                          [&](u32 i, u32 v)   { amba.Write(i, v);    } };
+    */
+    
+    mctrl.write32(0xfffffff0, 0x07401039);
 
-    amba.Write(0xfffffff0, 0x07401039);
-
-    auto v = mmu.MemAccessBypassRead4(0xfffffff0, true);
+    auto v = mmu.MemAccessBypassRead4(0xfffffff0);
     ASSERT_EQ(v, 0x07401039);
     ASSERT_TRUE(CROSS_ENDIAN); 
 
     for(u32 a = 0xfff00000; a < 0xfffffff0; a += 0x10) {
-        mmu.MemAccessBypassWrite4(a, a, true);
+        mmu.MemAccessBypassWrite4(a, a);
     }
 
     for(u32 a = 0xfff00000; a < 0xfffffff0; a += 0x10) {
-        auto v = mmu.MemAccessBypassRead4(a, true);
+        auto v = mmu.MemAccessBypassRead4(a);
     
         ASSERT_EQ(v, a);
     }
@@ -297,33 +301,22 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite)
 
 TEST_F(MMUTest, MMUBypassRAMReadWrite2)
 {   
-   
+    mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
+    
     // MMU shuld be off for this test, as we mix bypass
     // and normal MMU ops (without virtual mapping):
     EXPECT_FALSE(mmu.GetEnabled());
 
 
-    AMBA_mock amba;
-
-    // Set up IO mapping
-    // Replicate LEON AMBA IO Area
-    u32 amba_start = 0xfff00000;
-    u32 amba_end = 0xffffffff;
-    u32 start = amba_start/0x10000;
-    u32 end = amba_end/0x10000;
-
-    for(unsigned a = start; a<= end; ++a)
-        mmu.IOmap[a] = { [&](u32 i)          { return amba.Read(i); },
-                         [&](u32 i, u32 v)   { amba.Write(i, v);    } };
-
-    amba.Write(0xfffffff0, 0x07401039);
+    
+    mctrl.write32(0xfffffff0, 0x07401039);
 
     u32 v; mmu.MemAccess<intent_load>(0xfffffff0, v, true);
     ASSERT_EQ(v, 0x07401039);
     ASSERT_TRUE(CROSS_ENDIAN); 
 
     for(u32 a = 0xfff00000; a < 0xfffffff0; a += 0x10) {
-        mmu.MemAccessBypassWrite4(a, a, true);
+        mmu.MemAccessBypassWrite4(a, a);
     }
 
     for(u32 a = 0xfff00000; a < 0xfffffff0; a += 0x10) {
@@ -703,7 +696,7 @@ TEST_F(MMUTest, MMUTLBCacheFlush)
 
 
 
-void mmu_table_init(u32 end_of_mem);
+void mmu_table_init(MCtrl& mctrl, u32 end_of_mem);
 void mmu_init(MMU& mmu);
 
 #define SRMMU_PGDIR_MASK (~(SRMMU_PGDIR_SIZE-1))
@@ -741,27 +734,35 @@ TEST_F(MMUTest, MMUTables)
     ASSERT_FALSE(mmu.GetEnabled());
 
  	// Point the MMU table pointer to the correct location in RAM:
-	// MUMU Tables base: 0x60002000 (ctx)
-	_mmu_ctx_table = reinterpret_cast<u32*>(RAM.getPtr(0x2000 / 4));
-	_mmu_ctx0_level1 =  reinterpret_cast<u32*>(RAM.getPtr(0x2400 / 4));
-	_mmu_ctx0_fc_level2 =  reinterpret_cast<u32*>(RAM.getPtr(0x2800 / 4));
-	_mmu_ctx0_ffd_level3 =  reinterpret_cast<u32*>(RAM.getPtr(0x2900 / 4));
-
+	// MUMU Tables base: 0x60002000 (ctx = 0)
+	_mmu_ctx_table[0]   = 0x60002000;
+	_mmu_ctx0_level1[0]    = 0x60002400;
+    for(int i = 1; i < 256; ++i)
+        _mmu_ctx0_level1[i] = _mmu_ctx0_level1[i-1] + 4;
+	
+    _mmu_ctx0_fc_level2[0] = 0x60002800;
+	for(int i = 1; i < 64; ++i)
+        _mmu_ctx0_fc_level2[i] = _mmu_ctx0_fc_level2[i-1] + 4;
+	
+    _mmu_ctx0_ffd_level3[0] = 0x60002900;
+    for(int i = 1; i < 64; ++i)
+        _mmu_ctx0_ffd_level3[i] = _mmu_ctx0_ffd_level3[i-1] + 4;
+	
     // Test some values are written to correct location
-    mmu.MemAccessBypassWrite4(0x60002000, 0xcafebabe, CROSS_ENDIAN);
-    ASSERT_EQ(_mmu_ctx_table[0], 0xcafebabe);
+    mmu.MemAccessBypassWrite4(0x60002000, 0xcafebabe);
+    ASSERT_EQ(mctrl.read32(_mmu_ctx_table[0]), 0xcafebabe);
 
-    _mmu_ctx0_level1[0] = 0xbaccecaf;
-    _mmu_ctx0_level1[255] = 0xdeadbeef;
-    u32 r1 = mmu.MemAccessBypassRead4(0x60002400, CROSS_ENDIAN);
-    u32 r2 = mmu.MemAccessBypassRead4(0x600027fc, CROSS_ENDIAN);
+    mctrl.write32(_mmu_ctx0_level1[0], 0xbaccecaf);
+    mctrl.write32(_mmu_ctx0_level1[255], 0xdeadbeef);
+    u32 r1 = mmu.MemAccessBypassRead4(0x60002400);
+    u32 r2 = mmu.MemAccessBypassRead4(0x600027fc);
     ASSERT_EQ(r1, 0xbaccecaf);
     ASSERT_EQ(r2, 0xdeadbeef);
 
 
 
 
-	mmu_table_init(0x61000000);
+	mmu_table_init(mctrl, 0x61000000);
 	mmu_init(mmu);
 
 
@@ -769,11 +770,11 @@ TEST_F(MMUTest, MMUTables)
 
     // Fill up RAM with the values of each words physical address:
     for(u32 pa = 0x60010000; pa < 0x61000000; pa += 4)
-       mmu.MemAccessBypassWrite4(pa, pa, CROSS_ENDIAN); 
+       mmu.MemAccessBypassWrite4(pa, pa); 
 
     // Check values
     for(u32 pa = 0x60010000; pa < 0x61000000; pa += 4) {
-        u32 val = mmu.MemAccessBypassRead4(pa, CROSS_ENDIAN);
+        u32 val = mmu.MemAccessBypassRead4(pa);
         ASSERT_EQ(val, pa);
     }
 
@@ -858,13 +859,24 @@ TEST_F(MMUTest, MMUFaults)
     ASSERT_FALSE(mmu.GetEnabled());
 
  	// Point the MMU table pointer to the correct location in RAM:
-	// MUMU Tables base: 0x60002000 (ctx)
-	_mmu_ctx_table = reinterpret_cast<u32*>(RAM.getPtr(0x2000 / 4));
-	_mmu_ctx0_level1 =  reinterpret_cast<u32*>(RAM.getPtr(0x2400 / 4));
-	_mmu_ctx0_fc_level2 =  reinterpret_cast<u32*>(RAM.getPtr(0x2800 / 4));
-	_mmu_ctx0_ffd_level3 =  reinterpret_cast<u32*>(RAM.getPtr(0x2900 / 4));
+	// MUMU Tables base: 0x60002000 (ctx = 0)
+	_mmu_ctx_table[0]   = 0x60002000;
+	_mmu_ctx0_level1[0]    = 0x60002400;
+    for(int i = 1; i < 256; ++i) {
+        _mmu_ctx0_level1[i] = _mmu_ctx0_level1[i-1] + 4;
+    }
+	
+    _mmu_ctx0_fc_level2[0] = 0x60002800;
+	for(int i = 1; i < 64; ++i) {
+        _mmu_ctx0_fc_level2[i] = _mmu_ctx0_fc_level2[i-1] + 4;
+    }
+	
+    _mmu_ctx0_ffd_level3[0] = 0x60002900;
+    for(int i = 1; i < 64; ++i) {
+        _mmu_ctx0_ffd_level3[i] = _mmu_ctx0_ffd_level3[i-1] + 4;
+    }
 
-	mmu_table_init(0x61000000);
+	mmu_table_init(mctrl, 0x61000000);
 	mmu_init(mmu);
     ASSERT_TRUE(mmu.GetEnabled());
 
@@ -874,18 +886,18 @@ TEST_F(MMUTest, MMUFaults)
     u32 val;
     int ret;
     // Should flag unaligned:
-    ret = mmu.MemAccess<intent_load>(0xF, val, CROSS_ENDIAN);
+    ret = mmu.MemAccess<intent_load>(0x6000000F, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -3);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0x0); // Corresponding page
+    ASSERT_EQ(mmu.GetFaultAddress(), 0x60000000); // Corresponding page
 
     // Get a level 3 and level 1 physical address we can play with
-    u32 pa_l3 = _mmu_ctx0_ffd_level3[0] >> 8;
-    u32 pa_l1 = _mmu_ctx0_level1[96] >> 8; // Start of RAM 0x60000000
+    u32 pa_l3 = mctrl.read32(_mmu_ctx0_ffd_level3[0]) >> 8;
+    u32 pa_l1 = mctrl.read32(_mmu_ctx0_level1[96]) >> 8; // Start of RAM 0x60000000
 
 
     // Create supervisor page @ va 0xffd00000, try to access with user:
     mmu.flush();
-    _mmu_ctx0_ffd_level3[0] = (pa_l3 << 8) | SRMMU_ACC_S_ALL | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_ffd_level3[0], (pa_l3 << 8) | SRMMU_ACC_S_ALL | SRMMU_ET_PTE);
     ret = mmu.MemAccess<intent_load>(0xffd00000, val, CROSS_ENDIAN, false);
     
     ASSERT_LT(ret, 0);
@@ -894,7 +906,7 @@ TEST_F(MMUTest, MMUFaults)
 
     // Lvl 3 Supervisor page read only. Execute and write should fail, load shuold be fine
     mmu.flush();
-    _mmu_ctx0_ffd_level3[0] = (pa_l3 << 8) | (0x0 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_ffd_level3[0], (pa_l3 << 8) | (0x0 << 2) | SRMMU_ET_PTE);
     ret = mmu.MemAccess<intent_load>(0xffd00000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
@@ -912,7 +924,7 @@ TEST_F(MMUTest, MMUFaults)
 
     // Lvl 1 Supervisor page read only. Execute and write should fail, load shuold be fine
     mmu.flush();
-    _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x0 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_level1[96], (pa_l1 << 8) | (0x0 << 2) | SRMMU_ET_PTE);
     ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_EQ(ret, 0);
  
@@ -932,7 +944,7 @@ TEST_F(MMUTest, MMUFaults)
     
 
     // ACC 0 - User and super read only
-    _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x0 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_level1[96], (pa_l1 << 8) | (0x0 << 2) | SRMMU_ET_PTE);
     
     mmu.flush();
     ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
@@ -959,7 +971,7 @@ TEST_F(MMUTest, MMUFaults)
     ASSERT_LT(ret, 0);
  
     // ACC 1 - User and super read/write
-    _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x1 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_level1[96], (pa_l1 << 8) | (0x1 << 2) | SRMMU_ET_PTE);
     
     mmu.flush();
     ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
@@ -986,7 +998,7 @@ TEST_F(MMUTest, MMUFaults)
     ASSERT_LT(ret, 0);
  
     // ACC 2 - User and super read/execute
-    _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x2 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_level1[96], (pa_l1 << 8) | (0x2 << 2) | SRMMU_ET_PTE);
     
     mmu.flush();
     ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
@@ -1013,7 +1025,7 @@ TEST_F(MMUTest, MMUFaults)
     ASSERT_EQ(ret, 0);
  
     // ACC 3 - User and super read/write/execute
-    _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x3 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_level1[96], (pa_l1 << 8) | (0x3 << 2) | SRMMU_ET_PTE);
     
     mmu.flush();
     ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
@@ -1040,7 +1052,7 @@ TEST_F(MMUTest, MMUFaults)
     ASSERT_EQ(ret, 0);
  
     // ACC 4 - User and super execute only
-    _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x4 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_level1[96], (pa_l1 << 8) | (0x4 << 2) | SRMMU_ET_PTE);
     
     mmu.flush();
     ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
@@ -1067,7 +1079,7 @@ TEST_F(MMUTest, MMUFaults)
     ASSERT_EQ(ret, 0);
  
     // ACC 5 - User read only, super read/write
-    _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x5 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_level1[96], (pa_l1 << 8) | (0x5 << 2) | SRMMU_ET_PTE);
     
     mmu.flush();
     ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
@@ -1094,7 +1106,7 @@ TEST_F(MMUTest, MMUFaults)
     ASSERT_LT(ret, 0);
  
     // ACC 6 - User no access, super read/execute
-    _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x6 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_level1[96], (pa_l1 << 8) | (0x6 << 2) | SRMMU_ET_PTE);
     
     mmu.flush();
     ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
@@ -1121,7 +1133,7 @@ TEST_F(MMUTest, MMUFaults)
     ASSERT_LT(ret, 0);
  
     // ACC 7 - User no access, super read/write/execute
-    _mmu_ctx0_level1[96] = (pa_l1 << 8) | (0x7 << 2) | SRMMU_ET_PTE;
+    mctrl.write32(_mmu_ctx0_level1[96], (pa_l1 << 8) | (0x7 << 2) | SRMMU_ET_PTE);
     
     mmu.flush();
     ret = mmu.MemAccess<intent_load>(0x60000000, val, CROSS_ENDIAN, true);
@@ -1155,13 +1167,21 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     ASSERT_FALSE(mmu.GetEnabled());
 
  	// Point the MMU table pointer to the correct location in RAM:
-	// MUMU Tables base: 0x60002000 (ctx)
-	_mmu_ctx_table = reinterpret_cast<u32*>(RAM.getPtr(0x2000 / 4));
-	_mmu_ctx0_level1 =  reinterpret_cast<u32*>(RAM.getPtr(0x2400 / 4));
-	_mmu_ctx0_fc_level2 =  reinterpret_cast<u32*>(RAM.getPtr(0x2800 / 4));
-	_mmu_ctx0_ffd_level3 =  reinterpret_cast<u32*>(RAM.getPtr(0x2900 / 4));
-
-	mmu_table_init(0x61000000);
+	// MUMU Tables base: 0x60002000 (ctx = 0)
+	_mmu_ctx_table[0]   = 0x60002000;
+	_mmu_ctx0_level1[0]    = 0x60002400;
+    for(int i = 1; i < 256; ++i) {
+        _mmu_ctx0_level1[i] = _mmu_ctx0_level1[i-1] + 4;
+    }
+    _mmu_ctx0_fc_level2[0] = 0x60002800;
+	for(int i = 1; i < 64; ++i) {
+        _mmu_ctx0_fc_level2[i] = _mmu_ctx0_fc_level2[i-1] + 4;
+    }
+    _mmu_ctx0_ffd_level3[0] = 0x60002900;
+    for(int i = 1; i < 64; ++i){
+        _mmu_ctx0_ffd_level3[i] = _mmu_ctx0_ffd_level3[i-1] + 4;
+    }
+	mmu_table_init(mctrl, 0x61000000);
 	mmu_init(mmu);
     ASSERT_TRUE(mmu.GetEnabled());
 
@@ -1285,7 +1305,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
  * 0xFFD00000-0xFFD3FFFF: Mapped to STARTUP/PROM code (last 128KB of RAM)
  * 0xFFD3FFFF-0xFFFFFFFF: Not Mapped
  */
-void mmu_table_init(u32 end_of_mem)
+void mmu_table_init(MCtrl& mctrl, u32 end_of_mem)
 {
 	u32 i;
 	unsigned long page_va_start, page_va_end, page_cnt;
@@ -1298,18 +1318,18 @@ void mmu_table_init(u32 end_of_mem)
 
 	for (i = 0; i < 256; i++) {
 		if (i < 64) {
-			_mmu_ctx0_fc_level2[i] = SRMMU_INVALID;
-			_mmu_ctx0_ffd_level3[i] = SRMMU_INVALID;
+			mctrl.write32(_mmu_ctx0_fc_level2[i], SRMMU_INVALID);
+			mctrl.write32(_mmu_ctx0_ffd_level3[i], SRMMU_INVALID);
 		}
-		_mmu_ctx_table[i] = SRMMU_INVALID;
-		_mmu_ctx0_level1[i] = SRMMU_INVALID;
+		mctrl.write32(_mmu_ctx_table[i], SRMMU_INVALID);
+		mctrl.write32(_mmu_ctx0_level1[i], SRMMU_INVALID);
 	}
 
 	/* Setup Context Table, Context 0, point to level 1 Table */
 	//_mmu_ctx_table[0] = (((unsigned long)&_mmu_ctx0_level1[0] >> 4) &
 	//			~SRMMU_ET_MASK) | SRMMU_ET_PTD;
-	_mmu_ctx_table[0] = ((0x60002400 >> 4) &
-				~SRMMU_ET_MASK) | SRMMU_ET_PTD;
+	mctrl.write32(_mmu_ctx_table[0], ((0x60002400 >> 4) &
+				~SRMMU_ET_MASK) | SRMMU_ET_PTD);
 
 
 	/* Setup Level1 Context0 Address space. 16MB/Entry
@@ -1320,20 +1340,20 @@ void mmu_table_init(u32 end_of_mem)
 	 * 0xFF000000-0xFFFFFFFF: To Level2, see below...
 	 */
 	for (i = 0; i < 240; i++) {
-		_mmu_ctx0_level1[i] = (i << 20) | SRMMU_ACC_S_ALL |
-					SRMMU_ET_PTE;
+		mctrl.write32(_mmu_ctx0_level1[i], (i << 20) | SRMMU_ACC_S_ALL |
+					SRMMU_ET_PTE);
 	}
 	for (; i < 252; i++) {
-		_mmu_ctx0_level1[i] = ((CONFIG_RAM_START >> 4)+((i-240)<<20)) |
+		mctrl.write32(_mmu_ctx0_level1[i], ((CONFIG_RAM_START >> 4)+((i-240)<<20)) |
 					SRMMU_CACHE | SRMMU_ACC_S_ALL |
-					SRMMU_ET_PTE;
+					SRMMU_ET_PTE);
 	}
 	for (; i < 255; i++)
-		_mmu_ctx0_level1[i] = SRMMU_INVALID;
+		mctrl.write32(_mmu_ctx0_level1[i], SRMMU_INVALID);
 	//_mmu_ctx0_level1[255] = ((unsigned long)&_mmu_ctx0_fc_level2[0] >> 4) |
 	//			SRMMU_ET_PTD;
-	_mmu_ctx0_level1[255] = (0x60002800 >> 4) |
-				SRMMU_ET_PTD;
+	mctrl.write32(_mmu_ctx0_level1[255], (0x60002800 >> 4) |
+				SRMMU_ET_PTD);
 
 
 	/* Setup Level2, Context0, 0xFF000000-0xFFFFFFFF. 256KB/Entry
@@ -1343,11 +1363,11 @@ void mmu_table_init(u32 end_of_mem)
 	 * 0xFFD3FFFF-0xFFFFFFFF: INVALID
 	 */
 	for (i = 0; i < 64; i++)
-		_mmu_ctx0_fc_level2[i] = SRMMU_INVALID;
+		mctrl.write32(_mmu_ctx0_fc_level2[i], SRMMU_INVALID);
 	//_mmu_ctx0_fc_level2[CONFIG_LINUX_OPPROM_SEGMENT] =
 	//	(((unsigned long)&_mmu_ctx0_ffd_level3[0]) >> 4) | SRMMU_ET_PTD;
-	_mmu_ctx0_fc_level2[CONFIG_LINUX_OPPROM_SEGMENT] =
-		(0x60002900 >> 4) | SRMMU_ET_PTD;
+	mctrl.write32(_mmu_ctx0_fc_level2[CONFIG_LINUX_OPPROM_SEGMENT],
+		(0x60002900 >> 4) | SRMMU_ET_PTD);
 
 
 	/* Setup Level3, Context0, 0xFFD00000-0xFFD3FFFF. 4KB/Entry
@@ -1363,12 +1383,12 @@ void mmu_table_init(u32 end_of_mem)
 	page_pa_start = page_pa_end - (page_cnt << PAGE_SHIFT);
 	//start_ffd00000_pa = page_pa_start;
 	for (i = 0; i < page_cnt; i++) {
-		_mmu_ctx0_ffd_level3[i] = (page_pa_start >> 4) | SRMMU_CACHE |
-						SRMMU_ACC_S_ALL | SRMMU_ET_PTE;
+		mctrl.write32(_mmu_ctx0_ffd_level3[i], (page_pa_start >> 4) | SRMMU_CACHE |
+						SRMMU_ACC_S_ALL | SRMMU_ET_PTE);
 		page_pa_start += PAGE_SIZE;
 	}
 	for (; i < 64; i++)
-		_mmu_ctx0_ffd_level3[i] = SRMMU_INVALID;
+		mctrl.write32(_mmu_ctx0_ffd_level3[i], SRMMU_INVALID);
 }
 
 

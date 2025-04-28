@@ -7,8 +7,8 @@
 // These functions merely sets up the PNP structs
 // Pripheral layout and bank adresses ae hard-coded
 // and must correspons with the layout in e.g. the apb master
-void amba_ahb_setup(SDRAM2& io);
-void amba_apb_setup(SDRAM2& io, u32 base);
+void amba_ahb_pnp_setup(MCtrl& mctrl);
+void amba_apb_pnp_setup(MCtrl& mctrl);
 
 
 
