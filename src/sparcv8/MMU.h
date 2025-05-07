@@ -23,6 +23,39 @@ class MMU;
 
 enum intent { intent_load=0, intent_store=1, intent_execute=2 };
 
+#include <cstdint>
+#include <array>
+
+constexpr int TLB_ENTRIES = 16; // emulate LEON3 default
+
+class TLB {
+public:
+    TLB();
+
+    bool lookup(u32 context, u32 vaddr, u32& pte_out, u8& level_out) const;
+    void insert(u32 context, u32 vaddr, u8 level, u32 pte);
+    void invalidate_strict(u32 context, u32 vaddr);
+    void flush(); // flush all entries
+
+    void debug_dump(const std::string& label = "TLB") const;
+
+private:
+    struct Entry {
+        u32 vaddr_tag = 0;
+        u32 mask = 0;
+        u32 pte = 0;
+        u32 context = 0;
+        mutable u64 last_used = 0;
+        u8 level = 0;
+    };
+
+    std::array<Entry, TLB_ENTRIES> entries;
+    mutable u64 use_counter = 0;
+public:
+    static bool is_valid(u32 pte);
+};
+
+
 class MMU {
     MCtrl& mctrl;
     // MMUR REGS
@@ -46,26 +79,15 @@ class MMU {
         fault_status_reg = 0x0;
         fault_address_reg = 0x0;
     
-        tlb_miss = true;
-        for(int i = 0; i < 3; ++i) {
-            tlb_pos[i] = 2;
-            for(int j = 0; j < 3; ++j) {
-                tlbs[i][j] = {0,0,0};
-            }
-        }
+        
     }	
-	struct TLBEntry {
-		u32 va_index;
-		u32 PTE;
-		u8 level;
-	};
+	
 
     private:
+ 
+    TLB itlb; // TLB for instructions
+    TLB dtlb; // For data R/W
     
-    TLBEntry tlbs[3][3];
-	int tlb_pos[3];
-	   
-    bool tlb_miss;
 public:
    
     void SetControlReg(u32 value) {
@@ -75,7 +97,8 @@ public:
  
     bool GetEnabled() {return control_reg & 0x1;}
  
-    bool TLBMiss() {return tlb_miss;}
+    TLB& get_itlb() {return itlb;}
+    TLB& get_dtlb() {return dtlb;}
     
     bool GetNoFault() {return (control_reg & 0x2) >> 1 == 0x1;};
 
@@ -119,99 +142,68 @@ public:
         last_ctx_n = 0x0;
         fault_status_reg = 0x0;
         fault_address_reg = 0x0;
-
-        tlb_miss = true;
-        for(int i = 0; i < 3; ++i) {
-            tlb_pos[i] = 2;
-            for(int j = 0; j < 3; ++j) {
-                tlbs[i][j] = {0,0,0};
-            }
-        }
+        
+        itlb.flush();
+        dtlb.flush();
     }
 
     void nop() { return; }
 
     // FLush TLB
     void flush() { 
-        for(int i = 0; i < 3; ++i)
-            for(int j = 0; j < 3; ++j) {
-                tlbs[j][i] = {0, 0, 0};
-            }
-       
-        last_ctx_n = ctx_n; 
-        return; 
+        itlb.flush();
+        dtlb.flush();
     }
 
-	TLBEntry TLBLookup(intent rw, u32 virt_addr) {
-        //tlb_miss = true;
-        //return 0;
-
-		if(ctx_n != last_ctx_n) {
-			// SHould we flush TLB here?
-			flush();
-            tlb_miss = true;
-			return {0,0,0};
-		}        
-		
-		u32 j = (u32)rw;	
-		for(int i = 0; i < 3; ++i) {
-            TLBEntry& tlb = tlbs[j][(i+tlb_pos[j])%3];
-            u32 index_va = 0x0;	
-            switch(tlb.level) {
-			    case(3): index_va = virt_addr & ~0xFFF; break;// 4Kb size
-			    case(2): index_va = virt_addr & ~0x3FFFF; break; // 256Kb size
-			    case(1): index_va = virt_addr & ~0xFFFFFF; break; // 16Mb size
-                case(0): index_va = virt_addr; break;
-                default: throw std::runtime_error("Lookup: Level need to be 0-3");
-		    }
-	        
-            
-
-		    if(tlb.va_index == index_va) {
-				tlb_miss = false;
-				return tlb;
-			} 	
-		}
-	
-
-
-        tlb_miss = true;
-		return {0,0,0};
-	}
-
-	void TLBCache(intent rw, u32 virt_addr, u32 PTE, u8 level) {
-		// Store PTE in TLB with va index
-		u32 index_va;
-		switch(level) {
-			case(3): index_va = virt_addr & ~0xFFF; break;// 4Kb size
-			case(2): index_va = virt_addr & ~0x3FFFF; break; // 256Kb size
-			case(1): index_va = virt_addr & ~0xFFFFFF; break; // 16Mb size
-			default: 
-                     throw std::runtime_error("Level need to be 1-3");
-		}
-		
-        u32 j = (u32)rw;
-		tlb_pos[j] = (tlb_pos[j] + 1)%3; 
-		tlbs[j][tlb_pos[j]] = {index_va, PTE, level};
-		//std::cout << "va: 0x" <<std::hex << virt_addr << ": TLBCache " << j << ", " << std::hex << index_va << "/PTE: " << PTE <<std::dec << " (" << (int)level << ")\n"; 
-	
-        last_ctx_n = ctx_n;
-    }
-
-    u32 MemAccessBypassRead4(u32 pa) {
+    inline u32 MemAccessBypassRead4(u32 pa) const {
         return mctrl.read32(pa);
     }
 
-
-    void MemAccessBypassWrite4(u32 pa, u32 value) {
+    inline void MemAccessBypassWrite4(u32 pa, u32 value) {
         mctrl.write32(pa, value);
     }
 
+    inline u32 get_access_type(intent rw, bool supervisor) {
+        u32 AT = 0;
 
-    u32 get_access_type(intent rw, bool supervisor);
+        // ACCESS TYPE
+        if(rw == intent_load) {
+            if(supervisor)
+                AT = 1;
+            else 
+                AT = 0;
+        } else if (rw == intent_store) {
+            // We have no way of discerning between store to data or instruction space...
+            if(supervisor)
+                AT = 5;
+            else
+                AT = 4;
+        } else /*rw == intent_execute*/ {
+            if(supervisor)
+                AT = 3;
+            else
+                AT = 2;
+        }
+
+        return AT;
+    }
+
     
     u32 get_PTE(u32 virt_addr, u8& level);
 
+    static inline u32 get_addr_level_mask(u8 level) {
+        u32 mask = 0;
+        switch(level) {
+            case(3): mask = ~0xFFF; break; //LOBITS12;
+            case(2): mask = ~0x3FFFF; break; //LOBITS18;
+            case(1): mask = ~0xffffff; break; //LOBITS24;
+            default: throw std::logic_error("Level !=1,2,3 not allowed");
+        }
+        return mask;
+    }
+
+    
+    
 
     u32 translate_va(u32 virt_addr, bool supervisor, intent rw=intent_load, bool report_faults = true);
       
@@ -287,7 +279,7 @@ public:
                         throw std::runtime_error("Error write size != {1,2,4}");
                 }
             }
-            else
+            else // read or execute
             {
                 switch(size) {
                     case(1):

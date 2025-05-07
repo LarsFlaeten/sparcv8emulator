@@ -1,5 +1,132 @@
 #include "MMU.h"
 
+#include <iostream>
+#include <iomanip>
+
+constexpr u32 L3_PAGE_MASK = 0xfffff000;
+constexpr u32 L2_PAGE_MASK = 0xfffc0000;
+constexpr u32 L1_PAGE_MASK = 0xff000000;
+
+
+
+TLB::TLB() {
+    entries.fill(Entry{});
+}
+
+bool TLB::is_valid(u32 pte) {
+    return (pte & 0x3) == 0x2; // PTE ET == 0x2
+}
+
+bool TLB::lookup(u32 context, u32 vaddr, u32& pte_out, u8& level_out) const {
+    for (const auto& entry : entries) {
+        if (!is_valid(entry.pte)) {
+            pte_out = 0;
+            level_out = 0;
+            continue;
+        }
+        if (entry.context == context && (vaddr & entry.mask) == entry.vaddr_tag) {
+            entry.last_used = ++use_counter;
+            pte_out = entry.pte;
+            level_out = entry.level;
+            return (entry.pte & ~0x3) || entry.level;
+        }
+    }
+    pte_out = 0;
+    level_out = 0;
+    return false;
+}
+
+void TLB::insert(u32 context, u32 vaddr, u8 level, u32 pte) {
+    if (!is_valid(pte)) {
+        return; // Don't insert invalid PTEs
+    }
+    u32 mask = MMU::get_addr_level_mask(level);
+
+    for (auto& entry : entries) {
+        if (!is_valid(entry.pte)) {
+            entry.context = context;
+            entry.vaddr_tag = vaddr & mask;
+            entry.mask = mask;
+            entry.pte = pte;
+            entry.last_used = ++use_counter;
+            entry.level = level;
+            return;
+        }
+    }
+
+    auto lru_entry = &entries[0];
+    for (auto& entry : entries) {
+        if (entry.last_used < lru_entry->last_used) {
+            lru_entry = &entry;
+        }
+    }
+
+    lru_entry->context = context;
+    lru_entry->vaddr_tag = vaddr & mask;
+    lru_entry->mask = mask;
+    lru_entry->pte = pte;
+    lru_entry->last_used = ++use_counter;
+    lru_entry->level = level;
+}
+
+// We can choose two behaviors:
+// Invalidate by context + vaddr (strict)
+// Invalidate all entries of a context (on context switch)
+// Below: strict invalidate by context and virtual address
+// TODO: Linus boot seems to identifi that we use strict, figure out how this can be chosen
+void TLB::invalidate_strict(u32 context, uint32_t vaddr) {
+    for (auto& entry : entries) {
+        if (!is_valid(entry.pte)) {
+            continue;
+        }
+        if (entry.context == context && (vaddr & entry.mask) == entry.vaddr_tag) {
+            entry.pte = 0;
+        }
+    }
+}
+
+void TLB::flush() {
+    for (auto& entry : entries) {
+        entry.pte = 0;
+    }
+}
+
+void TLB::debug_dump(const std::string& label) const {
+    std::cout << "===== " << label << " Dump =====\n";
+    std::cout << std::left << std::setw(5)  << "Idx"
+              << std::setw(10) << "Ctx"
+              << std::setw(12) << "VAddr"
+              << std::setw(10) << "Mask"
+              << std::setw(12) << "PageSize"
+              << std::setw(10) << "PTE"
+              << std::setw(12) << "LastUsed"
+              << "\n";
+
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto& e = entries[i];
+        if (!is_valid(e.pte)) continue;
+
+        std::string size_str;
+        switch (e.mask) {
+            case L3_PAGE_MASK: size_str = "4 KB"; break;
+            case L2_PAGE_MASK: size_str = "256 KB"; break;
+            case L1_PAGE_MASK: size_str = "16 MB"; break;
+            default: size_str = "?"; break;
+        }
+
+        std::cout << std::setw(5)  << i
+                  << std::setw(10) << e.context
+                  << "0x" << std::hex << std::setw(8) << e.vaddr_tag
+                  << " 0x" << std::setw(8) << e.mask
+                  << std::setw(12) << size_str
+                  << "0x" << std::setw(8) << e.pte
+                  << std::dec << std::setw(12) << e.last_used
+                  << "\n";
+    }
+
+    std::cout << "===========================\n";
+}
+
 std::string rw_str(intent rw) {
     switch(rw) {
         case(intent_load): return "intent_load";
@@ -68,30 +195,6 @@ std::string ft_str(int ft) {
     }
 }
 
-u32 MMU::get_access_type(intent rw, bool supervisor) {
-    u32 AT = 0;
-
-    // ACCESS TYPE
-    if(rw == intent_load) {
-        if(supervisor)
-            AT = 1;
-        else 
-            AT = 0;
-    } else if (rw == intent_store) {
-        // We have no way of discerning between store to data or instruction space...
-        if(supervisor)
-            AT = 5;
-        else
-            AT = 4;
-    } else /*rw == intent_execute*/ {
-        if(supervisor)
-            AT = 3;
-        else
-            AT = 2;
-    }
-
-    return AT;
-}
 
 
 u32 MMU::get_PTE(u32 virt_addr, u8& level) {
@@ -102,7 +205,7 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
     u32 ind3 = (virt_addr >> 12) & LOBITS6;
 
     u32 l1_tbl_ptr = (ctx_tbl_ptr << 4) + ctx_n * 4;
-    u32 lx = MMU::MemAccessBypassRead4(l1_tbl_ptr);
+    u32 lx = MemAccessBypassRead4(l1_tbl_ptr);
 
     u32 ET = lx & 3;
     u32 PTP = (lx & ~3) >> 2;	
@@ -112,14 +215,14 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
     // MMU Table walk
     if( ET == 1) { // PTD, continue to level 1
         pa = (PTP << 6) + (ind1 * 4);
-        lx = MMU::MemAccessBypassRead4(pa);
+        lx = MemAccessBypassRead4(pa);
         
         ET = lx & 3;
         PTP = (lx & ~3) >> 2;
         level = 1;	
         if( ET == 1) { // PTD, continue to level 2
             pa = (PTP << 6) + (ind2 * 4);
-            lx = MMU::MemAccessBypassRead4(pa);
+            lx = MemAccessBypassRead4(pa);
             
             ET = lx & 3;
             PTP = (lx & ~3) >> 2;
@@ -127,7 +230,7 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
             if( ET == 1) {
                 // PTD, continue to level 3
                 pa = (PTP << 6) + (ind3 * 4);
-                lx = MMU::MemAccessBypassRead4(pa);
+                lx = MemAccessBypassRead4(pa);
                 
                 ET = lx & 3;
                 PTP = (lx & ~3) >> 2;
@@ -141,36 +244,43 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
 }
 
 
-u32 MMU::translate_va(u32 virt_addr, bool supervisor, intent rw, bool report_faults) {
+u32 MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool report_faults) {
      
-    u8 level = 0;
-   
+    
     // Lookup from TLB
-    //TLBEntry tlb = TLBLookup(rw, virt_addr);
-
-    u32 PTE = 0;//tlb.PTE;
-    //level = tlb.level;
-
-    // PTE == 0 means cahce miss, do table walk
-    if(PTE == 0) {
+    auto ctx = GetCtxNumber();
+    u32 pte = 0;
+    u8 level = 0;
+    bool found = false;
+    if(rw == intent_execute) {
+        found = itlb.lookup(ctx, vaddr, pte, level);
+    } else {
+        found = dtlb.lookup(ctx, vaddr, pte, level);
+    }
+   
+    
+    if(!found) {
         level = 0;	
         // Fetch context table entry:
-        //if(ctx_n > 0)
-        //    throw std::runtime_error("ctx_n != 0 Needds testing");
         if(ctx_n > 255)
             throw std::runtime_error("ctx_n > 255 error");
 
-        PTE = get_PTE(virt_addr, level);
+        pte = get_PTE(vaddr, level);
         // Store PTE in TLB if it is valid
-        if((PTE & SRMMU_ET_MASK) == SRMMU_ET_PTE)
-            TLBCache(rw, virt_addr, PTE, level);
+        if((pte & SRMMU_ET_MASK) == SRMMU_ET_PTE) {
+            if(rw == intent_execute)
+                itlb.insert(ctx, vaddr, level, pte);
+            else
+                dtlb.insert(ctx, vaddr, level, pte);
+
+        }
     }
     
-    u32 ET = PTE & SRMMU_ET_MASK;
+    u32 ET = pte & SRMMU_ET_MASK;
 
     // Fault handling:    
     u32 FT = 0; // Fault type      
-    u32 ACC = (PTE >> 2) & 0x7;
+    u32 ACC = (pte >> 2) & 0x7;
     u32 AT = get_access_type(rw, supervisor);
 
 
@@ -210,9 +320,9 @@ u32 MMU::translate_va(u32 virt_addr, bool supervisor, intent rw, bool report_fau
         //std::cerr << "MMU Fault, virt_addr = 0x" << std::hex << virt_addr << ", lvl: " << std::dec << (int)level << ", intent=" << rw << " (" << rw_str(rw) << "), AT = " << AT << " (" << at_str(AT) << "), ACC = " << ACC << " (" << acc_str(ACC, supervisor) << "), FT = " << FT << " (" << ft_str(FT) << ")\n";
         if(report_faults) {
             if(FT == 2)
-                fault_address_reg = virt_addr; // Only show page, not page offset
+                fault_address_reg = vaddr; // Only show page, not page offset
             else
-                fault_address_reg = virt_addr & ~0xfff; // Only show page, not page offset
+                fault_address_reg = vaddr & ~0xfff; // Only show page, not page offset
         
             u32 FAV = 0x2;
             fault_status_reg = 0x0 | ((level&0x3) << 8) | (AT & 0x7) << 5 | FT << 2 | FAV;
@@ -222,8 +332,9 @@ u32 MMU::translate_va(u32 virt_addr, bool supervisor, intent rw, bool report_fau
 
 
     // We have a valid PTE, Assemble physical address
-    u32 PPN = (PTE & ~0xff) >> 8;
-    u32 va = virt_addr; // Copy of virt addr that will be wiped according to level
+    u32 PPN = (pte & ~0xff) >> 8;
+    u32 va = vaddr; // Copy of virt addr that will be wiped according to level
+                    // to get the page offset
     switch(level) {
         case(3): va = va & 0xFFF; break; //LOBITS12;
         case(2): va = va & 0x3FFFF; break; //LOBITS18;

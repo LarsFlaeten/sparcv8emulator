@@ -288,7 +288,7 @@ int main(int argc, char **argv)
             APBUART& uart1 = apbctrl.GetUART();
             APBUART& uart9 = apbctrl.GetUART9();
             timer.Tick();
-            //uart1.Input();
+            uart1.Input();
 
             // It seems like the kernel clears the interrupts, and we dont need to do it here
             if(timer.CheckInterrupt(false)) 
@@ -318,7 +318,7 @@ int main(int argc, char **argv)
 
     // OS boot process step 1: Set stack pointer to end of ram
     u32 end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
-    
+
     cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
     cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
     

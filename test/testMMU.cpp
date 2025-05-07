@@ -109,23 +109,7 @@ void MMUTest::SetUp()
     mctrl.attach_bank<RamBank>(0x60000000, 0x01000000);
     mctrl.attach_bank<RamBank>(0x00000000, 1024 * 1024);
     
-    /*
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    u32 base_ram = 0x60000000;
-    u32 size_ram = RAM.getSizeBytes();
-    u32 start = base_ram/0x10000;
-    u32 end = (base_ram + size_ram)/0x10000;
-    for(unsigned a = start; a < end; ++a) {
-        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read( (i-0x60000000)/4); },
-                          [&](u32 i, u32 v)   {        RAM.Write((i-0x60000000)/4, v);} };
-	}   
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    for(unsigned a = 0x0; a < 0x100; ++a)
-        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
-                         [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
-*/
+    
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     cpu.reset(entry_va);
@@ -138,6 +122,57 @@ void MMUTest::TearDown()
 
 TEST_F(MMUTest, TestBitsAndBytes)
 {    
+}
+
+TEST_F(MMUTest, PTEvailidity)
+{    
+    u32 pte = 0;
+    ASSERT_FALSE(TLB::is_valid(pte));
+
+    pte = pte | 0x1;
+    ASSERT_FALSE(TLB::is_valid(pte));
+
+    pte = 0x2;
+    ASSERT_TRUE(TLB::is_valid(pte));
+
+    pte = 0b1100100100100010;
+    ASSERT_TRUE(TLB::is_valid(pte));
+
+    pte = 0b1100100100100011;
+    ASSERT_FALSE(TLB::is_valid(pte));
+
+    pte = 0b1100100100100001;
+    ASSERT_FALSE(TLB::is_valid(pte));
+
+    pte = 0b1100100100100000;
+    ASSERT_FALSE(TLB::is_valid(pte));
+
+}
+
+TEST_F(MMUTest, TestTLBAddressMasks)
+{    
+    u8 level = 0;
+    ASSERT_THROW(MMU::get_addr_level_mask(level), std::logic_error);
+
+    level = 1;
+    auto mask = MMU::get_addr_level_mask(level);
+    ASSERT_EQ(mask, 0xff << 24); // Mask should be 8 bits starting from bit 24
+    auto page_sz = ~mask + 1;
+    ASSERT_EQ(page_sz, 16 * 1024 * 1024); // page size on level 1 is 16 MB
+
+    level = 2;
+    mask = MMU::get_addr_level_mask(level);
+    ASSERT_EQ(mask, 0x3fff << 18); // Mask should be 8 + 6 bits starting from bit 18
+    page_sz = ~mask + 1;
+    ASSERT_EQ(page_sz, 256 * 1024); // Page size on level 2 is 256 kb
+
+    level = 3;
+    mask = MMU::get_addr_level_mask(level);
+    ASSERT_EQ(mask, 0xfffff << 12); // Mask should be 8 + 6 + 6 bits starting from bit 12
+    page_sz = ~mask + 1;
+    ASSERT_EQ(page_sz, 4 * 1024); // Page size on level 4 is 4 kb
+
+
 }
 
 TEST_F(MMUTest, MMUInitAndChangeReg)
@@ -174,20 +209,7 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
 }
 
 TEST_F(MMUTest, MMUEnableDisable)
-{   
-/*     SDRAM2 RAM(0x001000000);  // IO: 0x0, 16 MB of RAM
-
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    for(unsigned a = 0x0; a < 0x100; ++a)
-        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read(i/4); },
-                         [&](u32 i, u32 v)   { RAM.Write(i/4, v);    } };
-
-    // Read the ELF and get the entry point, then reset
-    u32 entry_va = 0x0; 
-    cpu.Reset(entry_va);
-*/ 
-  
+{     
     EXPECT_FALSE(mmu.GetEnabled());
  
     // adress to indicate MMU op is taken from LOCALREG4
@@ -265,19 +287,6 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite)
 {   
    
     mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
-    /*AMBA_mock amba;
-
-    // Set up IO mapping
-    // Replicate LEON AMBA IO Area
-    u32 amba_start = 0xfff00000;
-    u32 amba_end = 0xffffffff;
-    u32 start = amba_start/0x10000;
-    u32 end = amba_end/0x10000;
-
-    for(unsigned a = start; a<= end; ++a)
-        mmu.IOmap[a] = { [&](u32 i)          { return amba.Read(i); },
-                         [&](u32 i, u32 v)   { amba.Write(i, v);    } };
-    */
     
     mctrl.write32(0xfffffff0, 0x07401039);
 
@@ -369,108 +378,151 @@ TEST_F(MMUTest, CacheControlregs)
 // Check TLB on 4Kb page sizes (lvl 3) with different intents, one context
 TEST_F(MMUTest, MMUTLBCacheLvl3)
 {
-    ASSERT_EQ(mmu.GetCtxNumber(), 0);
-	
+    auto ctx = mmu.GetCtxNumber();
+    ASSERT_EQ(ctx, 0);
+	u32 pte = 0;
+    u8 level = 0;
 	u32 va = 0x60000d90;
-	u32 PTE = 0x600001e;
+	u32 PTE_i = 0x600001e;
+	u32 PTE_d = 0x800001e;
 
-	auto tlb = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    // Instruction TLB should miss
+	auto found = mmu.get_itlb().lookup(ctx, va, pte, level);
+	ASSERT_FALSE(found);
+    ASSERT_EQ(pte, 0);
+	
 	// Cache the pa:
-	mmu.TLBCache(intent_execute, va, PTE, 3);
- 
-	auto tlb3 = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
-	
-	// Another intent, same context
-	auto tlb4 = mmu.TLBLookup(intent_load, va);
-	ASSERT_EQ(tlb4.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
-	
-	mmu.TLBCache(intent_load, va, PTE, 3);
- 	auto tlb5 = mmu.TLBLookup(intent_load, va);
-	ASSERT_EQ(tlb5.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+	mmu.get_itlb().insert(ctx, va, 3, PTE_i);
 
+    // Instruction TLB should not miss
+	found = mmu.get_itlb().lookup(ctx, va, pte, level);
+	ASSERT_TRUE(found);
+	ASSERT_EQ(pte, PTE_i);
+    ASSERT_EQ(level, 3);
+	
+	// R/W tlb, same context
+	found = mmu.get_dtlb().lookup(ctx, va, pte, level);
+	ASSERT_FALSE(found);
+    ASSERT_EQ(pte, 0);
+	
+    mmu.get_dtlb().insert(ctx, va, 3, PTE_d);
+	found = mmu.get_dtlb().lookup(ctx, va, pte, level);
+	ASSERT_TRUE(found);
+	ASSERT_EQ(pte, PTE_d);
+    ASSERT_EQ(level, 3);
+	
 	// Go through a whole memory page, should all get back TLB on the same page
 	va = 0x60000000;
-	for(int i = 0; i < 0xfff/4; i++) {
-	 	va += 4;
-		auto tlb_i= mmu.TLBLookup(intent_load, va);
-		ASSERT_EQ(tlb_i.PTE, PTE);
-		ASSERT_FALSE(mmu.TLBMiss());
-	}
+	u32 pte_out_i = 0;
+    u32 pte_out_d = 0;
+    u8 level_out_i = 0;
+    u8 level_out_d = 0; 	
+    for(int i = 0; i < 0xfff/4; i++) {
+        auto reti = mmu.get_itlb().lookup(ctx, va, pte_out_i, level_out_i);
+	    auto retd = mmu.get_dtlb().lookup(ctx, va, pte_out_d, level_out_d);
+        ASSERT_TRUE(reti);
+        ASSERT_TRUE(retd);
+        ASSERT_EQ(level_out_i, 3);
+		ASSERT_EQ(level_out_d, 3);
+        ASSERT_EQ(pte_out_i, PTE_i);
+		ASSERT_EQ(pte_out_d, PTE_d);
+	    
+        va += 4;
+    }
 
+    
 	va += 4; // This should tip over to next page, and result in a miss
-	auto tlb_n= mmu.TLBLookup(intent_load, va);
-	ASSERT_EQ(tlb_n.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
-	
+	found = mmu.get_itlb().lookup(ctx, va, pte_out_i, level_out_i);
+    ASSERT_FALSE(found);
+    ASSERT_EQ(pte_out_i, 0);
+    
 	// Cache a few other pages:
-	mmu.TLBCache(intent_load, 0x60001000, 0x600011e, 3);
-	mmu.TLBCache(intent_load, 0x60002000, 0x600021e, 3);
-	mmu.TLBCache(intent_load, 0x60003000, 0x600031e, 3);
+	mmu.get_dtlb().insert(0, 0x60001000, 3, 0x600011e);
+	mmu.get_dtlb().insert(0, 0x60002000, 3, 0x600021e);
+	mmu.get_dtlb().insert(0, 0x60003000, 3, 0x600031e);
 
-	tlb_n= mmu.TLBLookup(intent_load, 0x60001ff0);
-	ASSERT_EQ(tlb_n.PTE,  0x600011e);
-	ASSERT_FALSE(mmu.TLBMiss());
+	found = mmu.get_dtlb().lookup(0, 0x60001ff0, pte_out_d, level_out_d);
+	ASSERT_EQ(pte_out_d,  0x600011e);
+	ASSERT_EQ(level_out_d,  3);
+	ASSERT_TRUE(found);
 	
-	tlb_n= mmu.TLBLookup(intent_load, 0x60002ff0);
-	ASSERT_EQ(tlb_n.PTE,  0x600021e);
-	ASSERT_FALSE(mmu.TLBMiss());
+    found = mmu.get_dtlb().lookup(0, 0x60002ff0, pte_out_d, level_out_d);
+	ASSERT_EQ(pte_out_d,  0x600021e);
+	ASSERT_EQ(level_out_d,  3);
+	ASSERT_TRUE(found);
+
+    found = mmu.get_dtlb().lookup(0, 0x60003ff0, pte_out_d, level_out_d);
+	ASSERT_EQ(pte_out_d,  0x600031e);
+	ASSERT_EQ(level_out_d,  3);
+	ASSERT_TRUE(found);
 	
-	tlb_n= mmu.TLBLookup(intent_load, 0x60003ff0);
-	ASSERT_EQ(tlb_n.PTE,  0x600031e);
-	ASSERT_FALSE(mmu.TLBMiss());
+    // Innsert 12 more to invalidate the first one
+    mmu.get_dtlb().insert(0, 0x60004000, 3, 0x600041E);
+	mmu.get_dtlb().insert(0, 0x60005000, 3, 0x600051E);
+	mmu.get_dtlb().insert(0, 0x60006000, 3, 0x600061E);
+    mmu.get_dtlb().insert(0, 0x60007000, 3, 0x600071E);
+	mmu.get_dtlb().insert(0, 0x60008000, 3, 0x600081E);
+	mmu.get_dtlb().insert(0, 0x60009000, 3, 0x600091E);
+    mmu.get_dtlb().insert(0, 0x6000A000, 3, 0x6000A1E);
+	mmu.get_dtlb().insert(0, 0x6000B000, 3, 0x6000B1E);
+	mmu.get_dtlb().insert(0, 0x6000C000, 3, 0x6000C1E);
+    mmu.get_dtlb().insert(0, 0x6000D000, 3, 0x6000D1E);
+	mmu.get_dtlb().insert(0, 0x6000E000, 3, 0x6000E1E);
+	mmu.get_dtlb().insert(0, 0x6000F000, 3, 0x6000F1E);
+    mmu.get_dtlb().insert(0, 0x60010000, 3, 0x600101E);
 
-	// The first page shuold now be out of the cache	
-	tlb_n= mmu.TLBLookup(intent_load, 0x60000d90);
-	ASSERT_EQ(tlb_n.PTE,  0);
-	ASSERT_TRUE(mmu.TLBMiss());
-
-
+    // The first page shuold now be out of the cache
+    //mmu.get_dtlb().debug_dump("DTLB");
+	found = mmu.get_dtlb().lookup(0, 0x60000d90, pte_out_d, level_out_d);
+	EXPECT_EQ(pte_out_d,  0x0);
+	ASSERT_FALSE(found);
+    
+    
 	// Cache on another intent, check that intent_load is unaffected:
 	// Cache a few other pages:
-	mmu.TLBCache(intent_store, 0x60007000, 0x600071e, 3);
-	mmu.TLBCache(intent_store, 0x60008000, 0x600081e, 3);
-	mmu.TLBCache(intent_store, 0x60009000, 0x600091e, 3);
+	mmu.get_itlb().insert(0, 0x60007000, 3, 0xf00071e);
+	mmu.get_itlb().insert(0, 0x60008000, 3, 0xf00081e);
+	mmu.get_itlb().insert(0, 0x60009000, 3, 0xf00091e);
 
+    found = mmu.get_dtlb().lookup(0, 0x60001ff0, pte_out_d, level_out_d);
+	ASSERT_EQ(pte_out_d,  0x600011e);
+	ASSERT_EQ(level_out_d,  3);
+	ASSERT_TRUE(found);
 
-	tlb_n= mmu.TLBLookup(intent_load, 0x60001ff0);
-	ASSERT_EQ(tlb_n.PTE,  0x600011e);
-	ASSERT_FALSE(mmu.TLBMiss());
-	
-	tlb_n= mmu.TLBLookup(intent_load, 0x60002ff0);
-	ASSERT_EQ(tlb_n.PTE,  0x600021e);
-	ASSERT_FALSE(mmu.TLBMiss());
-	
-	tlb_n= mmu.TLBLookup(intent_load, 0x60003ff0);
-	ASSERT_EQ(tlb_n.PTE,  0x600031e);
-	ASSERT_FALSE(mmu.TLBMiss());
+    found = mmu.get_dtlb().lookup(0, 0x60002ff0, pte_out_d, level_out_d);
+	ASSERT_EQ(pte_out_d,  0x600021e);
+	ASSERT_EQ(level_out_d,  3);
+	ASSERT_TRUE(found);
 
-	tlb_n= mmu.TLBLookup(intent_load, 0x60000d90);
-	ASSERT_EQ(tlb_n.PTE,  0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_dtlb().lookup(0, 0x60003ff0, pte_out_d, level_out_d);
+	ASSERT_EQ(pte_out_d,  0x600031e);
+	ASSERT_EQ(level_out_d,  3);
+	ASSERT_TRUE(found);
+	
+    found = mmu.get_dtlb().lookup(0, 0x60000d90, pte_out_d, level_out_d);
+	ASSERT_EQ(pte_out_d,  0);
+	ASSERT_EQ(level_out_d,  0);
+	ASSERT_FALSE(found);
 
-	tlb_n= mmu.TLBLookup(intent_store, 0x60007ff0);
-	ASSERT_EQ(tlb_n.PTE,  0x600071e);
-	ASSERT_FALSE(mmu.TLBMiss());
-	
-	tlb_n= mmu.TLBLookup(intent_store, 0x60008ff0);
-	ASSERT_EQ(tlb_n.PTE,  0x600081e);
-	ASSERT_FALSE(mmu.TLBMiss());
-	
-	tlb_n= mmu.TLBLookup(intent_store, 0x60009ff0);
-	ASSERT_EQ(tlb_n.PTE,  0x600091e);
-	ASSERT_FALSE(mmu.TLBMiss());
+    found = mmu.get_dtlb().lookup(0, 0x60007ff0, pte_out_d, level_out_d);
+	ASSERT_EQ(pte_out_d,  0x600071e);
+	ASSERT_EQ(level_out_d,  3);
+	ASSERT_TRUE(found);
 
-	tlb_n = mmu.TLBLookup(intent_execute, 0x600000aa);
-	ASSERT_EQ(tlb_n.PTE,  0x600001e);
-	ASSERT_FALSE(mmu.TLBMiss());
+	// Checl that the instruction PTEs are cached
+	found = mmu.get_itlb().lookup(0, 0x600070aa, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i,  0xf00071e);
+	ASSERT_TRUE(found);
+
+    found = mmu.get_itlb().lookup(0, 0x60008fff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i,  0xf00081e);
+	ASSERT_TRUE(found);
+
+    found = mmu.get_itlb().lookup(0, 0x60009001, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i,  0xf00091e);
+	ASSERT_TRUE(found);
 	
-	
+
 }
 
 // Check TLB on all lvls, without direct mapping va to phys 
@@ -480,143 +532,186 @@ TEST_F(MMUTest, MMUTLBCacheAllLvls)
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x200001e;
+    u32 pte_out_i = 0;
+    u8 level_out_i = 0;
 
-	auto tlb2 = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb2.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
-	// Cache the PTE on lvel 1:
-	mmu.TLBCache(intent_execute, va, PTE, 1);
+    bool found = mmu.get_itlb().lookup(0, va, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i,  0);
+	ASSERT_FALSE(found);
+	
+	// Cache the PTE on level 1:
+	mmu.get_itlb().insert(0, va, 1, PTE);
  
     // we should now be bale to look up across 16 MB of linear memory without a TLB miss
-	auto tlb3 = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+	found = mmu.get_itlb().lookup(0, va, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x60ffffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-	// Cache an new PTE on level 2, 0x61000000 - 0x61003FFF, 256 KB range
+	// Cache an new PTE on level 2, 0x61000000 - 0x6103FFFF, 256 KB range
     PTE = 0x110001e;
-    mmu.TLBCache(intent_execute, 0x61000000, PTE, 2);
- 
+    mmu.get_itlb().insert(0, 0x61000000, 2, PTE);
+    
     // we should now be able to look up across 256 kb of linear memory without a TLB miss
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
-
-
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
-
-	// Cache an new PTE on level 3, 0x61000000 - 0x61003FFF, 4 KB range
+    found = mmu.get_itlb().lookup(0, 0x6103ffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
+    
+    found = mmu.get_itlb().lookup(0, 0x61040000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
+    
+	// Cache an new PTE on level 3, 0x62000000 - 0x62000FFF, 4 KB range
     PTE = 0xf00001e;
-    mmu.TLBCache(intent_execute, 0x62000000, PTE, 3);
- 
+    mmu.get_itlb().insert(0, 0x62000000, 3, PTE);
+    
     // we should now be able to look up across 4 kb of linear memory without a TLB miss
-    tlb3 = mmu.TLBLookup(intent_execute, 0x62000000);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x62000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x62000fff);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
-
-
-    tlb3 = mmu.TLBLookup(intent_execute, 0x62001000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
-
-
+    found = mmu.get_itlb().lookup(0, 0x62000fff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
+    
+    found = mmu.get_itlb().lookup(0, 0x62001000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 }
 
 
-// Check TLB on lvls 1-2
-TEST_F(MMUTest, MMUTLBCacheLvl12)
+// Check TLB on lvls 1-2 with context switch
+TEST_F(MMUTest, MMUTLBCacheLvl12_ctx_switch)
 {
     ASSERT_EQ(mmu.GetCtxNumber(), 0);
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x600001e;
+    u32 pte_out_i = 0;
+    u8 level_out_i = 0;
 
-	auto tlb2 = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb2.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+	bool found = mmu.get_itlb().lookup(0, va, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i,  0);
+	ASSERT_FALSE(found);
+
 	// Cache the PTE on lvel 1:
-	mmu.TLBCache(intent_execute, va, PTE, 1);
+	mmu.get_itlb().insert(0, va, 1, PTE);
  
     // we should now be bale to look up across 16 MB of linear memory without a TLB miss
-	auto tlb3 = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+	found = mmu.get_itlb().lookup(0, va, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x60ffffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
 	// Cache an new PTE on level 2, 0x61000000 - 0x61003FFF, 256 KB range
-    PTE = 0x610001e;
-    mmu.TLBCache(intent_execute, 0x61000000, PTE, 2);
- 
-    // we should now be able to look up across 156 kb MB of linear memory without a TLB miss
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+    // Cache an new PTE on level 2, 0x61000000 - 0x61003FFF, 256 KB range
+    PTE = 0x110001e;
+    mmu.get_itlb().insert(0, 0x61000000, 2, PTE);
+    
+    // we should now be able to look up across 256 kb of linear memory without a TLB miss
+    found = mmu.get_itlb().lookup(0, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
-
-
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x6103ffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
+    
+    found = mmu.get_itlb().lookup(0, 0x61040000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
     // Switch context, all TLBS should now be invalid
     mmu.SetCtxNumber(42);
-	ASSERT_EQ(mmu.GetCtxNumber(), 42);
+    auto ctx = mmu.GetCtxNumber();
+	ASSERT_EQ(ctx, 42);
 	
-    tlb3 = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(ctx, va, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(ctx, 0x60ffffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(ctx, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(ctx, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(ctx, 0x6103ffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
-
-
-
+    found = mmu.get_itlb().lookup(ctx, 0x61040000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 }
 
+// Check that two contexts can use same va, but point to different pa
+TEST_F(MMUTest, MMUTLBCacheLvl3_ctx_switch)
+{
+    u32 pte_out_i;
+    u8 level_out_i;
+
+	// Cache an new PTE on level 3, 0x60000000 - 0x60003FFF, 4 KB range, 
+    // points to 0xf0000000 physical memory
+    u32 PTE = 0xf00001e;
+    mmu.get_itlb().insert(0, 0x60000000, 3, PTE);
+ 
+    PTE = 0xb00001e;
+    mmu.get_itlb().insert(9, 0x60000000, 3, PTE);
+ 
+    // we should now be able to look up across 4 kb of linear memory without a TLB miss
+    bool found = mmu.get_itlb().lookup(0, 0x60000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0xf00001e);
+	ASSERT_TRUE(found);
+
+    found = mmu.get_itlb().lookup(0, 0x60000fff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0xf00001e);
+	ASSERT_TRUE(found);
+    
+    found = mmu.get_itlb().lookup(0, 0x60001000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
+
+    // And get another physical mapping with the other context, but with same va
+    found = mmu.get_itlb().lookup(9, 0x60000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0xb00001e);
+	ASSERT_TRUE(found);
+
+    found = mmu.get_itlb().lookup(9, 0x60000fff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0xb00001e);
+	ASSERT_TRUE(found);
+    
+    found = mmu.get_itlb().lookup(9, 0x60001000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
+
+    mmu.get_dtlb().debug_dump("dTLB");
+    mmu.get_itlb().debug_dump("iTLB");
+}
 
 TEST_F(MMUTest, MMUTLBCacheFlush)
 {
@@ -624,70 +719,76 @@ TEST_F(MMUTest, MMUTLBCacheFlush)
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x600001e;
+    u32 pte_out_i = 0;
+    u8 level_out_i = 0;
 
-	auto tlb2 = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb2.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+	bool found = mmu.get_itlb().lookup(0, va, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i,  0);
+	ASSERT_FALSE(found);
+
 	// Cache the PTE on lvel 1:
-	mmu.TLBCache(intent_execute, va, PTE, 1);
+	mmu.get_itlb().insert(0, va, 1, PTE);
  
     // we should now be bale to look up across 16 MB of linear memory without a TLB miss
-	auto tlb3 = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+	found = mmu.get_itlb().lookup(0, va, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x60ffffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
 	// Cache an new PTE on level 2, 0x61000000 - 0x61003FFF, 256 KB range
-    PTE = 0x610001e;
-    mmu.TLBCache(intent_execute, 0x61000000, PTE, 2);
- 
-    // we should now be able to look up across 156 kb MB of linear memory without a TLB miss
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
+    // Cache an new PTE on level 2, 0x61000000 - 0x61003FFF, 256 KB range
+    PTE = 0x110001e;
+    mmu.get_itlb().insert(0, 0x61000000, 2, PTE);
+    
+    // we should now be able to look up across 256 kb of linear memory without a TLB miss
+    found = mmu.get_itlb().lookup(0, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
-	ASSERT_EQ(tlb3.PTE, PTE);
-	ASSERT_FALSE(mmu.TLBMiss());
-
-
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
-
+    found = mmu.get_itlb().lookup(0, 0x6103ffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, PTE);
+	ASSERT_TRUE(found);
+    
+    found = mmu.get_itlb().lookup(0, 0x61040000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
     // Flush Cache, all TLBS should now be invalid
     mmu.flush();
 	
-    tlb3 = mmu.TLBLookup(intent_execute, va);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x60000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x60ffffff);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x60000d90, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x60ffffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61000000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x6103ffff);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x61000000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
-    tlb3 = mmu.TLBLookup(intent_execute, 0x61040000);
-	ASSERT_EQ(tlb3.PTE, 0);
-	ASSERT_TRUE(mmu.TLBMiss());
+    found = mmu.get_itlb().lookup(0, 0x6103ffff, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
+
+    found = mmu.get_itlb().lookup(0, 0x61040000, pte_out_i, level_out_i);
+	ASSERT_EQ(pte_out_i, 0);
+	ASSERT_FALSE(found);
 
 
 
@@ -727,6 +828,7 @@ void mmu_init(MMU& mmu);
 #define PAGE_SIZE (1UL << PAGE_SHIFT)
 #define PAGE_MASK (PAGE_SIZE-1)
 
+#include "../src/debug.cpp"
 
 TEST_F(MMUTest, MMUTables)
 {
@@ -762,7 +864,7 @@ TEST_F(MMUTest, MMUTables)
 
 
 
-	mmu_table_init(mctrl, 0x61000000);
+	mmu_table_init(mctrl, mctrl.find_bank(0x60000000)->get_limit());
 	mmu_init(mmu);
 
 
@@ -786,6 +888,9 @@ TEST_F(MMUTest, MMUTables)
         ASSERT_EQ(val, va);
     }
  
+    //debug_set_active_mmu(&mmu);
+    //debug_mmu_tables();
+
     // Read memory through MMU translation for 
     // low 192MB range ( > our entire memory)
     // I.e:
@@ -831,17 +936,17 @@ TEST_F(MMUTest, MMUTables)
     ASSERT_EQ(ret, -1);
     ASSERT_EQ(mmu.GetFaultAddress(), 0xFFFFF000);
 
- 
+    
     // Read memory through MMU translation for 81 kb PROM (mapped to end of ram)
     for(u32 va = 0xFFD00000; va < 0xFFD14000; va += 4) {
         u32 val;
         u32 ret = mmu.MemAccess<intent_load>(va, val, CROSS_ENDIAN);
-        //std::cout << std::hex << "0x" << va << " --> " << "0x" << val << "(" << std::dec << ret << ")\n";
-        ASSERT_EQ(ret, 0);
-        
+    
+        ASSERT_EQ(ret, 0);        
         ASSERT_EQ(val, va - 0xffd00000 + 0x61000000 - 0x14000);
     }
- 
+  
+        
     // Check a few of the mappings we see from the ELF:
     // ps_move_startup 00008820  ffd03170  60c5c8a0  
     // TODO: Revisit this test, it faild but not sure it is correct
