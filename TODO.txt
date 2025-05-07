@@ -5,7 +5,7 @@ X Fix so we can run tests with c-code
 - Inline all instructions?
 X Code cleanliness, naming convention
 X Fix warnings
-- Improve MMU, TLBS etc
+X Improve MMU, TLBS etc
 - Better/real interrupt controller
 - Improve speed
 - FPU implemented and tested
