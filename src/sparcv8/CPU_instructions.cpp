@@ -462,9 +462,9 @@ void CPU::MULSCC (pDecode_t d)
 
     cc = (d->psr >> PSR_CC_CARRY) & LOBITS4;
 
-
-    x = d->ev;
-    y = (y_reg & 1) ? (d->rs1_value >> 1) | ((((cc >> CC_OVERFLOW) ^ (cc >> CC_NEGATIVE)) &1) << 31) : 0;
+    // FIX: https://github.com/wyvernSemi/sparc/pull/2/commits/edd362553bc2834114e8c216d7e6d1cbc3472393
+    x = (d->rs1_value >> 1) | ((((cc >> CC_OVERFLOW) ^ (cc >> CC_NEGATIVE)) &1) << 31);
+    y = (y_reg & 1) ? d->ev : 0;
 
     z = x + y;
 
