@@ -8,7 +8,7 @@
 
 static MMU* debug_mmu_ptr = nullptr;
 
-void set_active_mmu(MMU* mmu) {
+void debug_set_active_mmu(MMU* mmu) {
     debug_mmu_ptr = mmu;
 }
 
