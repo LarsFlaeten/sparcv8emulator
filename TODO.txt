@@ -6,10 +6,10 @@ X Fix so we can run tests with c-code
 X Code cleanliness, naming convention
 X Fix warnings
 X Improve MMU, TLBS etc
-- Better/real interrupt controller
+- Better/real interrupt controller, with broadcast
 - Improve speed
-- FPU implemented and tested
+X FPU implemented and tested
 - SVGA controller
 - Multiple CPUS
-
+- Save and restore state
 

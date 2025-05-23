@@ -1,5 +1,5 @@
 #include "libsparc.h"
-
+#include "test.h"
 
 int main()
 {

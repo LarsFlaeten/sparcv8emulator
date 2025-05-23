@@ -48,16 +48,7 @@
 #define STDA               STA_impl
 #define LDSTUBA            UNIMP
 #define SWAPA              UNIMP
-#define LDF                UNIMP //LDF_impl
-#define LDDF               UNIMP
-#define LDFSR              fpu_LDFSR
-#define STF                UNIMP //STF_impl
-#define STDF               UNIMP
-#define STFSR              fpu_STFSR
-#define STDFQ              UNIMP
-#define FBFCC              UNIMP // FBFCC_impl
-#define FPOP1              UNIMP // FOP1_impl
-#define FPOP2              UNIMP //FOP2_impl
+
 #define LDC                UNIMP
 #define LDDC               UNIMP
 #define LDCSR              UNIMP
@@ -69,6 +60,30 @@
 #define CPOP1              UNIMP
 #define CPOP2              UNIMP
 
+// Floating point instructions:
+#ifdef FPU_IMPLEMENTED
+#define LDF                LDF_impl
+#define LDDF               LDDF_impl
+#define LDFSR              LDFSR_impl
+#define STF                STF_impl
+#define STDF               STDF_impl
+#define STFSR              STFSR_impl
+#define STDFQ              STDFQ_impl
+#define FBFCC              FBFCC_impl
+#define FPOP1              FOP1_impl
+#define FPOP2              FOP2_impl
+#else
+#define LDF                UNIMP
+#define LDDF               UNIMP
+#define LDFSR              UNIMP
+#define STF                UNIMP
+#define STDF               UNIMP
+#define STFSR              UNIMP
+#define STDFQ              UNIMP
+#define FBFCC              UNIMP
+#define FPOP1              UNIMP
+#define FPOP2              UNIMP
+#endif
 
 
 #endif

@@ -8,7 +8,7 @@
 
 #
 
-testlist="fbfcc fld"
+testlist="fbfcc fop1"
 
 for testname in $testlist
 do

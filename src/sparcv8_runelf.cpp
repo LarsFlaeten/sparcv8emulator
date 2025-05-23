@@ -126,10 +126,18 @@ int main(int argc, char **argv)
     mctrl.attach_bank<RamBank>(0x00000000, 1 * 1024 * 1024);
     mctrl.debug_list_banks();
 
+
+
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     u32 word_count = ReadElf(fname, cpu, entry_va); 
     cpu.reset(entry_va);
+
+    // OS boot process step 1: Set stack pointer to end of ram
+    u32 end_of_ram = mctrl.find_bank(0x00000000)->get_limit();
+
+    cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
+    cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
     
      
     RunSummary rs;

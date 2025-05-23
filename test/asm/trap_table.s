@@ -10,7 +10,7 @@ x:
 
 #define STACK_ALIGN     8
 #define SA(X)           (((X) + (STACK_ALIGN-1)) & ~(STACK_ALIGN-1))
-#define WINDOWSIZE      (16*4)
+#define WINDOWSIZE      (8*4)
 #define ARGPUSHSIZE     (6*4)
 #define MINFRAME        SA(WINDOWSIZE+ARGPUSHSIZE+4)  
 

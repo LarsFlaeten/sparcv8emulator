@@ -241,7 +241,7 @@ int main(int argc, char **argv)
 
 
     // Main RAM bank
-    mctrl.attach_bank<RamBank>(0x40000000, 32 * 1024 * 1024); // Main memory
+    mctrl.attach_bank<RamBank>(0x40000000, 128 * 1024 * 1024); // Main memory
  
     // Amba PNP area
     mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);

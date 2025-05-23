@@ -55,7 +55,7 @@ void CPU::reset(u32 entry_va = 0x0)
     //((pPSR_t)&psr)->ver = 0x3; // Leon3
 
     // Version 3 in bitfield 17:19
-    fpu_fsr = 3 << 17; 
+    fsr = 3 << 17; 
 
     irl = 0;
 

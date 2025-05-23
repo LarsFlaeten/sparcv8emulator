@@ -27,6 +27,7 @@ constexpr u32 BREAK_SINGLE_STEP = 0xfffffffe;
 
 // Define this to use LEON specific ASI Assignments
 #define CONFIG_SPARC_LEON
+#define FPU_IMPLEMENTED
 
 #include "CPU_defines.h"
 #include "CPU_instr_map.h"
@@ -126,7 +127,7 @@ class CPU
         u32 y_reg;
 
         u32 cpu_id;
-        u32 fpu_fsr; // FPU state register
+        u32 fsr; // FPU state register
         ///////////////////////
         // Registers
         u32 globals [9];              // Global[8] is a pseudo register used only for SWAP
@@ -135,7 +136,9 @@ class CPU
 
         u32 *p_swap_reg = &globals[8];
 
-
+#ifdef FPU_IMPLEMENTED
+        u32 freg[32];
+#endif
 
         // Emulator control and debugging
        	std::ostream& os;
@@ -198,8 +201,8 @@ class CPU
         u32 get_irl() const { return irl; }
         u32 get_trap_type() const { return trap_type; }
         void set_irl(u32 _irl)  { irl = (_irl & 0xf); }
-        u32 get_fsr() const { return fpu_fsr; }
-        void set_fsr(u32 _fsr)  { fpu_fsr = _fsr; }
+        u32 get_fsr() const { return fsr; }
+        void set_fsr(u32 _fsr)  { fsr = _fsr; }
         bool is_running() const {return running;}
         
 
@@ -286,15 +289,22 @@ class CPU
     //
     void CASA    (pDecode_t d);
 
+#ifdef FPU_IMPLEMENTED
     //////////////////////////////////////
     // FPU Extensions
     //
-    void fpu_STFSR    (pDecode_t d);
-    void fpu_LDFSR    (pDecode_t d);
+    void LDF_impl     (pDecode_t d);
+    void LDDF_impl    (pDecode_t d);
+    void LDFSR_impl   (pDecode_t d);
+    void STF_impl     (pDecode_t d);
+    void STDF_impl    (pDecode_t d);
+    void STFSR_impl   (pDecode_t d);
+    void STDFQ_impl   (pDecode_t d);
+    void FBFCC_impl   (pDecode_t d);
+    void FOP1_impl    (pDecode_t d);
+    void FOP2_impl    (pDecode_t d);
 
-
-
-
+#endif
 	//////////////////////////////////////
 	// Instruction function pointer tables
 
