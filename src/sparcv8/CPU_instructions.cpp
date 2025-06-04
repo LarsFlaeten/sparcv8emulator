@@ -243,6 +243,8 @@ void CPU::WRY (pDecode_t d)
             // For single processor we run the tick function from here. 
             // TODO: For PMC, maybe just don't attach bus_tick_func?
             // Anyway, this didnt work as expected....
+            // TODO - revisit this when we run the CPU on a different thread than
+            // the bus clock
             /*
             struct timespec req = {0, 10000000}; //10 ms
             while(irl <= ((psr >> 8)& 0xf)) {
@@ -279,8 +281,12 @@ void CPU::WRPSR (pDecode_t d)
         // Hard wire LEON specific values..
         d->psr = (0xf << 28) | (0x3 << 24) | (d->rs1_value ^ d->ev);
 
-        // disable EC and EF:
-        d->psr = d->psr & ~(0x1 << 13) & ~(0x1 >> 12);
+        // disable EC (and EF if not implemented):
+#ifdef FPU_IMPLEMENTED
+        d->psr = d->psr & ~(0x1 << 13);
+#else
+        d->psr = d->psr & ~(0x1 << 13) & ~(0x1 << 12);
+#endif        
         // disable resevred field:
         d->psr = d->psr & ~(0x3f << 14);
 
