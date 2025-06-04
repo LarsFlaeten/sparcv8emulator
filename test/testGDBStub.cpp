@@ -221,16 +221,7 @@ void GDBStubTest::SetUp()
 
     mctrl.attach_bank<RamBank>(0x60000000, 1*1024*1024); // 1 MB @ 0x0
     
-    // Set up IO mapping
-    // TODO: Move this MMU functions?
-    /* u32 base_ram = 0x60000000;
-    u32 size_ram = RAM.getSizeBytes();
-    u32 start = base_ram/0x10000;
-    u32 end = (base_ram + size_ram)/0x10000;
-    for(unsigned a = start; a < end; ++a)
-        mmu.IOmap[a] = { [&](u32 i)          { return RAM.Read( (i-0x60000000)/4); },
-                          [&](u32 i, u32 v)   {        RAM.Write((i-0x60000000)/4, v);    } };
-    */
+   
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x60000000; 
     cpu.reset(entry_va);
