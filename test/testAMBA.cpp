@@ -63,34 +63,7 @@ TEST_F(AMBATest, AHB_setup)
 {
 	mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
     mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
-/*
-    SDRAM2 amba_ahb(0x100000); // AMBA resides from 0xfff00000 -> 0xfffffff0 (+ u32)
-    SDRAM2 amba_apb(0x100000);
 
-    // IO mapping for AMBA AHB IO AREA
-    u32 base_amba_ahb_io = 0xfff00000;
-    u32 end_amba_ahb_io =  0xffffffff;
-    u32 start = base_amba_ahb_io/0x10000;
-    u32 end =    end_amba_ahb_io/0x10000;
-    
-    for(unsigned a = start; a <= end; ++a) {
-        std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        mmu.IOmap[a] = { [&amba_ahb](u32 i)          { return amba_ahb.Read((i-0xfff00000)/4); } ,
-                          [&amba_ahb](u32 i, u32 v)   { amba_ahb.Write((i-0xfff00000)/4, v);    } };
-    }
-
-    // IO mapping for AMBA APB Pnp IO AREA
-    u32 base_amba_apb_io = 0x800f0000;
-    u32 end_amba_apb_io =  0x800fffff;
-    start = base_amba_apb_io/0x10000;
-    end =    end_amba_apb_io/0x10000;
-    
-    for(unsigned a = start; a <= end; ++a) {
-        std::cout << "Mapping 0x" << std::hex << a << "0000 to 0x" << a << "ffff\n";
-        mmu.IOmap[a] = { [&amba_apb](u32 i)          { return amba_apb.Read((i-0x800f0000)/4); } ,
-                          [&amba_apb](u32 i, u32 v)   { amba_apb.Write((i-0x800f0000)/4, v);    } };
-    }
-*/
     amba_ahb_pnp_setup(mctrl);
     amba_apb_pnp_setup(mctrl);
 
@@ -106,14 +79,7 @@ TEST_F(AMBATest, AHB_setup)
  	ASSERT_EQ(ambapp_pnp_ver(ahb_id), 0x0);
  	ASSERT_EQ(ambapp_pnp_irq(ahb_id), 0x0);
 
-    // mst1 Find the AHB UART
-/*    p = amba_ahb.getPtr(0x000ff020/4);
-    ahb = reinterpret_cast<ambapp_pnp_ahb*>(p); 
- 	ASSERT_EQ(ambapp_pnp_vendor(ahb->id), VENDOR_GAISLER);
- 	ASSERT_EQ(ambapp_pnp_device(ahb->id), GAISLER_AHBUART);
- 	ASSERT_EQ(ambapp_pnp_ver(ahb->id), 0x1);
- 	ASSERT_EQ(ambapp_pnp_irq(ahb->id), 0x0);
-*/
+   
     // slv0 Find the Memory Controller
 	ambapp_pnp_ahb ahbpp;
 	ahbpp.id = mctrl.read32(0xfffff820);
@@ -216,21 +182,3 @@ TEST_F(AMBATest, AHB_setup)
 
    
 }
-/*
-#define ambapp_pnp_vendor(id) (((id) >> 24) & 0xff)
-#define ambapp_pnp_device(id) (((id) >> 12) & 0xfff)
-#define ambapp_pnp_ver(id) (((id)>>5) & 0x1f)
-#define ambapp_pnp_irq(id) ((id) & 0x1f)
-
-#define ambapp_pnp_mbar_start(mbar) \
-	(((mbar) & 0xfff00000) & (((mbar) & 0xfff0) << 16))
-#define ambapp_pnp_mbar_mask(mbar) (((mbar)>>4) & 0xfff)
-#define ambapp_pnp_mbar_type(mbar) ((mbar) & 0xf)
-#define ambapp_pnp_ahbio_adr(addr, base_ioarea) \
-	((unsigned int)(base_ioarea) | ((addr) >> 12))
-
-#define ambapp_pnp_apb_start(iobar, base) \
-	((base) | ((((iobar) & 0xfff00000)>>12) & (((iobar) & 0xfff0)<<4)))
-#define ambapp_pnp_apb_mask(iobar) \
-	((~(ambapp_pnp_mbar_mask(iobar)<<8) & 0x000fffff) + 1)
-*/
