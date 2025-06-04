@@ -72,7 +72,7 @@ class APBUART
 
     Console console;
 public:
-    APBUART(): ints_enabled(false), overrun(false), in{0,0,{0}}, scaler(0xff) { }
+    APBUART(): ints_enabled(false), overrun(false), in{0,0,{0}}, scaler(0xfff) { }
     u32 read(u32 offset) const
     {
         // Read data reg
