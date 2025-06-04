@@ -81,7 +81,7 @@ public:
         }
     }
 
-    virtual uint64_t read64(u32 addr, bool align = true) const {
+    virtual u64 read64(u32 addr, bool align = true) const {
         if (align && (addr & 7))
             throw std::runtime_error("Unaligned 64-bit read at 0x" + to_hex(addr));
         u32 hi, lo;
@@ -92,10 +92,10 @@ public:
             lo = read32(addr);
             hi = read32(addr + 4);
         }
-        return (static_cast<uint64_t>(hi) << 32) | lo;
+        return (static_cast<u64>(hi) << 32) | lo;
     }
 
-    virtual void write64(u32 addr, uint64_t val, bool align = true) {
+    virtual void write64(u32 addr, u64 val, bool align = true) {
         if (align && (addr & 7))
             throw std::runtime_error("Unaligned 64-bit write at 0x" + to_hex(addr));
         u32 hi = static_cast<u32>(val >> 32);
@@ -224,7 +224,7 @@ public:
         return find_bank(addr)->read32(addr, align);
     }
 
-    uint64_t read64(u32 addr, bool align = true) const {
+    u64 read64(u32 addr, bool align = true) const {
         return find_bank(addr)->read64(addr, align);
     }
 
@@ -240,7 +240,7 @@ public:
         find_bank(addr)->write32(addr, val, align);
     }
 
-    void write64(u32 addr, uint64_t val, bool align = true) {
+    void write64(u32 addr, u64 val, bool align = true) {
         find_bank(addr)->write64(addr, val, align);
     }
 
