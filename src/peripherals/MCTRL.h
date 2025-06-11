@@ -30,6 +30,9 @@ public:
     virtual u32 get_base() const = 0;
     virtual u32 get_limit() const = 0;
     virtual void lock() {}; // For lockable banks (ROM-type)
+    
+    // Gets a pointer to the host data buffer
+    virtual u32* get_ptr() = 0;
 
     virtual u16 read16(u32 addr, bool align = true) const {
         if (align && (addr & 1))
@@ -150,6 +153,8 @@ public:
     u32 get_limit() const override { return base + N; }
     void lock() override { writeable = false; }
 
+    u32* get_ptr() override { return reinterpret_cast<u32*>(data.data());}
+
 private:
     u32 base;
     bool writeable;
@@ -183,6 +188,7 @@ public:
     u32 get_base() const override { return base; }
     u32 get_limit() const override { return base + size; }
 
+    u32* get_ptr() override { return reinterpret_cast<u32*>(data.data());}
 
 private:
     u32 base;
