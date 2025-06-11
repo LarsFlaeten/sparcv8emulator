@@ -50,7 +50,7 @@ APBCTRLTest::~APBCTRLTest()
 
 void APBCTRLTest::SetUp()
 {
-    mctrl.attach_bank<APBCTRL>(0x80000000);
+    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
 }
 
 void APBCTRLTest::TearDown()
