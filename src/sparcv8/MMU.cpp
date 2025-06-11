@@ -73,7 +73,7 @@ void TLB::insert(u32 context, u32 vaddr, u8 level, u32 pte) {
 // Invalidate by context + vaddr (strict)
 // Invalidate all entries of a context (on context switch)
 // Below: strict invalidate by context and virtual address
-// TODO: Linus boot seems to identifi that we use strict, figure out how this can be chosen
+// TODO: Linux boot seems to identify that we use strict, figure out how this can be chosen
 void TLB::invalidate_strict(u32 context, uint32_t vaddr) {
     for (auto& entry : entries) {
         if (!is_valid(entry.pte)) {
