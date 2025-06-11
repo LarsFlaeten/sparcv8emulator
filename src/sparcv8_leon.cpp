@@ -239,9 +239,12 @@ int main(int argc, char **argv)
     mmu.SetICCR(0x10220008);
     mmu.SetDCCR(0x18220008);
 
+    // Video RAM bank
+    mctrl.attach_bank<RamBank>(0x20000000, 8 * 1024 * 1024); // 8MB video memory
+ 
 
     // Main RAM bank
-    mctrl.attach_bank<RamBank>(0x40000000, 128 * 1024 * 1024); // Main memory
+    mctrl.attach_bank<RamBank>(0x40000000, 64 * 1024 * 1024); // Main memory
  
     // Amba PNP area
     mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
@@ -251,7 +254,7 @@ int main(int argc, char **argv)
     amba_apb_pnp_setup(mctrl);
 
 
-    mctrl.attach_bank<APBCTRL>(0x80000000);
+    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
 
 
