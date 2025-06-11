@@ -4,6 +4,7 @@
 #include "IRQMP.h"
 #include "GPTIMER.h"
 #include "APBUART.h"
+#include "SVGA.h"
 
 #include "../sparcv8/MMU.h"
 
@@ -22,20 +23,23 @@ class APBCTRL : public IMemoryBank {
         IRQMP   irq;
         GPTIMER timer;
         APBUART apbuart9;
+        SVGA    svga;
 
         bool contains(u32 addr) const override {
             return addr >= base && addr < base + size;
         }
     
+        u32* get_ptr() override {return nullptr;}
     public:
-        APBCTRL(u32 base, Endian endian = Endian::Big) : IMemoryBank(endian),
+        APBCTRL(u32 base, MCtrl& mctrl, Endian endian = Endian::Big) : IMemoryBank(endian),
             size(1 * 1024 * 1024 - 4096), // Allways 1 MB - 4096 high bytes
             base(base),
             mem(std::make_unique<RamBank>(0x0, 0x100)), 
             apbuart(),
             irq(),
             timer(8, 31),
-            apbuart9()
+            apbuart9(),
+            svga(mctrl)
         {
 
         }
@@ -72,7 +76,11 @@ class APBCTRL : public IMemoryBank {
             } else if ( (va & 0xfff00) >> 8 == 0x003) {
                 // Return data from slv 3 (GRTIMER)
                 //std::cout << "Read APBCTRL(GRTIMER), va = " << std::hex << va << std::dec << "\n";
-                return timer.Read(va & 0x0ff);        
+                return timer.Read(va & 0x0ff);    
+            } else if ( (va & 0xfff00) >> 8 == 0x004) {
+                // Return data from slv 4 (SVGA)
+                std::cout << "Read APBCTRL(SVGA), va = " << std::hex << va << std::dec << "\n";
+                return svga.read(va & 0x0ff);       
             } else if ( (va & 0xfff00) >> 8 == 0x009) {
                 // Return data from slv 9 (APB UART)
                 //std::cout << "Read APBCTRL(APB UART), va = " << std::hex << va << std::dec << "\n";
@@ -103,6 +111,10 @@ class APBCTRL : public IMemoryBank {
                 //std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 // Return data from slv 3 (GRTIMER)
                 timer.Write(va & 0x0ff, value);        
+            } else if ( (va & 0xfff00) >> 8 == 0x004) {
+                std::cout << "Write APBCTRL(SVGA), va = " << std::hex << va << std::dec << "\n";
+                // Return data from slv 4 (SVGA)
+                svga.write(va & 0x0ff, value);        
             } else if ( (va & 0xfff00) >> 8 == 0x009) {
                 //std::cout << "Write APBCTRL, va = 0x" << std::hex << va << " -> " << value << std::dec << "\n";
                 // Return data from slv 9 (APB UART)
