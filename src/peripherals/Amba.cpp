@@ -104,9 +104,14 @@ void amba_apb_pnp_setup(MCtrl& mctrl) {
     mctrl.write32(0x800ff018, (VENDOR_GAISLER << 24) | (GAISLER_GPTIMER << 12) | (AMB_VERSION << 5) | (0x8 & 0xf));
     mctrl.write32(0x800ff01c, (0x003 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000300 - 800003ff
 
-    // slv7 at 0x800ff020 - APB UART IRQ 3
-    mctrl.write32(0x800ff020, (VENDOR_GAISLER << 24) | (GAISLER_APBUART << 12) | (AMB_VERSION_1 << 5) | (0x3 & 0xf));
-    mctrl.write32(0x800ff024, (0x009 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000900 - 800009ff
+    // slv4 at 0x800ff020 - SVGA CTRL IRQ 9
+    mctrl.write32(0x800ff020, (VENDOR_GAISLER << 24) | (GAISLER_SVGACTRL << 12) | (AMB_VERSION << 5) | (0x9 & 0xf));
+    mctrl.write32(0x800ff024, (0x004 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000400 - 800004ff
+
+
+    // slv7 at 0x800ff028 - APB UART IRQ 3
+    mctrl.write32(0x800ff028, (VENDOR_GAISLER << 24) | (GAISLER_APBUART << 12) | (AMB_VERSION_1 << 5) | (0x3 & 0xf));
+    mctrl.write32(0x800ff02C, (0x009 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000900 - 800009ff
 
 }
  
