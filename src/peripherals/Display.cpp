@@ -80,6 +80,10 @@ void Display::renderLoop() {
         SDL_ShowWindow(window);
 
         while (running && enabled) {
+            SDL_Event e;
+            while (SDL_PollEvent(&e)) {
+                // You can optionally handle SDL_QUIT here
+            }
             void* pixels;
             int pitch;
             SDL_LockTexture(texture, nullptr, &pixels, &pitch);
