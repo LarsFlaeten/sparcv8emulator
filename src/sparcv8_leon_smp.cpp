@@ -1,0 +1,310 @@
+// Implementeation of a Leon SMP system
+// No gdb stub support for multiple threads implemented yet
+
+// std
+#include <iostream>
+#include <stdexcept>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+
+#include <signal.h>
+
+
+#include "sparcv8/CPU.h"
+#include "sparcv8/MMU.h"
+#include "peripherals/Peripherals.h"
+#include "peripherals/Amba.h"
+#include "peripherals/APBCTRL.h"
+#include "peripherals/BusClock.h"
+
+#include "readelf.h"
+
+
+
+// Shared state
+struct SyncState {
+    std::mutex mtx;
+    std::condition_variable cv_start;
+    std::condition_variable cv_done;
+    bool start_tick = false;
+    int active_cpus = 0;
+    std::atomic<bool> shutdown = false;
+};
+
+SyncState* global_syncstate = nullptr;
+
+void signal_handler(int signal) 
+{
+    std::cout << "Signal " << signal << " caught..\n";
+    switch(signal) {
+        case(SIGINT):
+            if(global_syncstate != nullptr) {
+                global_syncstate->shutdown = true;
+            }
+            throw std::runtime_error("SIGINT");
+            break;
+        case(SIGTERM):
+            throw std::runtime_error("SIGTERM");
+        default:
+            std::cout << "Unhandle signal.\n";
+            break;       
+    }
+}
+
+struct EmulatorConfig {
+    unsigned int num_cpus = 8;
+    double tickrate_hz = 1000.0;       // 1 ms tick
+    double emulated_freq_hz = 10e6;    // 10 MHz CPU
+    bool realtime_pacing = true;
+};
+
+void print_config(const EmulatorConfig& config) {
+    std::cout << "\n=== Emulator Configuration ===\n";
+    std::cout << std::fixed << std::setprecision(2);
+
+    std::cout << "Number of CPUs:       " << config.num_cpus << "\n";
+    std::cout << "CPU Frequency:        " << config.emulated_freq_hz << " Hz\n";
+    std::cout << "Tick Rate:            " << config.tickrate_hz << " Hz\n";
+    std::cout << "Instructions per Tick:"
+              << " " << static_cast<int>(config.emulated_freq_hz / config.tickrate_hz) << "\n";
+    std::cout << "Tick Duration:        "
+              << (1e6 / config.tickrate_hz) << " µs\n";
+    std::cout << "Real-time pacing:     "
+              << (config.realtime_pacing ? "enabled" : "disabled") << "\n";
+    std::cout << "==============================\n";
+}
+
+void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
+    while (true) {
+        std::unique_lock<std::mutex> lock(state.mtx);
+        state.cv_start.wait(lock, [&] { return state.start_tick || state.shutdown; });
+
+        if (state.shutdown)
+            break;
+
+        lock.unlock();
+
+        // Run one tick worth of instructions
+        // Get number of instructions from timer:
+        auto& timer = apbctrl.GetTimer();
+        auto srld = timer.read(0x4); // SRELOAD
+        auto trld = timer.read(0x14); // TRLDVAL
+        auto instructions_per_tick = srld * trld;
+        
+        try {
+            cpu.run(instructions_per_tick);
+        } catch (const std::runtime_error& e) {
+            std::cout << e.what() << "\n";
+            //debug_dumpmemv(cpu.get_pc());
+            debug_mmu_tables();
+            debug_registerdump(cpu);
+            throw std::runtime_error("Aborting...");
+        }
+
+        lock.lock();
+        if (--state.active_cpus == 0)
+            state.cv_done.notify_one();
+    }
+}
+
+
+void main_loop(std::vector<CPU>& cpus, SyncState& state, APBCTRL& apbctrl) {
+    //auto& intc = apbctrl.GetIntc();
+    //auto& uart = apbctrl.GetUART();
+
+    while(!state.shutdown) {
+        
+        std::unique_lock<std::mutex> lock(state.mtx);
+        state.active_cpus = cpus.size();
+        state.start_tick = true;
+
+        // CPUs start here. They will run the number of cycles as specified in the timer regs
+        state.cv_start.notify_all();
+
+        // Wait until all CPUs finish their tick
+        state.cv_done.wait(lock, [&] { return state.active_cpus == 0; });
+
+        state.start_tick = false;
+
+        // Interrupt logic here (poll devices, timers, etc.)
+        // First, raise timer interrupt here:
+        //intc.TriggerIRQ(8);
+
+        // Poll devices:
+        //uart.Input();
+        //if(uart.CheckIRQ()) 
+        //    intc.TriggerIRQ(2);
+        
+        // TODO: How do we detect shutdown? 
+
+    }
+
+    // Shutdown
+    std::unique_lock<std::mutex> lock(state.mtx);
+    state.shutdown = true;
+    state.cv_start.notify_all();
+}
+
+int main(int argc, char **argv) {
+
+    // Set up handler for external SIGINTs
+    struct sigaction act;
+    act.sa_handler =  signal_handler;
+    sigaction(SIGINT, &act, NULL);
+    sigaction(SIGTERM, &act, NULL);
+ 
+    EmulatorConfig config{};
+
+    int    option;
+    std::string fname = "/home/lars//workspace/gaisler-buildroot-2024.02-1.1/output/images/image.ram";
+    
+    while ((option = getopt(argc, argv, "i:")) != EOF) {
+        switch(option) {
+            case 'i':
+                fname = optarg;
+                break;
+            default:
+            std::cerr << 
+                    "Usage: " << argv[0] << "[-i <filename>] \n"
+                    "\n"
+                     "    -i path/file: Path to the linux buildroot image\n"
+                    "\n";
+            exit(EXIT_SUCCESS);
+            break;
+        }
+    }
+
+    
+    // Set up machine
+    MCtrl mctrl;
+    MMU mmu(mctrl);
+
+    debug_set_active_mmu(&mmu);
+
+    // Set Cache control regs as TSIM does
+    mmu.SetCCR(0x00020000);
+    mmu.SetICCR(0x10220008);
+    mmu.SetDCCR(0x18220008);
+
+    // Main RAM bank
+    mctrl.attach_bank<RamBank>(0x40000000, 64 * 1024 * 1024); // Main memory
+ 
+    // Amba PNP area
+    mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
+    mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
+    amba_ahb_pnp_setup(mctrl);
+    amba_apb_pnp_setup(mctrl);
+
+    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
+    auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
+    
+    mctrl.debug_list_banks();
+
+    // Find end of ram so we can set the stack pointers correctly when we reset the CPUs
+    auto end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
+
+    // Get the devices we need to interact with
+    auto& intc = apbctrl.GetIntc();
+    auto& uart = apbctrl.GetUART();
+    
+
+    // Create the cpus
+    config.num_cpus = 1;
+    intc.SetNumCpus(config.num_cpus);
+    std::vector<CPU> cpus{};
+    for(unsigned int i = 0; i < config.num_cpus; ++i) {
+        std::cout << "Creating CPU, id=" << i << "\n";
+        auto& cpu = cpus.emplace_back(CPU{mmu, std::cout});
+        cpu.set_cpu_id(i);
+        cpu.register_bus_tick_function( [&intc , &cpu]() 
+            {
+                u32 IRL = intc.GetNextIRQPending();
+                if(IRL>0) {
+                    cpu.set_irl(IRL);
+                    intc.ClearIRQ(IRL);
+                } 
+                // If its a timer interrupt, we interrupt the cpu from the current tick
+                if(IRL==8)
+                    cpu.interrupt();
+            }
+        );
+
+        // OS boot process step 1: Set stack pointer to end of ram
+        cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
+        cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
+    }
+    
+    print_config(config);
+
+    BusClock::Config cfg;
+    cfg.io_poll_hz = 2000.0;     // poll I/O ved 2 kHz
+    cfg.timer_hz   = 100.0;      // timer-IRQ ved 100 Hz
+    cfg.max_sleep  = std::chrono::milliseconds(static_cast<int64_t>(2));
+    cfg.allow_catch_up = false;
+    cfg.name = "MainBus";
+
+    BusClock bus{cfg};
+    std::cout << cfg;
+
+    // Registrer I/O-pollere (du kan registrere flere)
+    bus.register_io_poller([&](uint64_t tick, BusClock::TimePoint){
+        uart.Input();
+        if(uart.CheckIRQ())
+            intc.TriggerIRQ(2); // level
+        // Du kan også kalle andre enheter: disk, net, timers fra devices, etc.
+        // NB: hold dette kort og non-blocking!
+    });
+
+    // Definer hvordan timer-IRQ skal "emitteres"
+    auto& timer = apbctrl.GetTimer();
+    bus.set_timer_irq_callback([&](uint64_t idx, BusClock::TimePoint){
+        (void)idx;
+        //timer_irq.pulse_timer_irq();
+        intc.TriggerIRQ(8); // broadcast, level
+        auto srld = timer.read(0x4); // SRELOAD
+        auto trld = timer.read(0x14); // TRLDVAL
+        auto instructions_per_tick = srld * trld;
+        auto timer_freq = 50000000.0 / instructions_per_tick;
+        bus.update_timer_hz(timer_freq);
+        
+    });
+    
+
+    // Syncronization and threads
+    SyncState state;
+    global_syncstate = &state;
+    std::vector<std::thread> threads;
+    for (unsigned int i = 0; i < config.num_cpus; ++i) {
+        threads.emplace_back(cpu_thread, std::ref(cpus[i]), std::ref(state), std::ref(apbctrl));
+    }
+
+    // Read the ELF and get the entry point, then reset all cpus.
+    u32 entry_va = 0x0;
+    std::cout << "** Reading ELF..\n"; 
+    u32 word_count = ReadElf(fname, mmu, entry_va, true, std::cout); 
+    std::cout << "** Read " << word_count << " bytes of image, entry point 0x" << std::hex << entry_va << std::dec << ". Resetting CPU(s).\n";
+    for(auto& cpu : cpus)
+        cpu.reset(entry_va);
+
+    // Ok, start it up...
+    std::cout << "** Starting the machine..\n";
+
+    bus.start();
+
+    main_loop(cpus, state, apbctrl);
+    
+    bus.stop();
+    bus.print_summary();
+
+    for (auto& t : threads) {
+        t.join();
+    }
+    
+
+    std::cout << "** Emulation complete.\n";
+    return 0;
+    
+
+}
