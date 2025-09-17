@@ -1,6 +1,8 @@
 #ifndef _APBCTRL_H_
 #define _APBCTRL_H_
 
+#include "gaisler/ambapp.h"
+
 #include "IRQMP.h"
 #include "GPTIMER.h"
 #include "APBUART.h"
@@ -19,10 +21,16 @@ class APBCTRL : public IMemoryBank {
         u32 base;
 
         std::unique_ptr<IMemoryBank> mem;
+        
+        std::vector<apb_slave*> apb_slaves;
+
         APBUART apbuart;
         IRQMP   irq;
         GPTIMER timer;
         APBUART apbuart9;
+        
+        MCtrl&  mctrl;
+        
         SVGA    svga;
 
         bool contains(u32 addr) const override {
@@ -39,10 +47,24 @@ class APBCTRL : public IMemoryBank {
             irq(),
             timer(8, 31),
             apbuart9(),
+            mctrl(mctrl),
             svga(mctrl)
+        
         {
 
         }
+
+        void add_slave(apb_slave& slave, u32 apb_pnp_base, u32 device_addr, u8 irq) {
+            apb_slaves.push_back(&slave);
+
+            auto device_addr_base = (device_addr >> 8) & 0xff;
+
+            // Write to PnP discovery area:
+            mctrl.write32(apb_pnp_base, (slave.vendor_id() << 24) | (slave.device_id() << 12) | (AMB_VERSION << 5) | (irq & 0xf));
+            mctrl.write32(apb_pnp_base + 4, device_addr_base << 20 | (0xfff << 4) | AMBA_TYPE_APBIO);
+            
+        }
+
 
         GPTIMER& GetTimer() { return timer; }
         IRQMP& GetIntc() { return irq; }
@@ -76,7 +98,7 @@ class APBCTRL : public IMemoryBank {
             } else if ( (va & 0xfff00) >> 8 == 0x003) {
                 // Return data from slv 3 (GRTIMER)
                 //std::cout << "Read APBCTRL(GRTIMER), va = " << std::hex << va << std::dec << "\n";
-                return timer.Read(va & 0x0ff);    
+                return timer.read(va & 0x0ff);    
             } else if ( (va & 0xfff00) >> 8 == 0x004) {
                 // Return data from slv 4 (SVGA)
                 std::cout << "Read APBCTRL(SVGA), va = " << std::hex << va << std::dec << "\n";
@@ -110,7 +132,7 @@ class APBCTRL : public IMemoryBank {
             } else if ( (va & 0xfff00) >> 8 == 0x003) {
                 //std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 // Return data from slv 3 (GRTIMER)
-                timer.Write(va & 0x0ff, value);        
+                timer.write(va & 0x0ff, value);        
             } else if ( (va & 0xfff00) >> 8 == 0x004) {
                 std::cout << "Write APBCTRL(SVGA), va = " << std::hex << va << std::dec << "\n";
                 // Return data from slv 4 (SVGA)

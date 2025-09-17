@@ -1,9 +1,11 @@
 #ifndef _GPTIMER_H_
 #define _GPTIMER_H_
 
+#include "apb_slave.h"
+
 #define NUM_IMPLEMENTED_TIMERS 0x2
 
-class GPTIMER {
+class GPTIMER : public apb_slave {
     private:
         u32 SCALER;
         u32 SRELOAD;
@@ -23,24 +25,24 @@ class GPTIMER {
                 TCTRL = (0x1 << 1);
             }
 
-            bool IsEnabled() const {
+            bool is_enabled() const {
                 return TCTRL & 0x1;
             }
             
-            void Reset() {
+            void reset() {
                 // Restart
                 TCNTVAL = TRLDVAL;
             }
 
-            bool CheckInterrupt() {
+            bool check_interrupt() {
                 return (TCTRL >> 4) & 0x1;
             }
              
-            void ClearInterrupt() {
+            void clear_interrupt() {
                TCTRL = TCTRL & ~(0x1 << 4);
             }
 
-            void Tick() {
+            void tick() {
                 if(TCNTVAL == 0) {
                     // Signal interrupt if interrupts enabled:
                     if((TCTRL >> 3) & 0x1) // EI bit set
@@ -61,8 +63,8 @@ class GPTIMER {
 
         timer_impl timers[NUM_IMPLEMENTED_TIMERS];
     public:
-        u32 VendorId() const { return 0x01; }
-        u32 DeviceId() const { return 0x011;}
+        u32 vendor_id() const { return 0x01; }
+        u32 device_id() const { return 0x011;}
     
         GPTIMER(u32 IRQ = 8, u32 prescaler = 0x31) : SRELOAD(prescaler), CATCHCFG(0) {
             //CONFIG = (0x1 << 16) | (IRQ & 0x1f) << 3 | 0x7; // only one timer enabled, 7 implemented
@@ -70,10 +72,10 @@ class GPTIMER {
             
             SRELOAD = prescaler & 0xffff;
 
-            Reset();
+            reset();
         }
 
-        void SetLEONState() {
+        void set_LEON_state() {
             // Set LEON specific startup state:
             // Timer 1 enabled, timer 2 disabled and all zeroes
             timers[0].TCTRL = 0x3; // RS bit and enable bit
@@ -87,31 +89,31 @@ class GPTIMER {
 
         } 
 
-        bool CheckInterrupt(bool clear = true) {
+        bool check_interrupt(bool clear = true) {
             for(auto& timer : timers)
-                if(timer.CheckInterrupt()) {
+                if(timer.check_interrupt()) {
                     if(clear)
-                        timer.ClearInterrupt();
+                        timer.clear_interrupt();
                     return true;
                 }
             
             return false;
         }
 
-        void InterruptEnable() {
+        void interrupt_enable() {
             for(auto& timer : timers)
                 timer.TCTRL = timer.TCTRL | 0x1 << 3; 
         }
  
  
-        void Reset() {
+        void reset() {
             unsigned i = 0;
             for( auto& timer : timers) {
                 if ((CONFIG >> (16 + i)) & 0x1)
                      timer.TCTRL = (0x1 << 1) | 0x1; // Only RS bit, no IRQ
     
                 ++i;
-                timer.Reset();
+                timer.reset();
             }
 
             SCALER = SRELOAD & 0xffff;
@@ -122,13 +124,13 @@ class GPTIMER {
             // CONFIG:TIMERN field (bits 16 -22)
             //if(((CONFIG >> 16) & 0x7f) > 0 )
             // FIX Do not use CONFIG field, this is write only
-            if(timers[0].IsEnabled() || timers[1].IsEnabled())
+            if(timers[0].is_enabled() || timers[1].is_enabled())
             {
             
                 if (SCALER == 0) {
                     for (auto & timer : timers) {
-                        if(timer.IsEnabled())
-                            timer.Tick();
+                        if(timer.is_enabled())
+                            timer.tick();
                     }   
                     SCALER = SRELOAD & 0xffff; 
                 } else {
@@ -137,7 +139,7 @@ class GPTIMER {
             }
         }
 
-        u32 Read(u32 offset) const {
+        u32 read(u32 offset) const {
             u32 ret;
             switch(offset) {
                 case(0x0): ret = SCALER; break;
@@ -172,12 +174,18 @@ class GPTIMER {
             
         }
 
-        void Write(u32 offset, u32 regvalue) {
+        void write(u32 offset, u32 regvalue) {
             //std::cout << "write GPTIMER at offset " << std::hex << offset << ", value= " << regvalue << "\n";
             
             switch(offset) {
                 case(0x0): SCALER = regvalue; return;
-                case(0x4): SRELOAD = regvalue; return;
+                case(0x4): 
+                    SRELOAD = regvalue; 
+                    for(int i = 0; i < NUM_IMPLEMENTED_TIMERS; ++i) {
+                        std::cout << "Timer " << i << " now ticks at " << SRELOAD << "x" << timers[i].TRLDVAL << " = " << SRELOAD * timers[i].TRLDVAL << " ticks, ";
+                        std::cout << 50000000/ (SRELOAD * timers[i].TRLDVAL) << " Hz\n";
+                    }
+                    return;
                 case(0x8): CONFIG = regvalue; return;
                 case(0xc): CATCHCFG = regvalue; return;
                 default:
@@ -189,7 +197,12 @@ class GPTIMER {
                         int o = offset % 0x10;
                         switch(o) {
                             case(0x0): timers[n].TCNTVAL = regvalue; return;
-                            case(0x4): timers[n].TRLDVAL = regvalue; return;
+                            case(0x4): 
+                                timers[n].TRLDVAL = regvalue;
+                                std::cout << "Timer " << n << " now ticks at " << SRELOAD << "x" << timers[n].TRLDVAL << " = " << SRELOAD * timers[n].TRLDVAL << " ticks, ";
+                                std::cout << 50000000/ (SRELOAD * timers[n].TRLDVAL) << " Hz\n";
+                                
+                                return;
                             case(0x8): 
                                 // adjustment of timers[n].TCTRL
                                 // If EN bit is set, also set correspongin bit in CONTROL:
@@ -206,10 +219,10 @@ class GPTIMER {
                                 // IF LD bit is set, reload cnt and clear the bit
                                 if( (regvalue >> 2) & 0x1 ) {
                                     regvalue = regvalue & ~(0x1 << 2);
-                                    timers[n].Reset();
+                                    timers[n].reset();
                                 }
                                 
-                                timers[n].TCTRL = regvalue; 
+                                timers[n].TCTRL = regvalue;
                                 return;
                             case(0xc): timers[n].TLATCH = regvalue; return;
                             default: return;

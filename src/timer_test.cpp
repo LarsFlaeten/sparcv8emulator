@@ -17,7 +17,7 @@ int main(int argc, char **argv)
             lt.start();
             //nanosleep(&req, NULL);
             ++i;
-            lt.stop();
+            lt.stop(0);
         }
 
         lt.printStats();
