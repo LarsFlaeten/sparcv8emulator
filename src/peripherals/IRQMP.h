@@ -25,6 +25,7 @@ class IRQMP {
         u32 AMPCTRL;
         u32 PIMASK[32]; // Processor n interrupt mask registers
 
+        u32 num_cpus;
 
     public:
         IRQMP():
@@ -35,15 +36,20 @@ class IRQMP {
             MPSTAT(0),
             BRDCST(0),
             ERRSTAT(0),
-            AMPCTRL(0) 
+            AMPCTRL(0),
+            num_cpus(32)
         {
             for(int i = 0; i < 32; ++i)
                 PIMASK[i] = 0;
         }
 
+        void SetNumCpus(unsigned int num_cpus) {
+            num_cpus = num_cpus;
+        }
+
         void TriggerIRQ(u32 IRL) {
             IRL = IRL & 0xf;
-            for(int i = 0; i < 32; ++i)
+            for(unsigned int i = 0; i < num_cpus; ++i)
             {
                 if((0x1 << IRL) & PIMASK[i]) {
                     IPEND = IPEND | (0x1 << IRL);
