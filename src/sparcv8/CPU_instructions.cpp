@@ -626,9 +626,9 @@ void CPU::ST (pDecode_t d)
     if (d->ev & LOBITS2) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
     } else {
-        if((mem_write(d->ev, 4, d->rd) < 0) && !mmu.GetNoFault())
+        if((mem_write(d->ev, 4, d->rd) < 0) && !mmu.GetNoFault()) {
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
-        else {
+        } else {
             d->pc = d->npc;
             d->npc += 4;
         }
