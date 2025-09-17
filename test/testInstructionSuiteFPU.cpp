@@ -34,7 +34,7 @@ protected:
     void do_test_assertg7(const std::string& test) {
         // Read the ELF and get the entry point, then reset
         u32 entry_va = 0x0; 
-        u32 word_count = ReadElf(fpu_test_path + test, cpu, entry_va); 
+        u32 word_count = ReadElf(fpu_test_path + test, mmu, entry_va, false, std::cout); 
         ASSERT_GT(word_count, 0);
         cpu.reset(entry_va);
         

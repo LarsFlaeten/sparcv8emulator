@@ -6,7 +6,6 @@
 #include <elf.h>
 
 
-#include "sparcv8/CPU.h"
 #include "sparcv8/MMU.h"
 #include "dis.h"
 
@@ -25,10 +24,7 @@ static unsigned SwapBytes(unsigned value, unsigned size)
                 return value;
 }
 
-u32 ReadElf(const std::string& filename, CPU& cpu, u32& entry_va) {
-
-    bool verbose = cpu.get_verbose();
-    std::ostream& os = cpu.get_ostream();
+u32 ReadElf(const std::string& filename, MMU& mmu, u32& entry_va, bool verbose, std::ostream& os) {
 
     unsigned int i;
     int  c;
@@ -153,8 +149,7 @@ u32 ReadElf(const std::string& filename, CPU& cpu, u32& entry_va) {
 
             word |= (c << ((3-(bytecount&3)) * 8));
             if ((bytecount&3) == 3) {
-                //cpu.LoadMemWord(SwapBytes(h2[pcount]->p_vaddr, 4) + i, word);
-                cpu.get_mmu().MemAccessBypassWrite4(pa + i, word);
+                mmu.MemAccessBypassWrite4(pa + i, word);
                 i+=4;
                 word = 0;
                 
@@ -168,7 +163,7 @@ u32 ReadElf(const std::string& filename, CPU& cpu, u32& entry_va) {
            u32 zero = 0;
            for(u32 j = 0; j < wsize; j = j+4)
                  try {
-                     cpu.get_mmu().MemAccessBypassWrite4(pa + i + j, zero);
+                     mmu.MemAccessBypassWrite4(pa + i + j, zero);
                  } catch (...) {
                      
                      /*

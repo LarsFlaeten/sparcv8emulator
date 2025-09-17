@@ -3,10 +3,11 @@
 
 #include <elf.h>
 #include <string>
+#include <iostream>
 
-#include "sparcv8/CPU.h"
+#include "sparcv8/MMU.h"
 
-u32 ReadElf(const std::string& fname, CPU& cpu, u32& entry_va); 
+u32 ReadElf(const std::string& fname, MMU& mmu, u32& entry_va, bool verbose = false, std::ostream& os = std::cout); 
 
 
 
