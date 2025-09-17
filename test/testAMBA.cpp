@@ -168,6 +168,20 @@ TEST_F(AMBATest, AHB_setup)
  	apbpp.id = mctrl.read32(0x800ff020);
 	apbpp.iobar = mctrl.read32(0x800ff024);
  	ASSERT_EQ(ambapp_pnp_vendor(apb->id), VENDOR_GAISLER);
+ 	ASSERT_EQ(ambapp_pnp_device(apb->id), GAISLER_SVGACTRL);
+	ASSERT_EQ(ambapp_pnp_ver(apb->id), 0x0);
+ 	ASSERT_EQ(ambapp_pnp_irq(apb->id), 0x9); // TODO : Do we need IRQ=9?
+	ASSERT_EQ(ambapp_pnp_apb_start(apb->iobar, 0x80000400), 0x80000400);
+	ASSERT_EQ(ambapp_pnp_mbar_type(apb->iobar), AMBA_TYPE_APBIO);
+
+
+
+
+
+    // slv6 
+ 	apbpp.id = mctrl.read32(0x800ff028);
+	apbpp.iobar = mctrl.read32(0x800ff02C);
+ 	ASSERT_EQ(ambapp_pnp_vendor(apb->id), VENDOR_GAISLER);
  	ASSERT_EQ(ambapp_pnp_device(apb->id), GAISLER_APBUART);
  	ASSERT_EQ(ambapp_pnp_ver(apb->id), 0x1);
  	ASSERT_EQ(ambapp_pnp_irq(apb->id), 0x3);
