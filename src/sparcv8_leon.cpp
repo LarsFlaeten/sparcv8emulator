@@ -1,26 +1,6 @@
 //=============================================================
 // 
-// Copyright (c) 2004 Simon Southwell
 //
-// Date: 13th October 2004
-//
-// This file is part of sparc_iss.
-//
-// sparc_iss is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// sparc_iss is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with sparc_iss. If not, see <http://www.gnu.org/licenses/>.
-//
-// $Id: sparc_iss.c,v 1.5 2016-10-18 05:53:31 simon Exp $
-// $Source: /home/simon/CVS/src/cpu/sparc/src/sparc_iss.c,v $
 //
 //=============================================================
 
@@ -36,6 +16,7 @@
 #else
 extern char* optarg;
 #endif
+
 #include "sparcv8/CPU.h"
 #include "sparcv8/MMU.h"
 #include "peripherals/Peripherals.h"
@@ -120,7 +101,7 @@ bool ParseCommand(const std::string& cmd, CPU& cpu) {
         else// Fetch current instruction
             cpu.get_mmu().MemAccess<intent_execute, 4>(va, opcode, CROSS_ENDIAN);
         
-        disDecode(va, opcode);
+        disDecodePrint(va, opcode);
         
     } else if(cmd.starts_with("mem ")) {
         if(cmd.length() > 4) {
@@ -257,6 +238,12 @@ int main(int argc, char **argv)
     mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
 
+    
+    //SVGA svga(mctrl);
+    
+    //apbctrl.add_slave(svga, 0x800ff020, 0x80000400, 9);
+
+
 
     mctrl.debug_list_banks();
 
@@ -293,8 +280,7 @@ int main(int argc, char **argv)
             timer.Tick();
             uart1.Input();
 
-            // It seems like the kernel clears the interrupts, and we dont need to do it here
-            if(timer.CheckInterrupt(false)) 
+            if(timer.check_interrupt(false)) 
                 intc.TriggerIRQ(8);
             
             if(uart1.CheckIRQ()) 
@@ -312,11 +298,11 @@ int main(int argc, char **argv)
 
     // Set up timer to the same state as TSIM starts with
     GPTIMER& timer = apbctrl.GetTimer();
-    timer.SetLEONState();
+    timer.set_LEON_state();
  
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
-    u32 word_count = ReadElf(fname, cpu, entry_va); 
+    u32 word_count = ReadElf(fname, mmu, entry_va, cpu.get_verbose(), cpu.get_ostream()); 
     cpu.reset(entry_va);
 
     // OS boot process step 1: Set stack pointer to end of ram
@@ -368,7 +354,7 @@ int main(int argc, char **argv)
         struct DecodeStruct Dec, *d=&Dec;
         while(count > 0) {
             cpu.instr_fetch(PC, d);
-            disDecode(PC, d->opcode);
+            disDecodePrint(PC, d->opcode);
             PC += 4;
             --count;
         }
@@ -377,7 +363,7 @@ int main(int argc, char **argv)
 
     if(rs.reason == TerminateReason::UNIMPLEMENTED) {
         debug_registerdump(cpu); 
-        disDecode(cpu.get_pc(), rs.last_opcode);
+        disDecodePrint(cpu.get_pc(), rs.last_opcode);
     } 
     
     
