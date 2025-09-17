@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 
+#if 0 // Use this for older compilers
 #ifndef __cpp_lib_format
   // std::format polyfill using fmtlib
   #include <fmt/core.h>
@@ -15,7 +16,9 @@
   using fmt::format;
   }
 #else
-  #include <format>
+#endif
+#else
+#include <format>
 #endif
 
 #include "../common.h"
@@ -99,7 +102,8 @@ enum TerminateReason {
     STEP = 2,
     TRAP_CONDITIONAL = 3,
     UNIMPLEMENTED = 4,
-    RECV_SIGINT = 5
+    RECV_SIGINT = 5,
+    INTERRUPT = 6
 };
 
 struct RunSummary {

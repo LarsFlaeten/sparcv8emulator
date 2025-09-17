@@ -4,7 +4,7 @@
 #include "MMU.h"
 
 #include "../LoopTimer.h"
-#if 1
+#if 0
 #define PERFORMANCE_MONITOR
 #endif
 
@@ -107,8 +107,8 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
     u64 count = 0;
     //u32 word_count;
     struct DecodeStruct Dec, *d=&Dec;
-    pPSR_t p = (pPSR_t)&psr;
-
+    pPSR_t p = reinterpret_cast<pPSR_t>(&psr);
+    
     // Map the PSR structure to the decode PSR variable just once
     d->p = (pPSR_t) &(d->psr);
 
@@ -121,7 +121,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 #endif		
         count++;
         
-        // Process interrupts
+        // Process interrupts if ther are no traps being handled
         if (trap_type == 0 && (p->et && (irl > p->pil))) {
             if (verbose)
                 os << std::format("INT  {:#x} PC={:#08x} NPC={:#08x}\n", irl, pc, npc);
@@ -196,21 +196,19 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
             }
         }
         
-            // Tick the bus, handling input, interrupts etc
-            // ..and gdb server if present
-		    if(bus_tick_func)
-                bus_tick_func();
-
-        //}
+        // Tick the bus, handling input, interrupts etc
+        // ..and gdb server if present
+        if(bus_tick_func)
+            bus_tick_func();
 
         if(_interrupt) {
             _interrupt = false;
-            rs.reason = TerminateReason::RECV_SIGINT; // received SIGINT
+            rs.reason = TerminateReason::INTERRUPT; // received SIGINT
             break;
         }
 
 #ifdef PERFORMANCE_MONITOR
-		lt.stop();
+		lt.stop(d->opcode);
 #endif
     }
 
@@ -383,6 +381,7 @@ void CPU::trap(pDecode_t d, u32 trap_no)
          //terminate = d->opcode;
          rs.last_opcode = d->opcode;
          rs.reason = TerminateReason::TRAP_CONDITIONAL;
+         throw std::runtime_error("Trap in trap");
          return;
     }
 
