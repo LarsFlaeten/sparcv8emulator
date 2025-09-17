@@ -29,12 +29,7 @@
 //extern FILE *ofp;
 FILE* ofp = stdout;
 
-static std::string cond_byte [16] = {
-   "n  ", "e  ", "le ", "l  ",
-   "leu", "cs ", "neg", "vs ",
-   "a  ", "ne ", "g  ", "ge ",
-   "gu ", "cc ", "pos", "vc"
-};
+
 
 //------------------------------------------------------------------------
 //
@@ -125,10 +120,12 @@ static void disPrintOpcode(u32 PC, u32 opcode, std::string f, std::string c) {
     fprintf(ofp, "   %s%s\t", f.c_str(), c.c_str());
 }
 
+
+
 //------------------------------------------------------------------------
 // Main instruction decode
 //
-void disDecode(u32 PC, u32 opcode)
+void disDecodePrint(u32 PC, u32 opcode)
 {
     std::string function, trimmed;
     int is_mov, is_cmp, is_rd, is_wr, is_sethi_or, is_clr;

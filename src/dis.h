@@ -3,7 +3,7 @@
 
 #include "sparcv8/CPU.h"
 
-void disDecode(u32 PC, u32 opcode);
+void disDecodePrint(u32 PC, u32 opcode);
 
 // Format 1 instruction
 static std::string format1_str = "call    ";
@@ -49,6 +49,11 @@ static std::string format3_str[128] = {
     "unimp   ", "unimp   ", "unimp   ", "unimp   "
     };
 
-
+static std::string cond_byte [16] = {
+   "n  ", "e  ", "le ", "l  ",
+   "leu", "cs ", "neg", "vs ",
+   "a  ", "ne ", "g  ", "ge ",
+   "gu ", "cc ", "pos", "vc"
+};
 
 #endif
