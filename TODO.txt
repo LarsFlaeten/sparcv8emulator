@@ -9,7 +9,7 @@ X Improve MMU, TLBS etc
 - Better/real interrupt controller, with broadcast
 - Improve speed
 X FPU implemented and tested
-- SVGA controller
+X SVGA controller
 - Multiple CPUS
 - Save and restore state
 
