@@ -79,14 +79,15 @@ class GPTIMER : public apb_slave {
             // Set LEON specific startup state:
             // Timer 1 enabled, timer 2 disabled and all zeroes
             timers[0].TCTRL = 0x3; // RS bit and enable bit
-            timers[0].TCNTVAL = 0xffffffff;
-            timers[0].TRLDVAL = 0xffffffff;
+            timers[0].TCNTVAL = 0x270f;
+            timers[0].TRLDVAL = 0x270f;
             timers[1].TCTRL = 0;
             timers[1].TCNTVAL = 0;
             timers[1].TRLDVAL = 0;
     
-            SCALER = 0x24;            
-
+            //SCALER = 0x24;            
+            SRELOAD = 0x24;
+            SCALER = SRELOAD;
         } 
 
         bool check_interrupt(bool clear = true) {
@@ -183,7 +184,7 @@ class GPTIMER : public apb_slave {
                     SRELOAD = regvalue; 
                     for(int i = 0; i < NUM_IMPLEMENTED_TIMERS; ++i) {
                         std::cout << "Timer " << i << " now ticks at " << SRELOAD << "x" << timers[i].TRLDVAL << " = " << SRELOAD * timers[i].TRLDVAL << " ticks, ";
-                        std::cout << 50000000/ (SRELOAD * timers[i].TRLDVAL) << " Hz\n";
+                        std::cout << 10000000/ (SRELOAD * timers[i].TRLDVAL) << " Hz\n";
                     }
                     return;
                 case(0x8): CONFIG = regvalue; return;
@@ -200,7 +201,7 @@ class GPTIMER : public apb_slave {
                             case(0x4): 
                                 timers[n].TRLDVAL = regvalue;
                                 std::cout << "Timer " << n << " now ticks at " << SRELOAD << "x" << timers[n].TRLDVAL << " = " << SRELOAD * timers[n].TRLDVAL << " ticks, ";
-                                std::cout << 50000000/ (SRELOAD * timers[n].TRLDVAL) << " Hz\n";
+                                std::cout << 10000000/ (SRELOAD * timers[n].TRLDVAL) << " Hz\n";
                                 
                                 return;
                             case(0x8): 
