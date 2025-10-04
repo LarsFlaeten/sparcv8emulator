@@ -1,6 +1,10 @@
 #ifndef _IRQMP_H_
 #define _IRQMP_H_
 
+// std
+#include <mutex>
+#include <shared_mutex>
+
 #define IRQMP_ILEVEL_OS 0x00
 #define IRQMP_IPEND_OS 0x04
 #define IRQMP_IFORCE_OS 0x08
@@ -27,6 +31,8 @@ class IRQMP {
 
         u32 num_cpus;
 
+        mutable std::shared_mutex mtx;
+
     public:
         IRQMP():
             ILEVEL(0),
@@ -44,10 +50,12 @@ class IRQMP {
         }
 
         void SetNumCpus(unsigned int num_cpus) {
+            std::unique_lock lock(mtx);
             num_cpus = num_cpus;
         }
 
         void TriggerIRQ(u32 IRL) {
+            std::unique_lock lock(mtx);
             IRL = IRL & 0xf;
             for(unsigned int i = 0; i < num_cpus; ++i)
             {
@@ -59,6 +67,7 @@ class IRQMP {
         }
 
         unsigned int GetNextIRQPending() const {
+            std::shared_lock lock(mtx);
             for(unsigned int i = 15; i >= 1; --i)
                 if(IPEND & (0x1 << i)) 
                     return i;
@@ -66,6 +75,7 @@ class IRQMP {
         }
 
         void ClearIRQ(u32 IRL) {
+            std::unique_lock lock(mtx);
             IRL = IRL & 0xf;
             IPEND = IPEND & ~(0x1 << IRL);
         }
@@ -75,6 +85,7 @@ class IRQMP {
 
 
         u32 Read(u32 offset) const {
+            std::shared_lock lock(mtx);
             //std::cout << "Read IRQ at offset " << std::hex << offset << "\n";
             if(offset >= 0x40 && offset < 0x60) {
                 u32 n = offset - 0x40;
@@ -112,6 +123,7 @@ class IRQMP {
             return 0; 
         }
         void Write(u32 offset, u32 value) {
+            std::unique_lock lock(mtx);
             //std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << "\n";
             
             if(offset >= 0x40 && offset < 0x60) {
