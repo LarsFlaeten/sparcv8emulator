@@ -249,4 +249,30 @@ void debug_mmu_tables() {
     }
 
 }
+
+
+std::string rs_reason_str(TerminateReason trs) {
+    switch(trs) {
+        case(NORMAL):
+            return "NORMAL";
+        case(INSTRUCTION):
+            return "INSTRUCTION";
+        case(BREAK):
+            return "BREAK";
+        case(STEP):
+            return "STEP";
+        case(TRAP_CONDITIONAL):
+            return "TRAP_CONDITIONAL";
+        case(UNIMPLEMENTED):
+            return "UNIMPLEMENTED";
+        case(RECV_SIGINT):
+            return "RECV_SIGINT";
+        case(INTERRUPT):
+            return "INTERRUPT";
+        default:
+            return "??";
+    }
+
+}
+
  
