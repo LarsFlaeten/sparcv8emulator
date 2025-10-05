@@ -55,6 +55,17 @@ typedef struct {
 
 } PSR_t, *pPSR_t;
 
+enum TerminateReason {
+    NORMAL = -1,
+    INSTRUCTION = 0,
+    BREAK = 1,
+    STEP = 2,
+    TRAP_CONDITIONAL = 3,
+    UNIMPLEMENTED = 4,
+    RECV_SIGINT = 5,
+    INTERRUPT = 6
+};
+
 // Defer structure definition
 class CPU;
 #include "MMU.h"
@@ -95,16 +106,9 @@ struct DecodeStruct {
     u32 value1;              // Second (optional) write back value
 };
 
-enum TerminateReason {
-    NORMAL = -1,
-    INSTRUCTION = 0,
-    BREAK = 1,
-    STEP = 2,
-    TRAP_CONDITIONAL = 3,
-    UNIMPLEMENTED = 4,
-    RECV_SIGINT = 5,
-    INTERRUPT = 6
-};
+
+
+
 
 struct RunSummary {
     TerminateReason reason;
