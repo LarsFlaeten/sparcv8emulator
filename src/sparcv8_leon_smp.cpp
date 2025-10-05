@@ -30,7 +30,9 @@ struct SyncState {
     std::condition_variable cv_done;
     bool start_tick = false;
     int active_cpus = 0;
-    std::atomic<bool> shutdown = false;
+    std::atomic<bool> shutdown_cpus = false;
+    std::atomic<bool> global_shutdown = false;
+    
 };
 
 SyncState* global_syncstate = nullptr;
@@ -41,9 +43,12 @@ void signal_handler(int signal)
     switch(signal) {
         case(SIGINT):
             if(global_syncstate != nullptr) {
-                global_syncstate->shutdown = true;
+                std::cout << "Setting global state to shutdown\n";
+                std::unique_lock<std::mutex> lock(global_syncstate->mtx);
+                global_syncstate->shutdown_cpus = true;
+                global_syncstate->global_shutdown = true;
             }
-            throw std::runtime_error("SIGINT");
+            //throw std::runtime_error("SIGINT");
             break;
         case(SIGTERM):
             throw std::runtime_error("SIGTERM");
@@ -76,12 +81,20 @@ void print_config(const EmulatorConfig& config) {
     std::cout << "==============================\n";
 }
 
+struct thread_tick_summary {
+    int target_instructions = 0;
+    int actual_instructions = 0;
+    TerminateReason reason = TerminateReason::UNIMPLEMENTED;
+};
+
 void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
+    std::vector<thread_tick_summary> tick_summaries;
+
     while (true) {
         std::unique_lock<std::mutex> lock(state.mtx);
-        state.cv_start.wait(lock, [&] { return state.start_tick || state.shutdown; });
+        state.cv_start.wait(lock, [&] { return state.start_tick || state.shutdown_cpus; });
 
-        if (state.shutdown)
+        if (state.shutdown_cpus)
             break;
 
         lock.unlock();
@@ -92,9 +105,11 @@ void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
         auto srld = timer.read(0x4); // SRELOAD
         auto trld = timer.read(0x14); // TRLDVAL
         auto instructions_per_tick = srld * trld;
+        RunSummary rs{};
         
         try {
-            cpu.run(instructions_per_tick);
+            cpu.run(instructions_per_tick, &rs);
+            tick_summaries.emplace_back(instructions_per_tick, rs.instr_count, rs.reason);
         } catch (const std::runtime_error& e) {
             std::cout << e.what() << "\n";
             //debug_dumpmemv(cpu.get_pc());
@@ -106,7 +121,25 @@ void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
         lock.lock();
         if (--state.active_cpus == 0)
             state.cv_done.notify_one();
+
+        
     }
+
+    std::cout << "Stats from thread " << cpu.get_cpu_id() << ", " << tick_summaries.size() << " ticks\n";
+    int max_tick_inst = tick_summaries[0].actual_instructions;
+    int min_tick_inst = tick_summaries[0].actual_instructions;
+    //int i = 0;
+    for(const auto& t : tick_summaries) {
+        if(t.actual_instructions > max_tick_inst)
+            max_tick_inst = t.actual_instructions;
+        if(t.actual_instructions < min_tick_inst)
+            min_tick_inst = t.actual_instructions;
+        //std::cout << "Tick :" << ++i << "\t " << t.actual_instructions << "/" << t.target_instructions << " - " << rs_reason_str(t.reason) << "\n";
+    }
+    std::cout << "Max: " << max_tick_inst << "\n";
+    std::cout << "Min: " << min_tick_inst << "\n";
+    
+
 }
 
 
@@ -114,9 +147,12 @@ void main_loop(std::vector<CPU>& cpus, SyncState& state, APBCTRL& apbctrl) {
     //auto& intc = apbctrl.GetIntc();
     //auto& uart = apbctrl.GetUART();
 
-    while(!state.shutdown) {
+    while(true) {
         
         std::unique_lock<std::mutex> lock(state.mtx);
+        if(state.global_shutdown)
+            break;
+
         state.active_cpus = cpus.size();
         state.start_tick = true;
 
@@ -128,22 +164,12 @@ void main_loop(std::vector<CPU>& cpus, SyncState& state, APBCTRL& apbctrl) {
 
         state.start_tick = false;
 
-        // Interrupt logic here (poll devices, timers, etc.)
-        // First, raise timer interrupt here:
-        //intc.TriggerIRQ(8);
-
-        // Poll devices:
-        //uart.Input();
-        //if(uart.CheckIRQ()) 
-        //    intc.TriggerIRQ(2);
         
-        // TODO: How do we detect shutdown? 
-
     }
 
     // Shutdown
     std::unique_lock<std::mutex> lock(state.mtx);
-    state.shutdown = true;
+    state.shutdown_cpus = true;
     state.cv_start.notify_all();
 }
 
@@ -226,8 +252,11 @@ int main(int argc, char **argv) {
                     intc.ClearIRQ(IRL);
                 } 
                 // If its a timer interrupt, we interrupt the cpu from the current tick
-                if(IRL==8)
+                if(IRL==8) {
+                    //cpu.set_irl(IRL); // Why did we have to add these? See above
                     cpu.interrupt();
+                    //intc.ClearIRQ(IRL); // Why did we have to add these? See above
+                }
             }
         );
 
@@ -239,8 +268,8 @@ int main(int argc, char **argv) {
     print_config(config);
 
     BusClock::Config cfg;
-    cfg.io_poll_hz = 2000.0;     // poll I/O ved 2 kHz
-    cfg.timer_hz   = 100.0;      // timer-IRQ ved 100 Hz
+    cfg.io_poll_hz = 2000.0;   
+    cfg.timer_hz   = 100.0;    
     cfg.max_sleep  = std::chrono::milliseconds(static_cast<int64_t>(2));
     cfg.allow_catch_up = false;
     cfg.name = "MainBus";
@@ -248,20 +277,20 @@ int main(int argc, char **argv) {
     BusClock bus{cfg};
     std::cout << cfg;
 
-    // Registrer I/O-pollere (du kan registrere flere)
+    // Register I/O-pollers 
     bus.register_io_poller([&](uint64_t tick, BusClock::TimePoint){
-        uart.Input();
+        uart.input_scheduled();
         if(uart.CheckIRQ())
-            intc.TriggerIRQ(2); // level
-        // Du kan også kalle andre enheter: disk, net, timers fra devices, etc.
-        // NB: hold dette kort og non-blocking!
+            intc.TriggerIRQ(2); // level TODO: Get irq from device...
+        
     });
 
-    // Definer hvordan timer-IRQ skal "emitteres"
+    // Set up timer callback
     auto& timer = apbctrl.GetTimer();
+    timer.set_LEON_state();
+
     bus.set_timer_irq_callback([&](uint64_t idx, BusClock::TimePoint){
         (void)idx;
-        //timer_irq.pulse_timer_irq();
         intc.TriggerIRQ(8); // broadcast, level
         auto srld = timer.read(0x4); // SRELOAD
         auto trld = timer.read(0x14); // TRLDVAL
@@ -273,7 +302,7 @@ int main(int argc, char **argv) {
     
 
     // Syncronization and threads
-    SyncState state;
+    SyncState state{};
     global_syncstate = &state;
     std::vector<std::thread> threads;
     for (unsigned int i = 0; i < config.num_cpus; ++i) {
