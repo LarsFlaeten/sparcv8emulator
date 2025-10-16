@@ -23,6 +23,7 @@ protected:
     virtual void TearDown();
     MCtrl mctrl;
     MMU mmu;
+    IRQMP intc;
     CPU cpu;
  
     void do_SAVE_instr(u32 rs1, u32 rs2, u32 rd) {
@@ -59,7 +60,7 @@ protected:
 
 
 
-CPUInstructionsTest::CPUInstructionsTest() : mmu(mctrl), cpu(mmu)
+CPUInstructionsTest::CPUInstructionsTest() : mmu(mctrl), cpu(mmu, intc)
 {  
    	
 
@@ -314,8 +315,7 @@ TEST_F(CPUInstructionsTest, SAVE)
     ASSERT_EQ(cpu.get_psr() & LOBITS5, 2);
     ASSERT_EQ(cpu.get_trap_type(), SPARC_WINDOW_OVERFLOW);
     // Run the CPU through the trap:
-    cpu.set_single_step(true);
-    cpu.run(0, nullptr);
+    cpu.run(1, nullptr);
     // CWP should now be 1
     // In real ilfe we would do a RETT here, and end up at 2 again.
     ASSERT_EQ(cpu.get_psr() & LOBITS5, 1);
@@ -488,8 +488,7 @@ TEST_F(CPUInstructionsTest, RESTORE)
     ASSERT_EQ(cpu.get_psr() & LOBITS5, 0);
     ASSERT_EQ(cpu.get_trap_type(), SPARC_WINDOW_UNDERFLOW);
     // Run the CPU through the trap:
-    cpu.set_single_step(true);
-    cpu.run(0, nullptr);
+    cpu.run(1, nullptr);
     // CWP should now be 7 since traos decrement cwp
     // In real ilfe we would do a RETT here, and end up at 0 again.. Or something.
     ASSERT_EQ(cpu.get_psr() & LOBITS5, 7);

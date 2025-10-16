@@ -457,12 +457,24 @@ TEST_F(GPTIMERTest, TimerExplicitReload_LEONState)
     GPTIMER timer;
     timer.set_LEON_state();
 
+// Timer 1 enabled, timer 2 disabled and all zeroes
+ /*           timers[0].TCTRL = 0x3; // RS bit and enable bit
+            timers[0].TCNTVAL = 0x270f;
+            timers[0].TRLDVAL = 0x270f;
+            timers[1].TCTRL = 0;
+            timers[1].TCNTVAL = 0;
+            timers[1].TRLDVAL = 0;
+    
+            //SCALER = 0x24;            
+            SRELOAD = 0x24;
+            SCALER = SRELOAD;*/
+
     ASSERT_EQ(timer.read(0x0), 0x24);
-    ASSERT_EQ(timer.read(0x4), 0x31);
+    ASSERT_EQ(timer.read(0x4), 0x24);
     ASSERT_EQ(timer.read(0x8), 0x142);
     ASSERT_EQ(timer.read(0xC), 0x0);
-    ASSERT_EQ(timer.read(0x10), 0xffffffff);
-    ASSERT_EQ(timer.read(0x14), 0xffffffff);
+    ASSERT_EQ(timer.read(0x10), 0x270f);
+    ASSERT_EQ(timer.read(0x14), 0x270f);
     ASSERT_EQ(timer.read(0x18), 0x3);
     ASSERT_EQ(timer.read(0x1C), 0x0);
     ASSERT_EQ(timer.read(0x20), 0x0);

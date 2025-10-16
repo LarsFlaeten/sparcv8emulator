@@ -28,11 +28,11 @@ target_compile_options(${EXENAME2SMP} PUBLIC -std=c++20 -Wall)
 target_link_libraries(${EXENAME2SMP} sparcv8 peripherals gdbstub SDL2)
 
 
-add_executable(${EXENAME3} console_test.cpp)
-target_compile_options(${EXENAME3} PUBLIC -std=c++20 -Wall)
-target_link_libraries(${EXENAME3} sparcv8 peripherals)
+#add_executable(${EXENAME3} console_test.cpp)
+#target_compile_options(${EXENAME3} PUBLIC -std=c++20 -Wall)
+#target_link_libraries(${EXENAME3} sparcv8 peripherals)
 
-add_executable(timer_test timer_test.cpp dis.cpp)
-target_compile_options(timer_test PUBLIC -std=c++20 -Wall)
+#add_executable(timer_test timer_test.cpp dis.cpp)
+#target_compile_options(timer_test PUBLIC -std=c++20 -Wall)
 
 

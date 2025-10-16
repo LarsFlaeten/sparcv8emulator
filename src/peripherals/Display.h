@@ -5,6 +5,10 @@
 #include <condition_variable>
 #include <mutex>
 
+
+
+
+
 class Display {
 public:
     Display(int width, int height, int bpp, int refreshRateHz, const void* framebuffer = nullptr);

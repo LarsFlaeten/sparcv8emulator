@@ -24,6 +24,7 @@ protected:
 
     MCtrl mctrl;
     MMU mmu;
+    IRQMP intc;
     CPU cpu;
  
     void do_RETT_instr(u32 rs1, u32 rs2, u32 rd) {
@@ -55,7 +56,7 @@ protected:
 
 
 
-CPUTrapsTest::CPUTrapsTest() : mmu(mctrl), cpu(mmu)
+CPUTrapsTest::CPUTrapsTest() : mmu(mctrl), cpu(mmu, intc)
 {  
    	
 
@@ -126,8 +127,7 @@ TEST_F(CPUTrapsTest, Traps_PSR_PS_bit)
     cpu.trap(nullptr, 9);
 
     // Run the CPU through the trap:
-    cpu.set_single_step(true);
-    cpu.run(0, nullptr);
+    cpu.run(1, nullptr);
     // Return from Trap
     do_RETT_instr(0,0,0);
         
@@ -142,8 +142,7 @@ TEST_F(CPUTrapsTest, Traps_PSR_PS_bit)
     // Trap the CPU in user mode:
     cpu.trap(nullptr, 9);
     // Run the CPU through the trap:
-    cpu.set_single_step(true);
-    cpu.run(0, nullptr);
+    cpu.run(1, nullptr);
     // Return from Trap
     do_RETT_instr(0,0,0);
 
@@ -164,8 +163,7 @@ TEST_F(CPUTrapsTest, Traps_PSR_PS_bit)
     // Trap the CPU again in supervisor mode:
     cpu.trap(nullptr, 9);
     // Run the CPU through the trap:
-    cpu.set_single_step(true);
-    cpu.run(0, nullptr);
+    cpu.run(1, nullptr);
     // Return from Trap
     do_RETT_instr(0,0,0);
 

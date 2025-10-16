@@ -26,6 +26,7 @@ protected:
 
     MCtrl mctrl;
     MMU mmu;
+    IRQMP intc;
     CPU cpu;
    
     void _STFSR(u32 rs1, u32 rs2, u32 rd) {
@@ -153,7 +154,7 @@ protected:
 
 
 
-FPUTest::FPUTest() : mmu(mctrl), cpu(mmu)
+FPUTest::FPUTest() : mmu(mctrl), cpu(mmu, intc)
 {  
    	
 

@@ -22,9 +22,12 @@ extern char* optarg;
 #include "peripherals/Peripherals.h"
 #include "peripherals/Amba.h"
 #include "peripherals/APBCTRL.h"
-#include "gdb/gdb_server.h"
 
+#include <pthread.h>
 
+void set_thread_name(const char* name) {
+    pthread_setname_np(pthread_self(), name);
+}
 
 #include "readelf.h"
 #include "dis.h"
@@ -70,62 +73,6 @@ std::string uart_readline(APBUART& uart) {
 
 #include "debug.h"
 
-bool ParseCommand(const std::string& cmd, CPU& cpu) {
-
-    if(cmd == "c") {
-        cpu.set_single_step(false);
-        std::cout << std::endl;
-        return false;
-    } else if(cmd == "n") {
-        std::cout << std::endl;
-        return false;
-    } else if(cmd.starts_with("bp")) {
-        if(cmd.length() > 2) {
-            u32 bp = std::stoul(cmd.substr(3), nullptr, 16);
-            cpu.add_user_breakpoint(bp);
-            std::cout << "\nAdded breakpoint at 0x" << std::hex << bp << std::dec << std::endl;
-        } else {
-            auto& m = cpu.get_user_breakpoints();
-            std::cout << "\nBp adress | enabled?" << std::endl;
-            for(const auto& [key, val] : m) {
-                std::cout << std::hex << "0x" << key << " | " << std::dec << val << std::endl;
-            }
-
-        }   
-    } else if(cmd.starts_with("dis")){
-        u32 va = cpu.get_pc();
-        u32 opcode = 0; // Supress uninitialized warning
-
-        if(cmd.length() > 4)
-            opcode = std::stoul(cmd.substr(4), nullptr, 16);
-        else// Fetch current instruction
-            cpu.get_mmu().MemAccess<intent_execute, 4>(va, opcode, CROSS_ENDIAN);
-        
-        disDecodePrint(va, opcode);
-        
-    } else if(cmd.starts_with("mem ")) {
-        if(cmd.length() > 4) {
-            u32 pa = std::stoul(cmd.substr(4), nullptr, 16);
-            std::cout << "\n";
-            debug_dumpmem(pa);
-            
-        }
-    } else if(cmd.starts_with("memv ")) {
-        if(cmd.length() > 5) {
-            u32 va = std::stoul(cmd.substr(4), nullptr, 16);
-            std::cout << "\n";
-            debug_dumpmemv(va);
-            
-        }
-    } else if(cmd == "reg") {
-        std::cout << "\n";
-        debug_registerdump(cpu);
-    } else {
-        std::cout << "\nUnkown command" << std::endl;
-    }
-
-    return true;
-}
 
 void signal_handler(int signal) 
 {
@@ -141,6 +88,8 @@ void signal_handler(int signal)
 
 int main(int argc, char **argv)
 {
+    set_thread_name("main_entry");
+
     int    PrintCount       = 0;
     bool    Disassemble      = false;
     u32 UserBreakpoint   = NO_USER_BREAK;
@@ -211,10 +160,8 @@ int main(int argc, char **argv)
     // Set up CPU
     MCtrl mctrl;
     MMU mmu(mctrl);
-    CPU cpu(mmu, write_to_file ? os : std::cout);
-    cpu.set_verbose(verbose);
-    cpu.set_cpu_id(0);
-    _cpu_ptr = &cpu;
+    debug_set_active_mmu(&mmu);
+    
     // Set Cache control regs as TSIM does
     mmu.SetCCR(0x00020000);
     mmu.SetICCR(0x10220008);
@@ -234,10 +181,10 @@ int main(int argc, char **argv)
     amba_ahb_pnp_setup(mctrl);
     amba_apb_pnp_setup(mctrl);
 
-
+    
     mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
-
+    IRQMP& intc = apbctrl.GetIntc();
     
     //SVGA svga(mctrl);
     
@@ -247,69 +194,65 @@ int main(int argc, char **argv)
 
     mctrl.debug_list_banks();
 
-    // Set up breakpoint handling (we need uart from APBctrl) 
-    auto& uart = apbctrl.GetUART();
-    if(UserBreakpoint != NO_USER_BREAK) {
-        cpu.add_user_breakpoint(UserBreakpoint);
-    } 
-    
-    cpu.register_breakpoint_function( [&cpu, &uart]() {
-            u32 va = cpu.get_pc();
-            cpu.set_single_step(true);
-            
-            while(true) {
-                std::cout << "<bp 0x" << std::hex << va << std::dec << "> " << std::flush;
-           
-            
-                std::string cmd = uart_readline(uart);
-                if(!ParseCommand(cmd, cpu))
-                    break;
-           }
-       }
-    );
+    // Read the ELF and get the entry point, then reset
+    u32 entry_va = 0x0; 
+    if(ReadElf(fname, mmu, entry_va, false, std::cout) == 0) {
+        std::cerr << "No bytes returned from ELF read.\n";
+        return EXIT_FAILURE; 
+    }
 
-   
-    // Set up the tick, input polling and interrupt
-    
-    cpu.register_bus_tick_function( [&apbctrl , &cpu]() 
-        {
-            GPTIMER& timer = apbctrl.GetTimer();
-            IRQMP& intc = apbctrl.GetIntc();
-            APBUART& uart1 = apbctrl.GetUART();
-            APBUART& uart9 = apbctrl.GetUART9();
-            timer.Tick();
-            uart1.Input();
+    // OS boot process step 1: Set stack pointer to end of ram
+    u32 end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
 
-            if(timer.check_interrupt(false)) 
-                intc.TriggerIRQ(8);
-            
-            if(uart1.CheckIRQ()) 
-                intc.TriggerIRQ(2);
-            if(uart9.CheckIRQ()) 
-                intc.TriggerIRQ(3);
-       
-            u32 IRL = intc.GetNextIRQPending();
-            if(IRL>0) {
-                cpu.set_irl(IRL);
-                intc.ClearIRQ(IRL);
-            } 
-        }
-    );
+    // Build the vector of CPUs
+    std::vector<CPU> cpus{};
+    int num_cpus = 1;
+    for(int i = 0; i < num_cpus; ++i) {
+        auto& cpu = cpus.emplace_back(CPU{mmu, intc, write_to_file ? os : std::cout}); 
+        cpu.set_verbose(verbose);
+        cpu.set_cpu_id(i);
+
+        cpu.register_bus_tick_function( [&apbctrl]() 
+            {
+                GPTIMER& timer = apbctrl.GetTimer();
+                IRQMP& intc = apbctrl.GetIntc();
+                APBUART& uart1 = apbctrl.GetUART();
+                APBUART& uart9 = apbctrl.GetUART9();
+                timer.Tick();
+                uart1.Input();
+
+                if(timer.check_interrupt(false))
+                    intc.TriggerIRQ(8);
+                
+                if(uart1.CheckIRQ()) 
+                    intc.TriggerIRQ(2);
+                if(uart9.CheckIRQ()) 
+                    intc.TriggerIRQ(3);  
+            }
+        );
+
+        cpu.reset(entry_va);
+
+        cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
+        cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
+    }
+    
+    
+    _cpu_ptr = cpus.data();
+    
+    
+    
+    
 
     // Set up timer to the same state as TSIM starts with
     GPTIMER& timer = apbctrl.GetTimer();
     timer.set_LEON_state();
  
-    // Read the ELF and get the entry point, then reset
-    u32 entry_va = 0x0; 
-    u32 word_count = ReadElf(fname, mmu, entry_va, cpu.get_verbose(), cpu.get_ostream()); 
-    cpu.reset(entry_va);
+    
+    
 
-    // OS boot process step 1: Set stack pointer to end of ram
-    u32 end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
+    
 
-    cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
-    cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
     
     // Set up handler for external SIGINTs
     struct sigaction act;
@@ -317,53 +260,27 @@ int main(int argc, char **argv)
     act.sa_handler =  signal_handler;
     sigaction(SIGINT, &act, NULL);
  
-
-
+    // Set up gdb stub
+    //GdbStub gdb_stub{cpus, mmu};
+    auto gdb_stub = std::make_unique<GdbStub>(cpus, mmu);  
 
     RunSummary rs;
-    if(!Disassemble && !debug_server) {
-        // Run the machine in the main thread
-       cpu.run(NumRunInst, &rs);
+    if(!Disassemble) {
 
-    } else if(debug_server) {
-		int server_fd = create_server_socket(debug_port);
-        int client_fd = accept(server_fd, NULL, NULL);
         
-        if (client_fd < 0) {
-        	perror("Client connection failed");
-        	close(server_fd);
-        	exit(EXIT_FAILURE);
-    	}
-   
-        // Add a breakpoint at the entry 
-        //cpu.AddUserBreakpoint(entry_va);
-        //std::cout << "Atomatically addded breakpoint at entry, PC=0x" << std::hex << entry_va << std::dec << "\n"; 
-        //std::thread t1(&CPU::Run, &cpu, NumRunInst, &rs);
-
-
-	    handle_gdb_client(client_fd, cpu); 
-
-        //t1.join();
-        close(client_fd);
-        close(server_fd);
-
-    } else
-    {
-        u32 PC = entry_va;
-        u32 count = word_count;
-        struct DecodeStruct Dec, *d=&Dec;
-        while(count > 0) {
-            cpu.instr_fetch(PC, d);
-            disDecodePrint(PC, d->opcode);
-            PC += 4;
-            --count;
+        if(debug_server) {
+            cpus[0].set_gdb_stub(gdb_stub.get());
+            gdb_stub->start(debug_port);
         }
-        rs.instr_count = word_count;
+
+        // Run the machine in the main thread
+        // Only run CPU 0 in this sim
+        cpus[0].run(NumRunInst, &rs);
     }
 
     if(rs.reason == TerminateReason::UNIMPLEMENTED) {
-        debug_registerdump(cpu); 
-        disDecodePrint(cpu.get_pc(), rs.last_opcode);
+        debug_registerdump(cpus[0]); 
+        disDecodePrint(cpus[0].get_pc(), rs.last_opcode);
     } 
     
     

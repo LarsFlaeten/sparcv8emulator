@@ -20,6 +20,7 @@
 #include "peripherals/BusClock.h"
 
 #include "readelf.h"
+#include "debug.h"
 
 
 
@@ -242,24 +243,20 @@ int main(int argc, char **argv) {
     std::vector<CPU> cpus{};
     for(unsigned int i = 0; i < config.num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
-        auto& cpu = cpus.emplace_back(CPU{mmu, std::cout});
+        auto& cpu = cpus.emplace_back(CPU{mmu, intc, std::cout});
         cpu.set_cpu_id(i);
         cpu.register_bus_tick_function( [&intc , &cpu]() 
             {
-                u32 IRL = intc.GetNextIRQPending();
-                if(IRL>0) {
-                    cpu.set_irl(IRL);
-                    intc.ClearIRQ(IRL);
-                } 
+                //u32 IRL = intc.GetNextIRQPending();
                 // If its a timer interrupt, we interrupt the cpu from the current tick
-                if(IRL==8) {
+                //if(IRL==8) {
                     //cpu.set_irl(IRL); // Why did we have to add these? See above
-                    cpu.interrupt();
+                    //cpu.interrupt();
                     //intc.ClearIRQ(IRL); // Why did we have to add these? See above
-                }
+                //}
             }
         );
-
+        cpu.set_break_on_timer_interrupt(true);
         // OS boot process step 1: Set stack pointer to end of ram
         cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
         cpu.write_reg(end_of_ram, INREG6); // Write frame pointer

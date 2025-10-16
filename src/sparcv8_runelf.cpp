@@ -21,10 +21,11 @@ extern char* optarg;
 #include "sparcv8/CPU.h"
 #include "sparcv8/MMU.h"
 #include "peripherals/MCTRL.h"
+#include "peripherals/APBCTRL.h"
 #include "readelf.h"
 #include "dis.h"
 #include "debug.h"
-#include "gdb/gdb_server.h"
+#include "gdb/gdb_stub.hpp"
 
 constexpr int FOREVER =           0;
 constexpr int ONCE =              1;
@@ -49,7 +50,6 @@ int main(int argc, char **argv)
     std::string  fname = "main.aout";
     int    PrintCount       = 0;
     bool    Disassemble      = false;
-    u32 UserBreakpoint   = NO_USER_BREAK;
     int    NumRunInst       = FOREVER;
     bool    verbose          = false;
 
@@ -87,9 +87,6 @@ int main(int argc, char **argv)
             if (NumRunInst < FOREVER)
                 NumRunInst = FOREVER;
             break;
-        case 'b':
-            UserBreakpoint = (u32)strtol(optarg, NULL, 0);
-            break;
         case 'g':
             debug_port = (u32)strtol(optarg, NULL, 0);
             debug_server = true;
@@ -103,7 +100,6 @@ int main(int argc, char **argv)
                     "    -v Turn on Verbose display\n"
                     "    -d Disassemble mode\n"
                     "    -n Specify number of instructions to run (default: run until UNIMP)\n"
-                    "    -b Specify address for breakpoint\n"
                     "    -f Specify executable ELF file (default main.out)\n"
                     "    -o Output file for Verbose data (default stdout)\n"
                     "\n"
@@ -115,58 +111,55 @@ int main(int argc, char **argv)
     // Set up CPU
     MCtrl mctrl;
     MMU mmu(mctrl); 
-    CPU cpu(mmu, write_to_file ? os : std::cout);
-    cpu.set_verbose(verbose);
-    if(UserBreakpoint != NO_USER_BREAK) {
-        cpu.add_user_breakpoint(UserBreakpoint);
-        // TODO: add bp handler here    
-    }
 
     // Setup RAM
     mctrl.attach_bank<RamBank>(0x00000000, 1 * 1024 * 1024);
     mctrl.debug_list_banks();
 
+    // We only instanciate a lone interruptc controller, since the CPU needs a reference
+    // to it. It is likely not used by any bare bone ELFs.
+    IRQMP intc;
 
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     u32 word_count = ReadElf(fname, mmu, entry_va, false, std::cout); 
-    cpu.reset(entry_va);
-
-    // OS boot process step 1: Set stack pointer to end of ram
+    
     u32 end_of_ram = mctrl.find_bank(0x00000000)->get_limit();
 
-    cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
-    cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
+    
+
+    std::vector<CPU> cpus{};
+    int num_cpus = 1;
+
+    for(int i = 0; i < num_cpus; ++i) {
+        std::cout << "Creating CPU, id=" << i << "\n";
+        auto& cpu = cpus.emplace_back(CPU{mmu, intc, write_to_file ? os : std::cout});
+        cpu.set_cpu_id(i);
+        cpu.set_verbose(verbose);
+        cpu.reset(entry_va);
+        // OS boot process step 1: Set stack pointer to end of ram
+        cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
+        cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
+    
+    }    
+    
+    
+
     
      
     RunSummary rs;
-    if(!Disassemble && !debug_server) {
-        // Run the machine
-        cpu.run(NumRunInst, &rs);
-    } else if(debug_server) {
-		int server_fd = create_server_socket(debug_port);
-        int client_fd = accept(server_fd, NULL, NULL);
+    if(!Disassemble) {
         
-        if (client_fd < 0) {
-        	perror("Client connection failed");
-        	close(server_fd);
-        	exit(EXIT_FAILURE);
-    	}
-   
-        // Add a breakpoint at the entry 
-        //cpu.AddUserBreakpoint(entry_va);
-        //std::cout << "Atomatically addded breakpoint at entry, PC=0x" << std::hex << entry_va << std::dec << "\n"; 
-        //std::thread t1(&CPU::Run, &cpu, NumRunInst, &rs);
-
-
-	    handle_gdb_client(client_fd, cpu); 
-
-        //t1.join();
-        close(client_fd);
-        close(server_fd);
-
-
+        GdbStub gdb_stub{cpus, mmu};
+        
+        if(debug_server) {
+            cpus[0].set_gdb_stub(&gdb_stub);
+            //gdb_stub.insert_breakpoint(entry_va);
+            gdb_stub.start(debug_port);
+        }
+        // Run the machine, only first cpu in this emulator
+        cpus[0].run(NumRunInst, &rs);
     } else 
     {
         u32 PC = entry_va;
@@ -174,7 +167,7 @@ int main(int argc, char **argv)
         struct DecodeStruct Dec, *d=&Dec;
  
         while(count > 0) {
-            cpu.instr_fetch(PC, d);
+            cpus[0].instr_fetch(PC, d);
 
             disDecodePrint(PC, d->opcode);
             PC += 4;
@@ -185,8 +178,8 @@ int main(int argc, char **argv)
 
     
     if(rs.reason == TerminateReason::UNIMPLEMENTED) {
-        debug_registerdump(cpu); 
-        disDecodePrint(cpu.get_pc(), rs.last_opcode);
+        debug_registerdump(cpus[0]); 
+        disDecodePrint(cpus[0].get_pc(), rs.last_opcode);
     } 
     
 

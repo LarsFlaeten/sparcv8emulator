@@ -46,6 +46,7 @@ protected:
     virtual void TearDown();
     MCtrl mctrl;
     MMU mmu;
+    IRQMP intc;
     CPU cpu;
     
     void do_LDA_instr(u32 rs1, u32 rs2, u32 rd, u32 asi) {
@@ -92,7 +93,7 @@ protected:
 
 
 
-MMUTest::MMUTest() : mmu(mctrl), cpu(mmu)
+MMUTest::MMUTest() : mmu(mctrl), cpu(mmu, intc)
 {  
    	
 
@@ -1333,8 +1334,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     ASSERT_EQ(cpu.get_trap_type(), 0x9); // SPARC_DATA_ACCESS_EXCEPTION
     
     // Run the CPU through the trap:
-    cpu.set_single_step(true);
-    cpu.run(0, nullptr);
+    cpu.run(1, nullptr);
  
     // We can now read fault type and address from MMUREGS:
   

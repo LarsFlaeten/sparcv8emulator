@@ -24,12 +24,13 @@ protected:
 
     MCtrl mctrl;
     MMU mmu;
+    IRQMP intc;
     CPU cpu;
 };
 
 
 
-CPUEmuTest::CPUEmuTest() : mmu(mctrl), cpu(mmu)
+CPUEmuTest::CPUEmuTest() : mmu(mctrl), cpu(mmu, intc)
 {  
    	
 
@@ -80,52 +81,3 @@ TEST_F(CPUEmuTest, TestResetState)
 }
 
 
-TEST_F(CPUEmuTest, AddBreakpoint)
-{
-    cpu.add_user_breakpoint(0x00100000);
-
-    const auto& bps = cpu.get_user_breakpoints();
-    ASSERT_FALSE(bps.find(0x00100000) == bps.end());
-}
-
-
-TEST_F(CPUEmuTest, RemoveBreakpoint)
-{
-    cpu.add_user_breakpoint(0x00100000);
-
-    const auto& bps = cpu.get_user_breakpoints();
-    ASSERT_FALSE(bps.find(0x00100000) == bps.end());
-
-
-    cpu.remove_user_breakpoint(0x00100000);
-    ASSERT_TRUE(bps.find(0x00100000) == bps.end());
-
-
-
-}
-
-
-TEST_F(CPUEmuTest, RemoveBreakpoint2)
-{
-    cpu.add_user_breakpoint(0x00100000);
-    cpu.add_user_breakpoint(0x00100000);
-    cpu.add_user_breakpoint(0x00100000);
-    cpu.add_user_breakpoint(0x00100000);
-    cpu.add_user_breakpoint(0x00100000);
-    cpu.add_user_breakpoint(0x00100000);
-    cpu.add_user_breakpoint(0x00100000);
-    cpu.add_user_breakpoint(0x00100000);
-    cpu.add_user_breakpoint(0x00100000);
-    cpu.add_user_breakpoint(0x00100000);
-
-    const auto& bps = cpu.get_user_breakpoints();
-    ASSERT_FALSE(bps.find(0x00100000) == bps.end());
-
-
-    // All breakpoints above should be removed
-    cpu.remove_user_breakpoint(0x00100000);
-    ASSERT_TRUE(bps.find(0x00100000) == bps.end());
-
-
-
-}

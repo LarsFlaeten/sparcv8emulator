@@ -24,13 +24,14 @@ protected:
 
     MCtrl mctrl;
     MMU mmu;
+    IRQMP intc;
     CPU cpu;
     
 };
 
 
 
-CPUMemTest::CPUMemTest() : mmu(mctrl), cpu(mmu)
+CPUMemTest::CPUMemTest() : mmu(mctrl), cpu(mmu, intc)
 {  
    	
 

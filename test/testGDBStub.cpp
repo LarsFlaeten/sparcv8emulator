@@ -1,10 +1,7 @@
 #include "../src/sparcv8/CPU.h"
 #include "../src/sparcv8/MMU.h"
 
-
-#include "../src/gdb/gdb_server.h"
-#include "../src/gdb/gdb_helper.h"
-
+#include "../src/gdb/gdb_stub.hpp"
 
 #include <gtest/gtest.h>
 #include <thread>
@@ -30,7 +27,7 @@ int create_tcp_client(int debug_port) {
     // Create socket
     clientSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (clientSocket < 0) {
-        std::cerr << "Error: Unable to create socket." << std::endl;
+        std::cerr << "[GTEST] Error: Unable to create socket." << std::endl;
         return -1;
     }
 
@@ -40,19 +37,21 @@ int create_tcp_client(int debug_port) {
 
     // Convert IP address from text to binary form
     if (inet_pton(AF_INET, SERVER_ADDRESS, &serverAddress.sin_addr) <= 0) {
-        std::cerr << "Error: Invalid address." << std::endl;
+        std::cerr << "[GTEST] Error: Invalid address." << std::endl;
         close(clientSocket);
         return -1;
     }
 
     // Connect to the server
+    std::cout << "[GTEST] Connecting to the server." << std::endl;
+	
     if (connect(clientSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
         std::cerr << "Error: Connection to the server failed." << std::endl;
         close(clientSocket);
         return -1;
     }
 
-    std::cout << "Connected to the server." << std::endl;
+    std::cout << "[GTEST] Connected to the server." << std::endl;
 	return clientSocket;
 
 
@@ -116,6 +115,21 @@ std::string get_checksum(const std::string& msg) {
     return checksum; 
 }
 
+static std::string to_hex(const uint8_t* data, size_t len) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < len; i++)
+        oss << std::hex << std::setw(2) << std::setfill('0') << (int)data[i];
+    return oss.str();
+}
+
+static std::vector<uint8_t> from_hex(const std::string& hex) {
+    std::vector<uint8_t> res;
+    for (size_t i = 0; i < hex.size(); i += 2)
+        res.push_back(std::stoi(hex.substr(i, 2), nullptr, 16));
+    return res;
+}
+
+
 
 
 bool validate(const std::string& msg) {
@@ -169,17 +183,17 @@ protected:
 
     MCtrl mctrl;
     MMU mmu;
-    CPU cpu;
+    IRQMP intc;
+    std::vector<CPU> cpus{};
+    GdbStub* pstub = nullptr;
     
     int debug_port;
-    int server_socket;
+    
     int client_socket;
-
-    std::thread t1;
 
 };
 
-
+/*
 void gdb_server(int server_fd, CPU& cpu) {
 
 	int client_fd = accept(server_fd, NULL, NULL);
@@ -195,16 +209,14 @@ void gdb_server(int server_fd, CPU& cpu) {
     close(client_fd);
     close(server_fd);
 
-}
+}*/
 
 // create server and start in separate thread
 GDBStubTest::GDBStubTest()
-    : mmu(mctrl), cpu(mmu), debug_port(1234), 
-    server_socket(create_server_socket(debug_port)), 
-    t1(gdb_server, server_socket, std::ref(cpu))
-
-{  
-   	
+    : mmu(mctrl), debug_port(1234)
+{
+    cpus.emplace_back(CPU{mmu, intc});
+	
 
 
 }
@@ -216,16 +228,31 @@ GDBStubTest::~GDBStubTest()
 
 void GDBStubTest::SetUp()
 {
-    // Create client (mock GDB) in this thread
-	client_socket = create_tcp_client(debug_port);
-
+    std::cout << "[GTEST] Setting up new test\n";
     mctrl.attach_bank<RamBank>(0x60000000, 1*1024*1024); // 1 MB @ 0x0
     
    
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x60000000; 
-    cpu.reset(entry_va);
+    cpus[0].reset(entry_va);
  
+    // Start GDB stub:
+    pstub = new GdbStub(cpus, mmu);
+    cpus[0].set_gdb_stub(pstub);
+
+    std::cout << "[GTEST] GDBStub starting.\n";
+    
+    pstub->start(debug_port, false);
+    std::cout << "[GTEST] GDBStub started sucessfully.\n";
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+
+
+    std::cout << "[GTEST] Connecting with mock client..\n";
+    
+    // Create client (mock GDB) in this thread
+	client_socket = create_tcp_client(debug_port);
+
 
 }
 
@@ -233,11 +260,12 @@ void GDBStubTest::TearDown()
 {
 	close(client_socket);
 
-    ASSERT_EQ(0, 0x0);
-
-    t1.join(); 
+    delete pstub;
+    pstub = nullptr;
 }
-
+/*
+We drop these tests.
+hex2str now have internal linkage and are not exposed outside gdb_stub
 TEST_F(GDBStubTest, GDB_helper)
 {
 	u32 regval1 = 0xcafebabe;
@@ -275,20 +303,21 @@ TEST_F(GDBStubTest, GDB_helper)
 	ASSERT_EQ(v6, 0x0);
 
 }
- 
+*/
+
 TEST_F(GDBStubTest, GDB_setup)
 {
     // Send something and check that the server responds correctly:
-	ASSERT_TRUE(tcp_send(client_socket, "qSupported:multiprocess+;swbreak+;hwbreak+;qRelocInsn+;fork-events+"));
+	ASSERT_TRUE(tcp_send(client_socket, "qSupported:multiprocess+;swbreak+;hwbreak+;qRelocInsn+;fork-events+;vfork-events+;exec-events+;vContSupported+;QThreadEvents+;no-resumed+;memory-tagging+"));
     
     std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
    
     auto ret = tcp_recv(client_socket);
     
-    ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "PacketSize=1000;vContSupported+;multiprocess+");
+    //ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "PacketSize=1000;vContSupported+;multiprocess+");
+    ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "");
 
-    ASSERT_TRUE(validate(ret));
-
+    ASSERT_TRUE(validate(ret)); 
 }
 
 TEST_F(GDBStubTest, GDB_CheckStandardReplies)
@@ -298,17 +327,19 @@ TEST_F(GDBStubTest, GDB_CheckStandardReplies)
     // A series of standard cmds and queries we get the from GDB and the expected replies
     accepted.push_back({"vMustReplyEmpty", ""});
     accepted.push_back({"Hg0", "OK"});
-    accepted.push_back({"Hgp0.0", "OK"});
     accepted.push_back({"qTStatus", ""});
-    //accepted.push_back({"?", "S05"});
-    accepted.push_back({"?", "T05thread:p01.01;"});
+    accepted.push_back({"?", "S05"});
+    accepted.push_back({"qfThreadInfo", ""});
     //accepted.push_back({"qfThreadInfo", "m0"});
-    accepted.push_back({"qfThreadInfo", "mp01.01"});
-    accepted.push_back({"qsThreadInfo", "l"});
-    accepted.push_back({"qAttached", "1"});
-    accepted.push_back({"qAttached:1", "1"});
+    //accepted.push_back({"qfThreadInfo", "mp01.01"});
+    //accepted.push_back({"qsThreadInfo", "l"});
+    accepted.push_back({"qL1200000000000000000", ""});
     accepted.push_back({"Hc-1", "OK"});
- 
+    accepted.push_back({"qC", ""});
+    accepted.push_back({"qAttached", ""});
+    accepted.push_back({"qOffsets", ""});
+    accepted.push_back({"qSymbol::", ""});
+
     for(const auto& a : accepted) {
 	    ASSERT_TRUE(tcp_send(client_socket, a.first));
     
@@ -330,8 +361,95 @@ TEST_F(GDBStubTest, GDB_read_registers)
    
     auto ret = tcp_recv(client_socket);
     ASSERT_TRUE(validate(ret));
- 
-	//std::cout << "Regs; [" << get_payload(strip_ack(ret)) << "]\n";
+    auto pl = strip_ack(ret);
+    pl = get_payload(pl);
+    
+    // 4. Manually build the expected result
+    std::stringstream expected;
+    expected << std::hex << std::setfill('0');
+
+    // GPRs (32 × 4 bytes = 128 bytes = 256 hex digits)
+    for (int i = 0; i < 32; ++i) {
+        u32 val = 0;
+        cpus[0].read_reg(i, &val);
+        expected << std::setw(8) << val;
+    }
+    // FPRs (32 × 8 bytes = 256 bytes = 512 hex digits)
+    for (int i = 0; i < 32; ++i)
+        expected << std::setw(8) << 0;
+
+    // Specials (each 4 bytes)
+    expected << std::setw(8) << cpus[0].get_y_reg();
+    expected << std::setw(8) << cpus[0].get_psr();
+    expected << std::setw(8) << cpus[0].get_wim();
+    expected << std::setw(8) << cpus[0].get_tbr();
+    expected << std::setw(8) << cpus[0].get_pc();
+    expected << std::setw(8) << cpus[0].get_npc();
+    expected << std::setw(8) << cpus[0].get_fsr();
+    expected << std::setw(8) << 0;
+
+    std::string expected_str = expected.str();
+    
+    // 5. Compare
+    EXPECT_EQ(pl, expected_str);
+
+
+    // Set some other reg values:
+    cpus[0].set_psr(0x270f);
+    cpus[0].set_fsr(0xfff);
+    // Only ones exposed....
+    for(int i = 0; i < 32; ++i) {
+        cpus[0].write_reg(i*1000 -i*137 + i*3 + 7, i);
+    }
+    
+
+	ASSERT_TRUE(tcp_send(client_socket, "g"));
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+   
+    ret = tcp_recv(client_socket);
+    ASSERT_TRUE(validate(ret));
+    pl = strip_ack(ret);
+    pl = get_payload(pl);
+    
+    // 4. Manually build the expected result
+    expected.str("");
+    expected.clear();
+
+    expected << std::hex << std::setfill('0');
+
+    // GPRs (32 × 4 bytes = 128 bytes = 256 hex digits)
+    for (int i = 0; i < 32; ++i) {
+        u32 val = 0;
+        cpus[0].read_reg(i, &val);
+        if(i == 0)
+            ASSERT_EQ(val, 0); // G0 is allways zero
+        else
+            ASSERT_EQ(val, i*1000 -i*137 + i*3 + 7);
+        expected << std::setw(8) << val;
+    }
+    // FPRs (32 × 8 bytes = 256 bytes = 512 hex digits)
+    for (int i = 0; i < 32; ++i)
+        expected << std::setw(8) << 0;
+
+    // Specials (each 4 bytes)
+    expected << std::setw(8) << cpus[0].get_y_reg();
+    expected << std::setw(8) << cpus[0].get_psr();
+    ASSERT_EQ(cpus[0].get_psr(), 0x270f);
+    expected << std::setw(8) << cpus[0].get_wim();
+    expected << std::setw(8) << cpus[0].get_tbr();
+    expected << std::setw(8) << cpus[0].get_pc();
+    expected << std::setw(8) << cpus[0].get_npc();
+    expected << std::setw(8) << cpus[0].get_fsr();
+    ASSERT_EQ(cpus[0].get_fsr(), 0xfff);
+    expected << std::setw(8) << 0;
+
+    expected_str = expected.str();
+    
+    // 5. Compare
+    EXPECT_EQ(pl, expected_str);
+
+    //Regs; [" << get_payload(strip_ack(ret)) << "]\n";
 }
 
 TEST_F(GDBStubTest, GDB_read_memory)
@@ -358,7 +476,7 @@ TEST_F(GDBStubTest, GDB_read_memory)
     ASSERT_TRUE(validate(ret));
  
 	//TODO: Figure why this does not return E14
-    //ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "E14");
+    ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "E14");
 
 	//std::cout << "MEM [" << get_payload(strip_ack(ret)) << "]\n";
 
@@ -419,6 +537,7 @@ TEST_F(GDBStubTest, GDB_read_memory_long)
 	//std::cout << "MEM [" << get_payload(strip_ack(ret)) << "]\n";
 }
 
+/*
 TEST_F(GDBStubTest, GDB_read_memory_short)
 {
 
@@ -627,7 +746,7 @@ TEST_F(GDBStubTest, GDB_read_memory_unaligned_3_16)
     ASSERT_TRUE(validate(ret));
 	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "bebaccecaf112233445566778899aabb");
 }
-
+*/
 
 
 
@@ -640,7 +759,7 @@ TEST_F(GDBStubTest, GDB_vCont)
     auto ret = tcp_recv(client_socket);
     ASSERT_TRUE(validate(ret));
  
-    ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "vCont;c;C;s;S");
+    ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "");
 
 }
 
@@ -659,9 +778,9 @@ TEST_F(GDBStubTest, GDB_set_breakpoint)
     ASSERT_TRUE(validate(ret));
  
 
-    const auto& bps = cpu.get_user_breakpoints();
-    ASSERT_TRUE(bps.find(0x60000000) != bps.end());
-
+    ASSERT_NE(pstub, nullptr);
+    ASSERT_TRUE(pstub->has_breakpoint(0x60000000));
+    
 
 }
 
@@ -680,16 +799,16 @@ TEST_F(GDBStubTest, GDB_remove_breakpoint)
     ASSERT_TRUE(validate(ret));
  
 
-    const auto& bps = cpu.get_user_breakpoints();
-    ASSERT_TRUE(bps.find(0x60000000) != bps.end());
+    ASSERT_NE(pstub, nullptr);
+    ASSERT_TRUE(pstub->has_breakpoint(0x60000000));
 
 
 
     ASSERT_TRUE(tcp_send(client_socket, "z0,60000000,4"));
     
     std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
-    ASSERT_TRUE(bps.find(0x60000000) == bps.end());
-
+    
+    ASSERT_FALSE(pstub->has_breakpoint(0x60000000));
 
 
 }

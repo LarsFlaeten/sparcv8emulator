@@ -386,10 +386,32 @@ void CPU::RETT (pDecode_t d)
 
 void CPU::TICC (pDecode_t d)
 {
+    // Check for ta 1 software trap
+    if(gdb_stub != nullptr) {
+        if(d->opcode == 0x91d02001) {
+            if(gdb_stub->has_breakpoint(this->pc)) {
+                // First, get the original instruction
+                // Since it seems gdb may remove it during handling notify_bp
+                auto bp_i = gdb_stub->get_breakpoint_instruction(this->pc);
+                
+                gdb_stub->notify_breakpoint(this->cpu_id, this->pc);
+                
+                // Get the original instruction and execute it:
+                d->opcode = bp_i;
+                this->excute_one(d);
+
+                return;
+            } else {
+                std::cerr << "[CPU] Software breakpoint encountered, but gdb stub has no matching breakpoint.\n";
+                verbose = true; // Set this so we can see handling of the ta 1
+            }
+        }
+    }
+
     int tn = trap_type;
 
     if (test_cc(d)) {
-        if (d->i) 
+                if (d->i) 
             tn = 128 + ((d->rs1_value + sign_ext7((d->opcode & LOBITS7))) & LOBITS7);
         else {
             tn = d->value;

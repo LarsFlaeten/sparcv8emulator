@@ -27,13 +27,14 @@ protected:
         
     MCtrl mctrl;
     MMU mmu; 
+    IRQMP intc;
     CPU cpu;
 };
 
 
 
 LEON3Test::LEON3Test()
-    : mmu(mctrl), cpu(mmu)
+    : mmu(mctrl), cpu(mmu, intc)
 
 {  
     cpu.set_verbose(true);

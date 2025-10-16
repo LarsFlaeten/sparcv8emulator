@@ -142,8 +142,25 @@ struct TR {
     u32 pages;
 };
 
+void debug_mmu_tlbs() {
+    if(!debug_mmu_ptr->GetEnabled()) {
+        std::cout << "MMU not enabled..\n";
+        return;
+    }
+
+    auto itlb = debug_mmu_ptr->get_itlb();
+    itlb.debug_dump("iTLB");
+    auto dtlb = debug_mmu_ptr->get_dtlb();
+    dtlb.debug_dump("dTLB");
+}
+
 
 void debug_mmu_tables() {
+
+    if(!debug_mmu_ptr->GetEnabled()) {
+        std::cout << "MMU not enabled..\n";
+        return;
+    }
 
     std::vector<TR> trs;
 
@@ -267,8 +284,10 @@ std::string rs_reason_str(TerminateReason trs) {
             return "UNIMPLEMENTED";
         case(RECV_SIGINT):
             return "RECV_SIGINT";
-        case(INTERRUPT):
-            return "INTERRUPT";
+        case(TIMER_INTERRUPT):
+            return "TIMER_INTERRUPT";
+        case(POWER_DOWN):
+            return "POWER_DOWN";
         default:
             return "??";
     }

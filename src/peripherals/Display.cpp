@@ -2,6 +2,12 @@
 #include <chrono>
 #include <cstring>
 
+#include <pthread.h>
+
+void set_thread_name(const char* name) {
+    pthread_setname_np(pthread_self(), name);
+}
+
 Display::Display(int width, int height, int bpp, int refreshRateHz, const void* framebuffer)
     : width(width), height(height), bpp(bpp), refreshRateHz(refreshRateHz),
       framebuffer(framebuffer), running(false), enabled(false) {}
@@ -50,6 +56,8 @@ bool Display::isEnabled() const {
 }
 
 void Display::renderLoop() {
+    set_thread_name("vga_display");
+
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;

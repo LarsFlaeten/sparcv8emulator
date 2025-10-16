@@ -205,7 +205,7 @@ private:
 class MCtrl {
 public:
     template<typename BankType, typename... Args>
-    void attach_bank(Args&&... args) {
+    BankType& attach_bank(Args&&... args) {
         auto bank = std::make_unique<BankType>(std::forward<Args>(args)...);
 
         for (const auto& existing : banks) {
@@ -216,6 +216,9 @@ public:
         }
 
         banks.push_back(std::move(bank));
+
+        auto& b = dynamic_cast<BankType&>(*banks.back());
+        return b;
     }
 
     u8 read8(u32 addr) const {
@@ -254,7 +257,7 @@ public:
         for (const auto& bank : banks) {
             if (bank->contains(addr)) return bank.get();
         }
-        throw std::out_of_range("No memory mapped at address 0x" + to_hex(addr));
+        throw std::out_of_range("No memory mapped at given address.");// + to_hex(addr));
     }
 
     void debug_read8(u32 addr) const {

@@ -3,6 +3,9 @@
 #include <iomanip>
 #include "MMU.h"
 
+#include "../debug.h"
+
+
 #include "../LoopTimer.h"
 #if 0
 #define PERFORMANCE_MONITOR
@@ -23,6 +26,8 @@ std::array<u32, 128> format3_counter{};
 
 
 #endif
+
+
 
 
 //------------------------------------------------------------------------
@@ -104,14 +109,20 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 	LoopTimer lt;
 #endif
 	   
-    u64 count = 0;
-    //u32 word_count;
-    struct DecodeStruct Dec, *d=&Dec;
-    pPSR_t p = reinterpret_cast<pPSR_t>(&psr);
+    DecodeStruct Dec;
+    pDecode_t d;
+    pPSR_t p;
+
+    d = &Dec;
+    p = reinterpret_cast<pPSR_t>(&psr);
     
     // Map the PSR structure to the decode PSR variable just once
     d->p = (pPSR_t) &(d->psr);
 
+
+    u64 count = 0;
+    //u32 word_count;
+    
     // Start executing program
     running = true;
     while ((!(rs.reason) /*!= TerminateReason::INSTRUCTION*/) && (ExecCount == 0) ? 1 : (count < (u64)ExecCount)) {
@@ -154,40 +165,13 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
        
         u32 virt_addr = (u32) pc;
 
-        // Service breakpoints if breakpoint_func is added and virt_addr is in breakpoints list,
-        // or we are in single step mode
-        //if(breakpoint_func && (breakpoints.contains(virt_addr) || single_step)) {
-            // Check if breakpoint enabled
-        //    if(breakpoints[virt_addr] || single_step) {
-        //        breakpoint_func();
-        //    }
-        //}
-        if(single_step) {
-            rs.reason = TerminateReason::STEP;
-            break;
-        }
-
-        if(breakpoints.contains(virt_addr)) {
-            // Check if breakpoint enabled
-            rs.reason = TerminateReason::BREAK;
-            break;
-        }
-        
-
        	// Process instruction ...
 
         // ---- IFetch ----
         if(instr_fetch(virt_addr, d)) {
         
-            // ---- Decode ----
-            decode (d);
-
-            // ---- Execute ----
-            d->function(this, d);
-
-            // ---- Writeback ----
-            write_back(d);
-
+            excute_one(d);
+        
         } else {
             // we could not fetch instruction, and no Traps occured.. Not much more to do.
             if(!trap_type) {
@@ -196,14 +180,36 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
             }
         }
         
-        // Tick the bus, handling input, interrupts etc
-        // ..and gdb server if present
+        // Tick the bus, handling IO, interrupts etc
         if(bus_tick_func)
             bus_tick_func();
+        
+        // Check interrupt controller for pending interrupts and take any:
+        u32 _incoming_irl = intc.GetNextIRQPending();
+        if(_incoming_irl>0) {
+            set_irl(_incoming_irl); // We take this interrupt
+            intc.ClearIRQ(_incoming_irl);
+        }
 
+        // In multithreaded, we break out in timer interrupts, and wait until we are started again
+        if((irl == 8)) {
+            if(break_on_timer_interrupt) {
+                rs.reason = TerminateReason::TIMER_INTERRUPT;
+                break;
+            }
+        }
+
+        // External request to interrupt this run tick
         if(_interrupt) {
             _interrupt = false;
-            rs.reason = TerminateReason::INTERRUPT; // received SIGINT
+            rs.reason = TerminateReason::RECV_SIGINT; // received SIGINT
+            break;
+        }
+
+        // Request to power down (for this tick)
+        if(power_down) {
+            power_down = false;
+            rs.reason = TerminateReason::POWER_DOWN;
             break;
         }
 

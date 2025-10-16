@@ -24,6 +24,7 @@
 #include "../common.h"
 
 
+
 constexpr u32 NO_USER_BREAK =     0xffffffff;
 constexpr u32 BREAK_SINGLE_STEP = 0xfffffffe;
 
@@ -63,14 +64,17 @@ enum TerminateReason {
     TRAP_CONDITIONAL = 3,
     UNIMPLEMENTED = 4,
     RECV_SIGINT = 5,
-    INTERRUPT = 6
+    TIMER_INTERRUPT = 6,
+    POWER_DOWN = 7
 };
 
 // Defer structure definition
 class CPU;
 #include "MMU.h"
+#include "../peripherals/IRQMP.h"
+
 struct  DecodeStruct;
-#include "../debug.h"
+#include "../gdb/gdb_stub.hpp"
 
 
 typedef struct DecodeStruct *pDecode_t;
@@ -148,26 +152,33 @@ class CPU
         u32 freg[32];
 #endif
 
+        
+
         // Emulator control and debugging
        	std::ostream& os;
-        bool running;
-        bool verbose;       
-        bool single_step;
+        bool running = false;
+        bool verbose = false;
+        bool break_on_timer_interrupt = false; 
+        bool power_down = false;     
         RunSummary rs;
-        std::map<u32, bool>    breakpoints; 
-
-        u32 breakpoint;
+        GdbStub*    gdb_stub = nullptr;
+        
         std::string DispRegStr (u32 regnum);
 
         std::function<void()> bus_tick_func;
-        std::function<void()> breakpoint_func;
+        
         bool _interrupt; 
-        MMU& mmu;        
+        MMU& mmu;  
+        IRQMP& intc;      
    public:
-        CPU(MMU& mmu, std::ostream& out = std::cout) : cpu_id(0), os(out), running(false), verbose(false), single_step(false), breakpoint(NO_USER_BREAK), _interrupt(false), mmu(mmu)
+        CPU(MMU& mmu, IRQMP& intc, std::ostream& out = std::cout) : cpu_id(0), os(out), _interrupt(false), mmu(mmu), intc(intc)
         { 
+            
         }
 
+        CPU() = delete;
+
+        
         // Main execution flow methods
  
         void reset(u32 entry_va);
@@ -175,6 +186,17 @@ class CPU
         u32  run(u32 ExecCount = 0, RunSummary* _rs = nullptr);
         
         bool instr_fetch(u32 virt_addr, pDecode_t d);
+
+        inline void excute_one(pDecode_t d) {
+            // ---- Decode ----
+            decode (d);
+
+            // ---- Execute ----
+            d->function(this, d);
+
+            // ---- Writeback ----
+            write_back(d);
+        }
 
         void decode(pDecode_t d);
         
@@ -220,27 +242,22 @@ class CPU
 
         // Emulator control and debugging
         void interrupt() { _interrupt = true; }
-        void    set_single_step(bool v) { single_step = v; }
         void    set_verbose(bool v) { verbose = v; }
         bool    get_verbose() const {return verbose;}
         MMU&    get_mmu() {return mmu;}
         std::ostream& get_ostream() const { return os; }
-        void    add_user_breakpoint(u32 bp) { breakpoints[bp] = true; }
-        bool    remove_user_breakpoint(u32 bp) { 
-            auto i = breakpoints.erase(bp); 
-            if(i==0) 
-                return false; 
-            else 
-                return true;}
-        const std::map<u32, bool>& get_user_breakpoints() const {return breakpoints;}
+        void    set_gdb_stub(GdbStub* stub) {gdb_stub = stub;}
+        
         void    dump_regs (bool transpose = false); 
         //void    disp_read_reg (const u32 reg_no, u32 *value); 
         void    register_bus_tick_function(std::function<void()> f) {
             bus_tick_func = f;
         }
-        void    register_breakpoint_function(std::function<void()> f) {
-            breakpoint_func = f;
+
+        void    set_break_on_timer_interrupt(bool val) {
+            break_on_timer_interrupt = val;
         }
+        
     public:
         
 
