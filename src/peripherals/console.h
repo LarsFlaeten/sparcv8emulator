@@ -11,9 +11,8 @@ class Console
 {
     struct termios orig_termios;
     int pending;
-    bool DEBUG_FORCED;
     public:
-    Console() : pending(0), DEBUG_FORCED(false)
+    Console() : pending(0)
     {
       enable_raw_mode();
     }
@@ -37,6 +36,7 @@ class Console
       
       // Input modes - disable break, CR to NL, parity check, strip char, and XON/XOFF
       //raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+      //raw.c_iflag &= ~(INPCK | ISTRIP | IXON);
       
       // Output modes - disable post processing
       //raw.c_oflag &= ~(OPOST);
@@ -76,7 +76,8 @@ class Console
       return r;
     }
     
-    void Putc(unsigned c) { if(DEBUG_FORCED) putchar(':'); putchar(c); fflush(stdout); }
+    void Putc(unsigned c) { putchar(c); fflush(stdout); }
+    //void Putc(unsigned c) { if(DEBUG_FORCED) putchar(':'); putchar(c); fflush(stdout); }
 };
 
 
