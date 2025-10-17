@@ -12,6 +12,7 @@
 #include <iostream>
 #include <iomanip>
 
+#include <pthread.h>
 
 
 class BusClock {
@@ -132,6 +133,7 @@ private:
     }
 
     void run_loop_() {
+        pthread_setname_np(pthread_self(), this->cfg_.name.c_str());
         using namespace std::chrono;
 
         const TimePoint t0 = Clock::now();

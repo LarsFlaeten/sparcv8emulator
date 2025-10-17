@@ -22,7 +22,11 @@
 #include "readelf.h"
 #include "debug.h"
 
+#include <pthread.h>
 
+void set_thread_name(const std::string& name) {
+    pthread_setname_np(pthread_self(), name.c_str());
+}
 
 // Shared state
 struct SyncState {
@@ -52,7 +56,14 @@ void signal_handler(int signal)
             //throw std::runtime_error("SIGINT");
             break;
         case(SIGTERM):
-            throw std::runtime_error("SIGTERM");
+            if(global_syncstate != nullptr) {
+                std::cout << "Setting global state to shutdown\n";
+                std::unique_lock<std::mutex> lock(global_syncstate->mtx);
+                global_syncstate->shutdown_cpus = true;
+                global_syncstate->global_shutdown = true;
+            }
+            //throw std::runtime_error("SIGINT");
+            break;
         default:
             std::cout << "Unhandle signal.\n";
             break;       
@@ -90,8 +101,11 @@ struct thread_tick_summary {
 
 void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
     std::vector<thread_tick_summary> tick_summaries;
+    
+    set_thread_name(std::format("cpu{}",cpu.get_cpu_id()));
 
     while (true) {
+    
         std::unique_lock<std::mutex> lock(state.mtx);
         state.cv_start.wait(lock, [&] { return state.start_tick || state.shutdown_cpus; });
 
@@ -119,11 +133,18 @@ void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
             throw std::runtime_error("Aborting...");
         }
 
-        lock.lock();
-        if (--state.active_cpus == 0)
-            state.cv_done.notify_one();
+        //lock.lock();
+        //if (--state.active_cpus == 0)
+            //state.cv_done.notify_one();
 
         
+        
+    }
+
+    {
+        std::lock_guard<std::mutex>(state.mtx);
+        if (--state.active_cpus == 0)
+            state.cv_done.notify_one();
     }
 
     std::cout << "Stats from thread " << cpu.get_cpu_id() << ", " << tick_summaries.size() << " ticks\n";
@@ -175,7 +196,7 @@ void main_loop(std::vector<CPU>& cpus, SyncState& state, APBCTRL& apbctrl) {
 }
 
 int main(int argc, char **argv) {
-
+    //set_thread_name("main");
     // Set up handler for external SIGINTs
     struct sigaction act;
     act.sa_handler =  signal_handler;
@@ -245,37 +266,30 @@ int main(int argc, char **argv) {
         std::cout << "Creating CPU, id=" << i << "\n";
         auto& cpu = cpus.emplace_back(CPU{mmu, intc, std::cout});
         cpu.set_cpu_id(i);
-        cpu.register_bus_tick_function( [&intc , &cpu]() 
-            {
-                //u32 IRL = intc.GetNextIRQPending();
-                // If its a timer interrupt, we interrupt the cpu from the current tick
-                //if(IRL==8) {
-                    //cpu.set_irl(IRL); // Why did we have to add these? See above
-                    //cpu.interrupt();
-                    //intc.ClearIRQ(IRL); // Why did we have to add these? See above
-                //}
-            }
-        );
+
         cpu.set_break_on_timer_interrupt(true);
+        cpu.enable_power_down(true);
+        
         // OS boot process step 1: Set stack pointer to end of ram
         cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
         cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
+        
     }
     
     print_config(config);
 
     BusClock::Config cfg;
-    cfg.io_poll_hz = 2000.0;   
-    cfg.timer_hz   = 100.0;    
+    cfg.io_poll_hz = 100000.0;   
+    cfg.timer_hz   = 200.0;    
     cfg.max_sleep  = std::chrono::milliseconds(static_cast<int64_t>(2));
     cfg.allow_catch_up = false;
-    cfg.name = "MainBus";
+    cfg.name = "main_bus";
 
-    BusClock bus{cfg};
+    auto bus = std::make_unique<BusClock>(cfg);
     std::cout << cfg;
 
     // Register I/O-pollers 
-    bus.register_io_poller([&](uint64_t tick, BusClock::TimePoint){
+    bus->register_io_poller([&](uint64_t tick, BusClock::TimePoint){
         uart.input_scheduled();
         if(uart.CheckIRQ())
             intc.TriggerIRQ(2); // level TODO: Get irq from device...
@@ -286,14 +300,14 @@ int main(int argc, char **argv) {
     auto& timer = apbctrl.GetTimer();
     timer.set_LEON_state();
 
-    bus.set_timer_irq_callback([&](uint64_t idx, BusClock::TimePoint){
+    bus->set_timer_irq_callback([&](uint64_t idx, BusClock::TimePoint){
         (void)idx;
         intc.TriggerIRQ(8); // broadcast, level
         auto srld = timer.read(0x4); // SRELOAD
         auto trld = timer.read(0x14); // TRLDVAL
         auto instructions_per_tick = srld * trld;
         auto timer_freq = 50000000.0 / instructions_per_tick;
-        bus.update_timer_hz(timer_freq);
+        bus->update_timer_hz(timer_freq);
         
     });
     
@@ -309,7 +323,7 @@ int main(int argc, char **argv) {
     // Read the ELF and get the entry point, then reset all cpus.
     u32 entry_va = 0x0;
     std::cout << "** Reading ELF..\n"; 
-    u32 word_count = ReadElf(fname, mmu, entry_va, true, std::cout); 
+    u32 word_count = ReadElf(fname, mmu, entry_va, false, std::cout); 
     std::cout << "** Read " << word_count << " bytes of image, entry point 0x" << std::hex << entry_va << std::dec << ". Resetting CPU(s).\n";
     for(auto& cpu : cpus)
         cpu.reset(entry_va);
@@ -317,12 +331,12 @@ int main(int argc, char **argv) {
     // Ok, start it up...
     std::cout << "** Starting the machine..\n";
 
-    bus.start();
+    bus->start();
 
     main_loop(cpus, state, apbctrl);
     
-    bus.stop();
-    bus.print_summary();
+    bus->stop();
+    bus->print_summary();
 
     for (auto& t : threads) {
         t.join();
