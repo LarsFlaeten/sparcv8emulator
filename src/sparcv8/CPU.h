@@ -159,7 +159,8 @@ class CPU
         bool running = false;
         bool verbose = false;
         bool break_on_timer_interrupt = false; 
-        bool power_down = false;     
+        bool power_down = false;    
+        bool power_down_enabled = false; 
         RunSummary rs;
         GdbStub*    gdb_stub = nullptr;
         
@@ -247,7 +248,7 @@ class CPU
         MMU&    get_mmu() {return mmu;}
         std::ostream& get_ostream() const { return os; }
         void    set_gdb_stub(GdbStub* stub) {gdb_stub = stub;}
-        
+        void    enable_power_down(bool pd) {power_down_enabled = pd;}
         void    dump_regs (bool transpose = false); 
         //void    disp_read_reg (const u32 reg_no, u32 *value); 
         void    register_bus_tick_function(std::function<void()> f) {

@@ -232,11 +232,15 @@ void CPU::WRY (pDecode_t d)
     } else {
         // This is wr %asr!
         if(d->rd == 19) {
+            if(power_down_enabled)
+                power_down = true;
+            else
+                nop();
             // writes to ASR19 is a nop in this simulator
             // As we have not implemnted power down...
             // TODO: Implement busyloop with short sleep, while checking for interrupt
             // The main clock then have to keep ticks going on a separate thread...
-            nop();
+            
             
             
             // We enter a busy loop here, only breaking for interrupts:
