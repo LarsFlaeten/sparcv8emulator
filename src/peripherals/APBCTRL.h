@@ -29,7 +29,7 @@ class APBCTRL : public IMemoryBank {
         GPTIMER timer;
         APBUART apbuart9;
         
-        MCtrl&  mctrl;
+        MCtrl&  mctrl_;
         
         SVGA    svga;
 
@@ -47,7 +47,7 @@ class APBCTRL : public IMemoryBank {
             irq(),
             timer(8, 31),
             apbuart9(),
-            mctrl(mctrl),
+            mctrl_(mctrl),
             svga(mctrl)
         
         {
@@ -60,8 +60,8 @@ class APBCTRL : public IMemoryBank {
             auto device_addr_base = (device_addr >> 8) & 0xff;
 
             // Write to PnP discovery area:
-            mctrl.write32(apb_pnp_base, (slave.vendor_id() << 24) | (slave.device_id() << 12) | (AMB_VERSION << 5) | (irq & 0xf));
-            mctrl.write32(apb_pnp_base + 4, device_addr_base << 20 | (0xfff << 4) | AMBA_TYPE_APBIO);
+            mctrl_.write32(apb_pnp_base, (slave.vendor_id() << 24) | (slave.device_id() << 12) | (AMB_VERSION << 5) | (irq & 0xf));
+            mctrl_.write32(apb_pnp_base + 4, device_addr_base << 20 | (0xfff << 4) | AMBA_TYPE_APBIO);
             
         }
 

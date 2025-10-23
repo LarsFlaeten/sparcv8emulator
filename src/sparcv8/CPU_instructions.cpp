@@ -22,9 +22,9 @@ void CPU::UNIMP (pDecode_t d)
         rs.reason = TerminateReason::UNIMPLEMENTED; 
         rs.last_opcode = d->opcode;
     } else {
-        if (verbose)
-            os << std::format("{:#08x} unimp : Program exited normally\n", d->pc);
+        os << std::format("{:#08x} unimp : Program exited normally\n", d->pc);
         rs.reason = TerminateReason::NORMAL;
+        rs.last_opcode = d->opcode;
     }
 
 }

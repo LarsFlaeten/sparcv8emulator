@@ -3,6 +3,10 @@
 
 #include "apb_slave.h"
 
+// std
+#include <mutex>
+
+
 #define NUM_IMPLEMENTED_TIMERS 0x2
 
 class GPTIMER : public apb_slave {
@@ -12,6 +16,10 @@ class GPTIMER : public apb_slave {
         u32 CONFIG;
         u32 CATCHCFG; 
 
+        // Use a simple mutex here, and not a shared reader/writer pattern
+        // The timer is mostly ticked from the bus clock, and very occationally
+        // read from CPUs
+        mutable std::mutex mtx_;
 
         struct timer_impl {
             // Timer n:
@@ -76,6 +84,7 @@ class GPTIMER : public apb_slave {
         }
 
         void set_LEON_state() {
+            std::lock_guard lock(mtx_);
             // Set LEON specific startup state:
             // Timer 1 enabled, timer 2 disabled and all zeroes
             timers[0].TCTRL = 0x3; // RS bit and enable bit
@@ -90,7 +99,25 @@ class GPTIMER : public apb_slave {
             SCALER = SRELOAD;
         } 
 
+        void set_LEON_smp_state() {
+            std::lock_guard lock(mtx_);
+            // Set LEON specific startup state:
+            // Timer 1 enabled, timer 2 disabled and all zeroes
+            timers[0].TCTRL = 0x3 | 0x8; // RS bit and enable bit + IRQ
+            timers[0].TCNTVAL = 0x270f;
+            timers[0].TRLDVAL = 0x270f;
+            timers[1].TCTRL = 0;
+            timers[1].TCNTVAL = 0;
+            timers[1].TRLDVAL = 0;
+    
+            //SCALER = 0x24;            
+            SRELOAD = 0x24;
+            SCALER = SRELOAD;
+        } 
+
         bool check_interrupt(bool clear = true) {
+            std::lock_guard lock(mtx_);
+            
             for(auto& timer : timers)
                 if(timer.check_interrupt()) {
                     if(clear)
@@ -102,12 +129,16 @@ class GPTIMER : public apb_slave {
         }
 
         void interrupt_enable() {
+            std::lock_guard lock(mtx_);
+            
             for(auto& timer : timers)
                 timer.TCTRL = timer.TCTRL | 0x1 << 3; 
         }
  
  
         void reset() {
+            std::lock_guard lock(mtx_);
+            
             unsigned i = 0;
             for( auto& timer : timers) {
                 if ((CONFIG >> (16 + i)) & 0x1)
@@ -121,6 +152,8 @@ class GPTIMER : public apb_slave {
         }
 
         void Tick() {
+            std::lock_guard lock(mtx_);
+            
             // only propagate tick when at leats one timer is enabled:
             // CONFIG:TIMERN field (bits 16 -22)
             //if(((CONFIG >> 16) & 0x7f) > 0 )
@@ -138,9 +171,85 @@ class GPTIMER : public apb_slave {
                     --SCALER;
                 }
             }
+
+            
         }
 
+        // This method is a combination of tick() and check_interrupt(),
+        // only its is done under one mutex lock
+        bool tick_and_check_interrupt(bool clear_interrupt) {
+            std::lock_guard lock(mtx_);
+            
+            // only propagate tick when at leats one timer is enabled:
+            // CONFIG:TIMERN field (bits 16 -22)
+            //if(((CONFIG >> 16) & 0x7f) > 0 )
+            // FIX Do not use CONFIG field, this is write only
+            if(timers[0].is_enabled() || timers[1].is_enabled())
+            {
+            
+                if (SCALER == 0) {
+                    for (auto & timer : timers) {
+                        if(timer.is_enabled())
+                            timer.tick();
+                    }   
+                    SCALER = SRELOAD & 0xffff; 
+                } else {
+                    --SCALER;
+                }
+            }
+
+            for(auto& timer : timers)
+                if(timer.check_interrupt()) {
+                    if(clear_interrupt)
+                        timer.clear_interrupt();
+                    return true;
+                }
+            
+            return false;
+
+
+        }
+        // This method is a combination of tick() and check_interrupt(),
+        // lock must be obtained vie separate methods
+        bool tick_and_check_interrupt_unlocked(bool clear_interrupt) {
+            
+            // only propagate tick when at leats one timer is enabled:
+            // CONFIG:TIMERN field (bits 16 -22)
+            //if(((CONFIG >> 16) & 0x7f) > 0 )
+            // FIX Do not use CONFIG field, this is write only
+            if(timers[0].is_enabled() || timers[1].is_enabled())
+            {
+            
+                if (SCALER == 0) {
+                    for (auto & timer : timers) {
+                        if(timer.is_enabled())
+                            timer.tick();
+                    }   
+                    SCALER = SRELOAD & 0xffff; 
+                } else {
+                    --SCALER;
+                }
+            }
+
+            for(auto& timer : timers)
+                if(timer.check_interrupt()) {
+                    if(clear_interrupt)
+                        timer.clear_interrupt();
+                    return true;
+                }
+            
+            return false;
+
+
+        }
+
+        // Explicit locking and unlocking
+        void lock() {mtx_.lock();}
+        void unlock() {mtx_.unlock();}
+
         u32 read(u32 offset) const {
+            std::lock_guard lock(mtx_);
+            
             u32 ret;
             switch(offset) {
                 case(0x0): ret = SCALER; break;
@@ -176,6 +285,8 @@ class GPTIMER : public apb_slave {
         }
 
         void write(u32 offset, u32 regvalue) {
+            std::lock_guard lock(mtx_);
+            
             //std::cout << "write GPTIMER at offset " << std::hex << offset << ", value= " << regvalue << "\n";
             
             switch(offset) {

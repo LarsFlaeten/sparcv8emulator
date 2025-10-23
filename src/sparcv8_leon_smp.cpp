@@ -17,10 +17,12 @@
 #include "peripherals/Peripherals.h"
 #include "peripherals/Amba.h"
 #include "peripherals/APBCTRL.h"
-#include "peripherals/BusClock.h"
+#include "peripherals/BusClock.hpp"
 
 #include "readelf.h"
 #include "debug.h"
+
+#include "cv_log.hpp"
 
 #include <pthread.h>
 
@@ -29,7 +31,7 @@ void set_thread_name(const std::string& name) {
 }
 
 // Shared state
-struct SyncState {
+/*struct SyncState {
     std::mutex mtx;
     std::condition_variable cv_start;
     std::condition_variable cv_done;
@@ -38,6 +40,16 @@ struct SyncState {
     std::atomic<bool> shutdown_cpus = false;
     std::atomic<bool> global_shutdown = false;
     
+};*/
+
+struct SyncState {
+    cvlog::Mutex mtx{"SynxState.mtx"};
+    cvlog::CV cv_start{"cv_start"};
+    cvlog::CV cv_done{"cv_done"};
+    bool start_tick = false;
+    int active_cpus = 0;
+    std::atomic<bool> shutdown_cpus = false;
+    std::atomic<bool> global_shutdown = false;
 };
 
 SyncState* global_syncstate = nullptr;
@@ -49,7 +61,8 @@ void signal_handler(int signal)
         case(SIGINT):
             if(global_syncstate != nullptr) {
                 std::cout << "Setting global state to shutdown\n";
-                std::unique_lock<std::mutex> lock(global_syncstate->mtx);
+                //std::unique_lock<std::mutex> lock(global_syncstate->mtx);
+                //cvlog::UniqueLock lock(global_syncstate->mtx);
                 global_syncstate->shutdown_cpus = true;
                 global_syncstate->global_shutdown = true;
             }
@@ -58,7 +71,8 @@ void signal_handler(int signal)
         case(SIGTERM):
             if(global_syncstate != nullptr) {
                 std::cout << "Setting global state to shutdown\n";
-                std::unique_lock<std::mutex> lock(global_syncstate->mtx);
+                //std::unique_lock<std::mutex> lock(global_syncstate->mtx);
+                //cvlog::UniqueLock lock(global_syncstate->mtx);
                 global_syncstate->shutdown_cpus = true;
                 global_syncstate->global_shutdown = true;
             }
@@ -100,14 +114,19 @@ struct thread_tick_summary {
 };
 
 void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
+
+#ifdef PROFILE_CPU_THREAD
     std::vector<thread_tick_summary> tick_summaries;
-    
+#endif
+
     set_thread_name(std::format("cpu{}",cpu.get_cpu_id()));
 
     while (true) {
     
-        std::unique_lock<std::mutex> lock(state.mtx);
-        state.cv_start.wait(lock, [&] { return state.start_tick || state.shutdown_cpus; });
+        //std::unique_lock<std::mutex> lock(state.mtx);
+        cvlog::UniqueLock lock(state.mtx);
+
+        state.cv_start.wait_debug(lock.lk, [&] { return state.start_tick || state.shutdown_cpus; });
 
         if (state.shutdown_cpus)
             break;
@@ -124,7 +143,9 @@ void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
         
         try {
             cpu.run(instructions_per_tick, &rs);
+#ifdef PROFILE_CPU_THREAD
             tick_summaries.emplace_back(instructions_per_tick, rs.instr_count, rs.reason);
+#endif
         } catch (const std::runtime_error& e) {
             std::cout << e.what() << "\n";
             //debug_dumpmemv(cpu.get_pc());
@@ -133,56 +154,66 @@ void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
             throw std::runtime_error("Aborting...");
         }
 
-        //lock.lock();
-        //if (--state.active_cpus == 0)
-            //state.cv_done.notify_one();
-
-        
-        
+        lock.lock();
+        if (--state.active_cpus == 0)
+            state.cv_done.notify_one();
     }
-
+/*
     {
         std::lock_guard<std::mutex>(state.mtx);
         if (--state.active_cpus == 0)
             state.cv_done.notify_one();
     }
-
+*/
+#ifdef PROFILE_CPU_THREAD
     std::cout << "Stats from thread " << cpu.get_cpu_id() << ", " << tick_summaries.size() << " ticks\n";
     int max_tick_inst = tick_summaries[0].actual_instructions;
     int min_tick_inst = tick_summaries[0].actual_instructions;
-    //int i = 0;
+    int i = 0;
     for(const auto& t : tick_summaries) {
         if(t.actual_instructions > max_tick_inst)
             max_tick_inst = t.actual_instructions;
         if(t.actual_instructions < min_tick_inst)
             min_tick_inst = t.actual_instructions;
-        //std::cout << "Tick :" << ++i << "\t " << t.actual_instructions << "/" << t.target_instructions << " - " << rs_reason_str(t.reason) << "\n";
+        std::cout << "Tick :" << ++i << "\t " << t.actual_instructions << "/" << t.target_instructions << " - " << rs_reason_str(t.reason) << "\n";
     }
     std::cout << "Max: " << max_tick_inst << "\n";
     std::cout << "Min: " << min_tick_inst << "\n";
-    
+ #endif   
 
 }
 
 
-void main_loop(std::vector<CPU>& cpus, SyncState& state, APBCTRL& apbctrl) {
+void main_loop(BusClock& clock, std::vector<CPU>& cpus, SyncState& state, APBCTRL& apbctrl) {
     //auto& intc = apbctrl.GetIntc();
     //auto& uart = apbctrl.GetUART();
-
+    uint64_t local_tick = 0;
+    
+    
     while(true) {
         
-        std::unique_lock<std::mutex> lock(state.mtx);
+        // We wait here until the next timer tick boundary
+        clock.wait_for_tick(local_tick);
+
+        //std::unique_lock<std::mutex> lock(state.mtx);
+        cvlog::UniqueLock lock(state.mtx);
         if(state.global_shutdown)
             break;
+
 
         state.active_cpus = cpus.size();
         state.start_tick = true;
 
         // CPUs start here. They will run the number of cycles as specified in the timer regs
+        //LOG("Main loop, start.notify_all. CV=%p MtxUsedForThisWait=%p", (void*)&state.cv_start, (void*)&state.mtx);
         state.cv_start.notify_all();
 
+
+        
         // Wait until all CPUs finish their tick
-        state.cv_done.wait(lock, [&] { return state.active_cpus == 0; });
+        
+        //LOG("Main loop, done.wait. CV=%p MtxUsedForThisWait=%p", (void*)&state.cv_done, (void*)&state.mtx);
+        state.cv_done.wait_debug(lock.lk, [&] { return (state.active_cpus == 0); });
 
         state.start_tick = false;
 
@@ -190,12 +221,16 @@ void main_loop(std::vector<CPU>& cpus, SyncState& state, APBCTRL& apbctrl) {
     }
 
     // Shutdown
-    std::unique_lock<std::mutex> lock(state.mtx);
+    //std::unique_lock<std::mutex> lock(state.mtx);
+    cvlog::UniqueLock lock(state.mtx);
     state.shutdown_cpus = true;
     state.cv_start.notify_all();
 }
 
 int main(int argc, char **argv) {
+    CVLOG_MUTE();
+    
+    
     //set_thread_name("main");
     // Set up handler for external SIGINTs
     struct sigaction act;
@@ -257,6 +292,9 @@ int main(int argc, char **argv) {
     auto& intc = apbctrl.GetIntc();
     auto& uart = apbctrl.GetUART();
     
+    // Set up timer
+    auto& timer = apbctrl.GetTimer();
+    timer.set_LEON_smp_state();
 
     // Create the cpus
     config.num_cpus = 1;
@@ -278,38 +316,17 @@ int main(int argc, char **argv) {
     
     print_config(config);
 
-    BusClock::Config cfg;
-    cfg.io_poll_hz = 100000.0;   
-    cfg.timer_hz   = 200.0;    
-    cfg.max_sleep  = std::chrono::milliseconds(static_cast<int64_t>(2));
-    cfg.allow_catch_up = false;
-    cfg.name = "main_bus";
+    
 
-    auto bus = std::make_unique<BusClock>(cfg);
-    std::cout << cfg;
+    auto bus = std::make_unique<BusClock>(intc, timer, uart);
+   
+    
 
-    // Register I/O-pollers 
-    bus->register_io_poller([&](uint64_t tick, BusClock::TimePoint){
-        uart.input_scheduled();
-        if(uart.CheckIRQ())
-            intc.TriggerIRQ(2); // level TODO: Get irq from device...
-        
-    });
 
-    // Set up timer callback
-    auto& timer = apbctrl.GetTimer();
-    timer.set_LEON_state();
-
-    bus->set_timer_irq_callback([&](uint64_t idx, BusClock::TimePoint){
-        (void)idx;
-        intc.TriggerIRQ(8); // broadcast, level
-        auto srld = timer.read(0x4); // SRELOAD
-        auto trld = timer.read(0x14); // TRLDVAL
-        auto instructions_per_tick = srld * trld;
-        auto timer_freq = 50000000.0 / instructions_per_tick;
-        bus->update_timer_hz(timer_freq);
-        
-    });
+    
+    
+    
+    
     
 
     // Syncronization and threads
@@ -333,11 +350,13 @@ int main(int argc, char **argv) {
 
     bus->start();
 
-    main_loop(cpus, state, apbctrl);
+    main_loop(*bus, cpus, state, apbctrl);
     
     bus->stop();
-    bus->print_summary();
+    auto stats = bus->getStats();
+    std::cout << stats << std::endl;
 
+    
     for (auto& t : threads) {
         t.join();
     }

@@ -3,20 +3,6 @@
 
 #include <exception>
 
-class not_implemented_exception : public std::exception
-{
-public:
-virtual char const * what() const noexcept { return "Sparc function not implemented"; }
-};
-
-class not_implemented_leon_exception : public std::exception
-{
-    std::string w;
-public:
-    not_implemented_leon_exception(std::string msg) : w(msg) {}
-
-    virtual char const * what() const noexcept { return w.c_str(); }
-};
 
 
 

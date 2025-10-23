@@ -1,6 +1,8 @@
 #ifndef _IRQMP_H_
 #define _IRQMP_H_
 
+#include "../common.h"
+
 // std
 #include <mutex>
 #include <shared_mutex>

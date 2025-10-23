@@ -4,7 +4,7 @@
 #include "MMU.h"
 
 #include "../debug.h"
-
+#include "../cv_log.hpp"
 
 #include "../LoopTimer.h"
 #if 0
@@ -125,12 +125,12 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
     
     // Start executing program
     running = true;
-    while ((!(rs.reason) /*!= TerminateReason::INSTRUCTION*/) && (ExecCount == 0) ? 1 : (count < (u64)ExecCount)) {
+    while ((ExecCount == 0) ? 1 : (count < (u64)ExecCount)) {
 
 #ifdef PERFORMANCE_MONITOR
 		lt.start();
 #endif		
-        count++;
+        ++count;
         
         // Process interrupts if ther are no traps being handled
         if (trap_type == 0 && (p->et && (irl > p->pil))) {
@@ -175,8 +175,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         } else {
             // we could not fetch instruction, and no Traps occured.. Not much more to do.
             if(!trap_type) {
-                rs.reason = TerminateReason::TRAP_CONDITIONAL;
-                break;
+                throw std::runtime_error("Could not fetch instruction.");
             }
         }
         
@@ -189,15 +188,17 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         if(_incoming_irl>0) {
             set_irl(_incoming_irl); // We take this interrupt
             intc.ClearIRQ(_incoming_irl);
-        }
 
-        // In multithreaded, we break out in timer interrupts, and wait until we are started again
-        if((irl == 8)) {
-            if(break_on_timer_interrupt) {
-                rs.reason = TerminateReason::TIMER_INTERRUPT;
-                break;
+            // In multithreaded, we break out in timer interrupts, and wait until we are started again
+            if((irl == 8)) {
+                if(break_on_timer_interrupt) {
+                    rs.reason = TerminateReason::TIMER_INTERRUPT;
+                    break;
+                }
             }
         }
+
+        
 
         // External request to interrupt this run tick
         if(_interrupt) {
@@ -210,6 +211,12 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         if(power_down) {
             power_down = false;
             rs.reason = TerminateReason::POWER_DOWN;
+            //CVLOG_UNMUTE();
+            break;
+        }
+
+        // Check if any instructions tell us to exit
+        if(rs.reason == TerminateReason::NORMAL || rs.reason == TerminateReason::UNIMPLEMENTED) {
             break;
         }
 
