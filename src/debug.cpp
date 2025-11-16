@@ -1,6 +1,8 @@
 #include "debug.h"
 #include "sparcv8/MMU.h"
 
+#include "peripherals/amba_pnp_dump.hpp"
+
 #include <string>
 #include <iomanip>
 
@@ -265,6 +267,31 @@ void debug_mmu_tables() {
             std::cout << std::hex << "0x" << tr.start_va << "-0x" << tr.end_va << " -> 0x" << tr.start_pa << "-0x" << tr.end_pa << " " << tr.perms << " [" << std::dec << tr.pages << " pages]\n";
     }
 
+}
+
+void debug_print_amba_pnp() {
+    if(debug_mmu_ptr == nullptr) {
+        std::cout << "No MMU attached.\n";
+        return;
+    }
+
+    auto& mctrl = debug_mmu_ptr->GetMCTRL();
+
+    Read32 r32 = [&](u32 a){ return mctrl.read32(a); };
+        
+    print_amba_pnp(r32);
+
+}
+
+void debug_print_memory_banks() {
+    if(debug_mmu_ptr == nullptr) {
+        std::cout << "No MMU attached.\n";
+        return;
+    }
+
+    auto& mctrl = debug_mmu_ptr->GetMCTRL();
+
+    mctrl.debug_list_banks();
 }
 
 

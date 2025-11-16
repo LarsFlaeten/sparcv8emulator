@@ -20,6 +20,9 @@
 #define SERVER_ADDRESS "127.0.0.1"
 #define BUFFER_SIZE 1024
 #define WAIT_TIME_MS 50
+
+#define OPCODE_TA1 0x91d02001
+
 int create_tcp_client(int debug_port) {
 	int clientSocket;
     struct sockaddr_in serverAddress;
@@ -115,6 +118,7 @@ std::string get_checksum(const std::string& msg) {
     return checksum; 
 }
 
+#if 0
 static std::string to_hex(const uint8_t* data, size_t len) {
     std::ostringstream oss;
     for (size_t i = 0; i < len; i++)
@@ -128,6 +132,7 @@ static std::vector<uint8_t> from_hex(const std::string& hex) {
         res.push_back(std::stoi(hex.substr(i, 2), nullptr, 16));
     return res;
 }
+#endif
 
 
 
@@ -537,7 +542,7 @@ TEST_F(GDBStubTest, GDB_read_memory_long)
 	//std::cout << "MEM [" << get_payload(strip_ack(ret)) << "]\n";
 }
 
-/*
+
 TEST_F(GDBStubTest, GDB_read_memory_short)
 {
 
@@ -591,6 +596,7 @@ TEST_F(GDBStubTest, GDB_read_memory_short)
 
 
 }
+
 
 TEST_F(GDBStubTest, GDB_read_memory_unaligned_1_4)
 {
@@ -746,7 +752,7 @@ TEST_F(GDBStubTest, GDB_read_memory_unaligned_3_16)
     ASSERT_TRUE(validate(ret));
 	ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), "bebaccecaf112233445566778899aabb");
 }
-*/
+
 
 
 
@@ -780,13 +786,14 @@ TEST_F(GDBStubTest, GDB_set_breakpoint)
 
     ASSERT_NE(pstub, nullptr);
     ASSERT_TRUE(pstub->has_breakpoint(0x60000000));
+    ASSERT_EQ(mmu.MemAccessBypassRead4(0x60000000), OPCODE_TA1);
     
 
 }
 
 TEST_F(GDBStubTest, GDB_remove_breakpoint)
 {
-
+    mmu.MemAccessBypassWrite4(0x60000000, 0xcafebabe);
 
 	ASSERT_TRUE(tcp_send(client_socket, "Z0,60000000,4"));
     
@@ -801,7 +808,8 @@ TEST_F(GDBStubTest, GDB_remove_breakpoint)
 
     ASSERT_NE(pstub, nullptr);
     ASSERT_TRUE(pstub->has_breakpoint(0x60000000));
-
+    ASSERT_EQ(mmu.MemAccessBypassRead4(0x60000000), OPCODE_TA1);
+    
 
 
     ASSERT_TRUE(tcp_send(client_socket, "z0,60000000,4"));
@@ -809,7 +817,8 @@ TEST_F(GDBStubTest, GDB_remove_breakpoint)
     std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
     
     ASSERT_FALSE(pstub->has_breakpoint(0x60000000));
-
+    ASSERT_EQ(mmu.MemAccessBypassRead4(0x60000000), 0xcafebabe);
+    
 
 }
 

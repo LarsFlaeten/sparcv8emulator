@@ -89,7 +89,8 @@ class MMU {
     TLB dtlb; // For data R/W
     
 public:
-   
+    MCtrl&  GetMCTRL() {return mctrl;}
+
     void SetControlReg(u32 value) {
         control_reg = value;
     }

@@ -202,6 +202,7 @@ private:
 };
 
 
+
 class MCtrl {
 public:
     template<typename BankType, typename... Args>
@@ -246,6 +247,7 @@ public:
     }
 
     void write32(u32 addr, u32 val, bool align = true) {
+        
         find_bank(addr)->write32(addr, val, align);
     }
 

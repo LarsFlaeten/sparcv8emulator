@@ -53,6 +53,10 @@ private:
     void write_registers(CPU& cpu, const std::vector<uint8_t>& data);
     void reinsert_breakpoint(uint32_t addr);
 
+
+    std::string handle_memory_read(uint32_t addr, size_t len);
+    bool handle_memory_write(uint32_t addr, size_t len, const std::string& data);
+
     uint32_t read_mem32(uint32_t vaddr);
     void write_mem32(uint32_t vaddr, uint32_t value);
     

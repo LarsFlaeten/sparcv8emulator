@@ -34,7 +34,7 @@ if (NOT CXX_FORMAT_SUPPORT)
     target_link_libraries(${LIBNAME} fmt::fmt)
 endif()
 
-
+target_link_libraries(${LIBNAME} portaudio)
 
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 

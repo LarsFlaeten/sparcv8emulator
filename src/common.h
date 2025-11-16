@@ -1,5 +1,9 @@
 #pragma once
 
+#include <exception>
+#include <string>
+#include <cstdint>
+
 class not_implemented_exception : public std::exception
 {
 public:

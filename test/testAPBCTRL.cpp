@@ -58,6 +58,17 @@ void APBCTRLTest::TearDown()
 {
 }
 
+TEST_F(APBCTRLTest, AHBAPBRanges)
+{
+    // Amba PNP area
+    mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
+    mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
+    
+    auto val = mctrl.read32(0x800fe000);
+    ASSERT_EQ(val, 0);
+
+}
+
 TEST_F(APBCTRLTest, AHB_setup)
 {
     // We should be able to read and write to 0x8000000 + [0 .. 256 bytes]

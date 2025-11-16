@@ -59,6 +59,7 @@ class IRQMP {
         void TriggerIRQ(u32 IRL) {
             std::unique_lock lock(mtx);
             IRL = IRL & 0xf;
+        
             for(unsigned int i = 0; i < num_cpus; ++i)
             {
                 if((0x1 << IRL) & PIMASK[i]) {
@@ -88,7 +89,7 @@ class IRQMP {
 
         u32 Read(u32 offset) const {
             std::shared_lock lock(mtx);
-            //std::cout << "Read IRQ at offset " << std::hex << offset << "\n";
+            std::cout << "Read IRQ at offset " << std::hex << offset << "\n";
             if(offset >= 0x40 && offset < 0x60) {
                 u32 n = offset - 0x40;
                 //std::cout << "Read IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << PIMASK[n] << std::dec << "\n";
@@ -126,7 +127,7 @@ class IRQMP {
         }
         void Write(u32 offset, u32 value) {
             std::unique_lock lock(mtx);
-            //std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << "\n";
+            std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << "\n";
             
             if(offset >= 0x40 && offset < 0x60) {
                 u32 n = offset - 0x40;

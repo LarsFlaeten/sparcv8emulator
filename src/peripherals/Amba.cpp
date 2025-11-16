@@ -14,13 +14,22 @@
 void amba_ahb_pnp_setup(MCtrl& mctrl) {
     // Set AHB CTRL device id @ 0xfffffff0
     //mctrl.write32(0xfffffff0/4, 0x0 );
-    //mctrl.write32(0xfffffff0/4, GR740_REV1_SYSTEMID);
+    //mctrl.write32(0xfffffff0, GR740_REV1_SYSTEMID);
 
 
     // Set AMBA AHB CTRL entires
     
     // mst0 at 0xfffff000 - LEON3
     mctrl.write32(0xfffff000, (VENDOR_GAISLER << 24) | (GAISLER_LEON3 << 12) | (AMB_VERSION << 5));
+
+    // mst at 0xfffff020 - AHB Master - PCI target, Memory
+    //mctrl.write32(0xfffff020, (VENDOR_GAISLER << 24) | (GAISLER_GRPCI2 << 12) | (AMB_VERSION << 5));
+    //mctrl.write32(0xfffff030, (0x200 << 20) | (0x0 << 16) | (0xc00 << 4) | AMBA_TYPE_AHBIO); // 1 Mb Mask 
+    
+    // mst at 0xfffff040 - AHB Master - PCI target, IO area
+    //mctrl.write32(0xfffff040, (VENDOR_GAISLER << 24) | (GAISLER_GRPCI2 << 12) | (AMB_VERSION << 5) | (0x6 & 0xf));
+    //mctrl.write32(0xfffff050, (0x500 << 20) | (0x0 << 16) | (0xc00 << 4) | AMBA_TYPE_AHBIO); // 1 Mb Mask 
+    //                                                       0xc00 = 256kb
 
     // slv0 at 0xfffff800 - AHBAPB Bridge with pnp, type 1 (APB IO AREA)
     //ahb->id
@@ -41,6 +50,16 @@ void amba_ahb_pnp_setup(MCtrl& mctrl) {
     mctrl.write32(0xfffff834, (0x200 << 20) | (0x0 << 16) | (0xe00 << 4) | 2); //0x2000e002;
     mctrl.write32(0xfffff838, (0x400 << 20) | (0x3 << 16) | (0xc00 << 4) | 2); //0x4003c002;
  
+    // ahb slv - PCI Initiator interface MEM, IRQ 5
+    mctrl.write32(0xfffff840, (VENDOR_GAISLER << 24) | (GAISLER_GRPCI2 << 12) | (AMB_VERSION << 5));// | (0x5 & 0xf));
+    mctrl.write32(0xfffff850, (0x240 << 20) | (0x0 << 16) | (0xff0 << 4) | AMBA_TYPE_MEM); // 16 Mb Mask 
+    mctrl.write32(0xfffff854, (0xa00 << 20) | (0x0 << 16) | (0xe00 << 4) | AMBA_TYPE_AHBIO); // 1 Mb Mask 
+    
+    // ahb slv - PCI Initiator interface IO, IRQ 6
+    //mctrl.write32(0xfffff860, (VENDOR_GAISLER << 24) | (GAISLER_GRPCI2 << 12) | (AMB_VERSION << 5) | (0x6 & 0xf));
+    //mctrl.write32(0xfffff870, (0xa00 << 20) | (0x0 << 16) | (0xe00 << 4) | AMBA_TYPE_AHBIO); // 1 Mb Mask 
+    
+
 }
 
 /*
@@ -92,8 +111,8 @@ void amba_apb_pnp_setup(MCtrl& mctrl) {
     mctrl.write32(0x800ff000, (VENDOR_ESA << 24) | (ESA_MCTRL << 12) | (AMB_VERSION << 5));
     mctrl.write32(0x800ff004, (0x000 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000000 - 800000ff
 
-    // slv1 at 0x800ff008 - APBUART IRQ 2
-    mctrl.write32(0x800ff008, (VENDOR_GAISLER << 24) | (GAISLER_APBUART << 12) | (AMB_VERSION_1 << 5) | (0x2 & 0xf) );
+    // slv1 at 0x800ff008 - APBUART IRQ 4
+    mctrl.write32(0x800ff008, (VENDOR_GAISLER << 24) | (GAISLER_APBUART << 12) | (AMB_VERSION_1 << 5) | (0x4 & 0xf) );
     mctrl.write32(0x800ff00c, (0x001 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000100 - 800001ff
 
     // slv2 at 0x800ff010 - Interrupt Controller
@@ -104,14 +123,24 @@ void amba_apb_pnp_setup(MCtrl& mctrl) {
     mctrl.write32(0x800ff018, (VENDOR_GAISLER << 24) | (GAISLER_GPTIMER << 12) | (AMB_VERSION << 5) | (0x8 & 0xf));
     mctrl.write32(0x800ff01c, (0x003 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000300 - 800003ff
 
-    // slv4 at 0x800ff020 - SVGA CTRL IRQ 9
-    //mctrl.write32(0x800ff020, (VENDOR_GAISLER << 24) | (GAISLER_SVGACTRL << 12) | (AMB_VERSION << 5) | (0x9 & 0xf));
-    //mctrl.write32(0x800ff024, (0x004 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000400 - 800004ff
-
-
     // slv7 at 0x800ff028 - APB UART IRQ 3
-    mctrl.write32(0x800ff028, (VENDOR_GAISLER << 24) | (GAISLER_APBUART << 12) | (AMB_VERSION_1 << 5) | (0x3 & 0xf));
-    mctrl.write32(0x800ff02C, (0x009 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000900 - 800009ff
+    mctrl.write32(0x800ff020, (VENDOR_GAISLER << 24) | (GAISLER_APBUART << 12) | (AMB_VERSION_1 << 5) | (0x3 & 0xf));
+    mctrl.write32(0x800ff024, (0x009 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000900 - 800009ff
+
+    // slv4 at 0x800ff020 - PCI BRIDGE CTRL APB IRQ 2
+    mctrl.write32(0x800ff028, (VENDOR_GAISLER << 24) | (GAISLER_GRPCI2 << 12) | (AMB_VERSION << 5) | (0x2 & 0xf));
+    mctrl.write32(0x800ff02c, (0x004 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000400 - 800004ff
+
+    // slv4 at 0x800ff020 - GLEICHMANN AC97 IRQ 5
+    //mctrl.write32(0x800ff028, (VENDOR_GLEICHMANN << 24) | (GLEICHMANN_AC97 << 12) | (AMB_VERSION << 5) | (0x5 & 0xf));
+    //mctrl.write32(0x800ff02c, (0x004 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000400 - 800004ff
+
+    
+    // slv4 at 0x800ff020 - SVGA CTRL IRQ 9
+    //mctrl.write32(0x800ff030, (VENDOR_GAISLER << 24) | (GAISLER_SVGACTRL << 12) | (AMB_VERSION << 5) | (0x9 & 0xf));
+    //mctrl.write32(0x800ff034, (0x005 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000500 - 800005ff
+
+
 
 }
  

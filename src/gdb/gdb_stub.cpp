@@ -197,37 +197,19 @@ void GdbStub::handle_packet(const std::string& pkt) {
 
     }
     else if (pkt[0] == 'm') {
-            uint32_t addr, len;
-            sscanf(pkt.c_str(), "m%x,%x", &addr, &len);
-            u32 val = 0;
-            std::vector<uint8_t> vals;
-            std::string packet{};
-            if((len < 4) || addr % 4 != 0)
-                throw std::runtime_error("shorts and unaligned not implemented");
-
-            for (uint32_t i = 0; i < len/4; ++i) {
-                auto ret = mmu.MemAccess<intent_load, 4>(addr+i*4, val, CROSS_ENDIAN, true);
-                if(ret < 0) {
-                    if((!mmu.GetEnabled()) && ((addr >= 0xf0000000) && (addr < 0xfbffffff))) {
-                        auto phys = addr - (0xf0000000 - 0x40000000);
-                        ret = mmu.MemAccess<intent_load, 4>(phys, val, CROSS_ENDIAN, true);
-                    }
-                }
-
-                if(ret < 0) {
-
-                    send_packet("E14");
-                    return;
-                    //std::cout << "[GDB] Error reading mem @ 0x" << std::hex << addr << ", size:" << std::dec << len << "\n";
-                    //break;
-                } else {
-                    vals.insert(vals.end(), {(uint8_t)(val >> 24), (uint8_t)(val >> 16),
-                        (uint8_t)(val >> 8), (uint8_t)(val)  });
-                }
-
-                
-            }
-            send_packet(to_hex(vals.data(), vals.size()));
+        uint32_t addr, len;
+        sscanf(pkt.c_str(), "m%x,%x", &addr, &len);
+        
+        std::string packet{};
+        try {
+            packet = handle_memory_read(addr, len);
+        } catch (const std::exception& e) {
+            std::cerr << e.what() << "\n";
+            send_packet("E14");
+            return;
+        }
+            
+        send_packet(packet);
     } else if (pkt.starts_with("qL12")) {
         send_packet("");
     }
@@ -393,9 +375,13 @@ void GdbStub::insert_breakpoint(uint32_t addr) {
         // 0x0-0xefffffff -> 0x0-0xefffffff -rwx--- [983040 pages]                                                                                                                                       
         // 0xf0000000-0xfbffffff -> 0x40000000-0x4bffffff crwx--- [49152 pages]                                                                                                                          
         // 0xffd00000-0xffd13fff -> 0x43fec000-0x43ffffff crwx--- [20 pages]  
-        // Skip the 20 pages of PROM for now
         if ((!mmu.GetEnabled()) && (addr >= 0xf0000000) && (addr < 0xfbffffff)) {
             auto phys_addr = addr - (0xf0000000 - 0x40000000);
+            uint32_t original = read_mem32(phys_addr);
+            breakpoints.push_back({addr, original});
+            write_mem32(phys_addr, 0x91d02001); // ta 1
+        } else if ((!mmu.GetEnabled()) && (addr >= 0xffd00000) && (addr < 0xffd13fff)) {
+            auto phys_addr = addr - (0xffd00000 - 0x43fec000);
             uint32_t original = read_mem32(phys_addr);
             breakpoints.push_back({addr, original});
             write_mem32(phys_addr, 0x91d02001); // ta 1
@@ -420,11 +406,21 @@ void GdbStub::remove_breakpoint(uint32_t addr) {
             }
             catch(const std::exception& e)
             {
+                // Maybe addr is virtual, and MMU not set up yet?
+                // Replace with known mappings from linux boot
+                // 0x0-0xefffffff -> 0x0-0xefffffff -rwx--- [983040 pages]                                                                                                                                       
+                // 0xf0000000-0xfbffffff -> 0x40000000-0x4bffffff crwx--- [49152 pages]                                                                                                                          
+                // 0xffd00000-0xffd13fff -> 0x43fec000-0x43ffffff crwx--- [20 pages]  
+        
                 if ((!mmu.GetEnabled()) && (addr >= 0xf0000000) && (addr < 0xfbffffff)) {
                     auto phys_addr = addr - (0xf0000000 - 0x40000000);
                     write_mem32(phys_addr, it->original_instr);
                     breakpoints.erase(it);
-                } else {
+                } else if ((!mmu.GetEnabled()) && (addr >= 0xffd00000) && (addr < 0xffd13fff)) {
+                    auto phys_addr = addr - (0xffd00000 - 0x43fec000);
+                    write_mem32(phys_addr, it->original_instr);
+                    breakpoints.erase(it);
+                } else{
                     std::cerr << "Remove breakpoint: " << e.what() << '\n';
                     throw std::runtime_error("Could not insert breakpoint at given adress."); 
                 }
@@ -436,17 +432,103 @@ void GdbStub::remove_breakpoint(uint32_t addr) {
     throw std::runtime_error("Could not insert breakpoint at given adress."); 
 }
 
+std::string GdbStub::handle_memory_read(uint32_t addr, size_t len) {
+    std::ostringstream result;
+    result << std::hex << std::setfill('0');
+
+    uint32_t last_aligned_addr = ~0u;
+    uint32_t cached_word = 0;
+
+    for (size_t i = 0; i < len; ++i) {
+        uint32_t aligned_addr = (addr + i) & ~3u;
+        if (aligned_addr != last_aligned_addr) {
+            cached_word = read_mem32(aligned_addr);
+            last_aligned_addr = aligned_addr;
+        }
+
+        int byte_offset = (addr + i) & 3;
+        uint8_t byte = (cached_word >> ((3 - byte_offset) * 8)) & 0xFF;
+
+        result << std::setw(2) << static_cast<int>(byte);
+    }
+
+    return result.str();
+}
+
+bool GdbStub::handle_memory_write(uint32_t addr, size_t len, const std::string& data) {
+    // Sanity check: hex string should be exactly len*2 characters
+    if (data.size() != len * 2)
+        return false;
+
+    // Decode hex to byte array
+    std::vector<uint8_t> bytes(len);
+    for (size_t i = 0; i < len; ++i)
+        bytes[i] = static_cast<uint8_t>(std::stoi(data.substr(i * 2, 2), nullptr, 16));
+
+    uint32_t last_aligned_addr = ~0u;
+    uint32_t cached_word = 0;
+
+    for (size_t i = 0; i < len; ++i) {
+        uint32_t target_addr  = addr + i;
+        uint32_t aligned_addr = target_addr & ~3u;
+
+        // Load the word if we crossed into a new 32‑bit region
+        if (aligned_addr != last_aligned_addr) {
+            cached_word = read_mem32(aligned_addr);  // already big‑endian
+            last_aligned_addr = aligned_addr;
+        }
+
+        int byte_offset = target_addr & 3;
+        int shift = (3 - byte_offset) * 8;       // big‑endian byte order within word
+
+        uint32_t mask = 0xFFu << shift;
+        cached_word = (cached_word & ~mask) | (uint32_t(bytes[i]) << shift);
+
+        write_mem32(aligned_addr, cached_word);
+    }
+
+    return true;
+}
+
+// Try to read memory assuming vaddr is available
+// If it fails, try the two normal mappings on linux boot
 uint32_t GdbStub::read_mem32(uint32_t vaddr) {
     uint32_t val = 0;
-    if(mmu.MemAccess<intent_load, 4>(vaddr, val, CROSS_ENDIAN, true) < 0)
-        throw std::runtime_error("Could not read memory at address");// + vaddr);
+    if(mmu.MemAccess<intent_load, 4>(vaddr, val, CROSS_ENDIAN, true) == 0)
+        return val;
+    
+    // Try standard mmu linux boot mappings
+    if ((!mmu.GetEnabled()) && (vaddr >= 0xf0000000) && (vaddr < 0xfbffffff)) {
+        auto phys_addr = vaddr - (0xf0000000 - 0x40000000);
+        if(mmu.MemAccess<intent_load, 4>(phys_addr, val, CROSS_ENDIAN, true) == 0)
+            return val;
+    }
 
-    return val;
+    if ((!mmu.GetEnabled()) && (vaddr >= 0xffd00000) && (vaddr < 0xffd13fff)) {
+        auto phys_addr = vaddr - (0xffd00000 - 0x43fec000);
+        if(mmu.MemAccess<intent_load, 4>(phys_addr, val, CROSS_ENDIAN, true) == 0)
+            return val;
+    }
+
+    throw std::runtime_error("Could not read memory at address");// + vaddr);
 }
 
 void GdbStub::write_mem32(uint32_t vaddr, uint32_t value) {
-    if(mmu.MemAccess<intent_store, 4>(vaddr, value, CROSS_ENDIAN, true) < 0)
-        throw std::runtime_error("Could not read memory at address"); // + vaddr);
+    if(mmu.MemAccess<intent_store, 4>(vaddr, value, CROSS_ENDIAN, true) == 0)
+        return;
+        
+    // Try standard mmu linux boot mappings
+    if ((!mmu.GetEnabled()) && (vaddr >= 0xf0000000) && (vaddr < 0xfbffffff)) {
+        auto phys_addr = vaddr - (0xf0000000 - 0x40000000);
+        if(mmu.MemAccess<intent_store, 4>(phys_addr, value, CROSS_ENDIAN, true) == 0)
+            return;
+    }
 
-    return;
+    if ((!mmu.GetEnabled()) && (vaddr >= 0xffd00000) && (vaddr < 0xffd13fff)) {
+        auto phys_addr = vaddr - (0xffd00000 - 0x43fec000);
+        if(mmu.MemAccess<intent_store, 4>(phys_addr, value, CROSS_ENDIAN, true) == 0)
+            return;
+    }
+
+    throw std::runtime_error("Could not write memory at address"); // + vaddr);
 }

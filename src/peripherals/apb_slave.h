@@ -19,6 +19,8 @@ public:
     // and used by the pnp routines at boot
     virtual u32 vendor_id() const = 0;
     virtual u32 device_id() const = 0;
+
+    virtual void tick() {;}
 };
 
 

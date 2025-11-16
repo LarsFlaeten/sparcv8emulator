@@ -22,6 +22,7 @@ extern char* optarg;
 #include "peripherals/Peripherals.h"
 #include "peripherals/Amba.h"
 #include "peripherals/APBCTRL.h"
+#include "peripherals/ac97.hpp"
 
 #include <pthread.h>
 
@@ -32,21 +33,6 @@ void set_thread_name(const char* name) {
 #include "readelf.h"
 #include "dis.h"
 
-constexpr int FOREVER =           0;
-constexpr int ONCE =              1;
-
-constexpr u32 NOERROR =           0;
-constexpr u32 USER_ERROR =        1;
-constexpr u32 UNIMP_ERROR =       2;
-constexpr u32 RUNTIME_ERROR =     3;
-constexpr u32 CODE_ERROR =        4;
-
-constexpr u32 SPARC_MEM_CB_RD =   0;
-constexpr u32 SPARC_MEM_CB_WR =   1;
-
-constexpr s32 TERMINATE_NORM =    -1;
-constexpr s32 TERMINATE_BREAK =    1;
-constexpr s32 TERMINATE_STEP =     2;
 
 CPU* _cpu_ptr = nullptr;
 
@@ -72,7 +58,7 @@ std::string uart_readline(APBUART& uart) {
 }
 
 #include "debug.h"
-
+#include "peripherals/amba_pnp_dump.hpp"
 
 void signal_handler(int signal) 
 {
@@ -90,20 +76,22 @@ int main(int argc, char **argv)
 {
     set_thread_name("main_entry");
 
-    int    PrintCount       = 0;
-    bool    Disassemble      = false;
-    u32 UserBreakpoint   = NO_USER_BREAK;
-    int    NumRunInst       = FOREVER;
-    bool    verbose          = false;
-    std::string fname = "../image/image.ram";
+    int PrintCount       = 0;
+    bool Disassemble      = false;
+    bool verbose          = false;
+    bool dump_mem    = false;
+    bool dump_amba_pnp = false;
+    bool exit_early = false;
+    std::string fname = "/home/lars/workspace/gaisler-buildroot-2024.02-1.1/output/images/image.ram";
     std::ofstream   os;
     int    option;
 
     bool debug_server = false; 
     int debug_port = 0; // Supress uninitiliazed warning
     bool write_to_file = false; 
+
     // Process the command line options 
-    while ((option = getopt(argc, argv, "vdn:b:o:i:cg:")) != EOF)
+    while ((option = getopt(argc, argv, "vdchempo:i:g:")) != EOF)
         switch(option) {
         case 'o':
             os.open(optarg, std::ios_base::out); 
@@ -125,18 +113,18 @@ int main(int argc, char **argv)
         case 'v':
             verbose = true;
             break;
-        case 'n':
-            NumRunInst = strtol(optarg, NULL, 0);
-            if (NumRunInst < FOREVER)
-                NumRunInst = FOREVER;
+        case 'p':
+            dump_amba_pnp = true;
+            break;
+        case 'm':
+            dump_mem = true;
+            break;
+        case 'e':
+            exit_early = true;
             break;
         case 'g':
             debug_port = (u32)strtol(optarg, NULL, 0);
             debug_server = true;
-            break;
-        case 'b':
-            UserBreakpoint = (u32)strtol(optarg, NULL, 0);
-            std::cerr << "Breaking at 0x" << std::hex << UserBreakpoint << "\n";
             break;
         case 'h':
         case '?':
@@ -146,14 +134,15 @@ int main(int argc, char **argv)
                     "\n"
                     "    -v Turn on Verbose display\n"
                     "    -d Disassemble mode\n"
-                    "    -n Specify number of instructions to run (default: run until UNIMP)\n"
-                    "    -b Specify address for breakpoint\n"
                     "    -o Output file for Verbose data (default stdout)\n"
                     "    -g (port) Start gdb server on specified port\n"
+                    "    -p Dump AMBA PNP area on startup\n"
+                    "    -m Dump Main memory banks on startup\n"
+                    "    -e Exit before starting the actucal CPU"
                     "    -i path/file: Path to the linux buildroot image\n"
                     "\n"
                     , argv[0]);
-            exit(NOERROR);
+            exit(EXIT_SUCCESS);
             break;
         }
 
@@ -167,9 +156,53 @@ int main(int argc, char **argv)
     mmu.SetICCR(0x10220008);
     mmu.SetDCCR(0x18220008);
 
+    // Create the AC'97 PCI peripheral
+    // Instead of handing over mctrl, we give it read/write lambdas
+    // TODO: Redesign this...
+    auto mem_read = [&mctrl](uint32_t pa, void* val, size_t sz) -> bool {
+        
+        switch(sz) {
+            case 1: {
+                u8* p = static_cast<u8*>(val);
+                *p = mctrl.read8(pa);
+                break;
+            }
+            case 2: {
+                u16* p = static_cast<u16*>(val);
+                *p = std::byteswap(mctrl.read16(pa));
+                break;
+            }
+            case 4: {
+                u32* p = static_cast<u32*>(val);
+                *p = std::byteswap(mctrl.read32(pa));
+                break;
+            }
+            default:
+               throw std::runtime_error("memread lambda, wrong size: " + std::to_string(sz));
+         
+        }
+        return true;
+    };
+    auto mem_write = [&mmu](uint32_t va, const void* val, size_t sz) -> bool {
+        throw std::runtime_error("memwrite lambda");
+        return true;
+    };
+    
+    auto ac97pci = std::make_unique<AC97Pci>(0, mem_read, mem_write);
+
+
+
     // Video RAM bank
-    mctrl.attach_bank<RamBank>(0x20000000, 8 * 1024 * 1024); // 8MB video memory
+    //mctrl.attach_bank<RamBank>(0x20000000, 8 * 1024 * 1024); // 8MB video memory
  
+    // APB CTRL area
+    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
+    auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
+    
+
+    // PCI memory 0x2400000 - 0x24ffffff, 16 MB
+    mctrl.attach_bank<RamBank>(0x24000000, 16 * 1024 * 1024);
+     
 
     // Main RAM bank
     mctrl.attach_bank<RamBank>(0x40000000, 64 * 1024 * 1024); // Main memory
@@ -178,21 +211,33 @@ int main(int argc, char **argv)
     mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
     mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
     
+    // PCI io + config 0xfffa0000 - 0xfffbffff, 128 kb
+    //mctrl.attach_bank<RamBank>(0xfffa0000, 64 * 1024); // PCI IO
+    GRPCI2& grpci2 = apbctrl.GetGRPCI2();
+    grpci2.attach_device(std::move(ac97pci));
+    mctrl.attach_bank<PCIIOCfgArea>(0xfffa0000, grpci2); // PCI CFG
+    
+    
+
     amba_ahb_pnp_setup(mctrl);
     amba_apb_pnp_setup(mctrl);
 
+    // Debug print amba pnp
+    if(dump_amba_pnp) {
+        debug_print_amba_pnp();
+    }
+
+
     
-    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
-    auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
-    IRQMP& intc = apbctrl.GetIntc();
     
     //SVGA svga(mctrl);
     
     //apbctrl.add_slave(svga, 0x800ff020, 0x80000400, 9);
 
 
-
-    mctrl.debug_list_banks();
+    if(dump_mem)
+        debug_print_memory_banks();
+        
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
@@ -207,6 +252,7 @@ int main(int argc, char **argv)
     // Build the vector of CPUs
     std::vector<CPU> cpus{};
     int num_cpus = 1;
+    IRQMP& intc = apbctrl.GetIntc();
     for(int i = 0; i < num_cpus; ++i) {
         auto& cpu = cpus.emplace_back(CPU{mmu, intc, write_to_file ? os : std::cout}); 
         cpu.set_verbose(verbose);
@@ -218,14 +264,17 @@ int main(int argc, char **argv)
                 IRQMP& intc = apbctrl.GetIntc();
                 APBUART& uart1 = apbctrl.GetUART();
                 APBUART& uart9 = apbctrl.GetUART9();
+                GRPCI2& grpci = apbctrl.GetGRPCI2();
+
                 timer.Tick();
                 uart1.Input();
+                grpci.tick();
 
                 if(timer.check_interrupt(false))
                     intc.TriggerIRQ(8);
                 
                 if(uart1.CheckIRQ()) 
-                    intc.TriggerIRQ(2);
+                    intc.TriggerIRQ(4);
                 if(uart9.CheckIRQ()) 
                     intc.TriggerIRQ(3);  
             }
@@ -260,6 +309,10 @@ int main(int argc, char **argv)
     act.sa_handler =  signal_handler;
     sigaction(SIGINT, &act, NULL);
  
+
+    if(exit_early)
+        return EXIT_SUCCESS;
+
     // Set up gdb stub
     //GdbStub gdb_stub{cpus, mmu};
     auto gdb_stub = std::make_unique<GdbStub>(cpus, mmu);  
@@ -275,6 +328,7 @@ int main(int argc, char **argv)
 
         // Run the machine in the main thread
         // Only run CPU 0 in this sim
+        int    NumRunInst       = 0;
         cpus[0].run(NumRunInst, &rs);
     }
 
@@ -290,6 +344,6 @@ int main(int argc, char **argv)
 
     os.close();
 
-    return (rs.reason != TerminateReason::NORMAL) ? rs.reason : NOERROR;
+    return (rs.reason != TerminateReason::NORMAL) ? rs.reason : EXIT_SUCCESS;
 }
 

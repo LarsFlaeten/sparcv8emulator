@@ -822,14 +822,18 @@ void mmu_init(MMU& mmu);
 /* Use 0xFFD00000-0xFFD3FFFF Segment to map PROM into addresses */
 #define CONFIG_LINUX_OPPROM_SEGMENT ((0xffd00000 - 0xff000000) / 0x40000)
 
+
+
 //* set RAM Base Address where the image will be loaded */
+#ifdef CONFIG_RAM_START
+#undef CONFIG_RAM_START
+#endif
 #define CONFIG_RAM_START 0x60000000
 
 #define PAGE_SHIFT 12
 #define PAGE_SIZE (1UL << PAGE_SHIFT)
 #define PAGE_MASK (PAGE_SIZE-1)
 
-#include "../src/debug.cpp"
 
 TEST_F(MMUTest, MMUTables)
 {

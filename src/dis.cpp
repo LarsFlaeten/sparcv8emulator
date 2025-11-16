@@ -130,7 +130,8 @@ void disDecodePrint(u32 PC, u32 opcode)
     std::string function, trimmed;
     int is_mov, is_cmp, is_rd, is_wr, is_sethi_or, is_clr;
     u32 imm_disp_rs2;
-    static u32 last_sethi = 0, last_sethi_value, last_sethi_reg;
+    //static u32 last_sethi = 0;
+    static u32 last_sethi_value, last_sethi_reg;
 
     u32 fmt_bits = (opcode >> FMTSTARTBIT) & LOBITS2;
     u32 op2      = (opcode >> OP2STARTBIT) & LOBITS3;
@@ -147,7 +148,7 @@ void disDecodePrint(u32 PC, u32 opcode)
         disPrintOpcode (PC, opcode, function, "");
         imm_disp_rs2 = opcode & LOBITS30;
         fprintf(ofp, "0x%08x\n", (int)PC+(int)(imm_disp_rs2*4));
-        last_sethi = 0;
+        //last_sethi = 0;
         break;
 
     // SETHI, Branches
@@ -158,15 +159,15 @@ void disDecodePrint(u32 PC, u32 opcode)
         if (function == "unimp   ") {
             disPrintOpcode(PC, opcode, function, "");
             fprintf(ofp, "0x%x\n", opcode);
-            last_sethi = 0;
+            //last_sethi = 0;
         } else if (function == "sethi   ") {
             if (opcode == NOP) {
                 function = "nop     ";
-                last_sethi = 0;
+                //last_sethi = 0;
             } else {
                 last_sethi_value = imm_disp_rs2<<10;
                 last_sethi_reg = rd;
-                last_sethi = 1;
+                //last_sethi = 1;
             }
 
             disPrintOpcode(PC, opcode, function, "");
@@ -179,7 +180,7 @@ void disDecodePrint(u32 PC, u32 opcode)
         } else {
             disPrintOpcode(PC, opcode, function, cond_byte[rd & 0xf]);
             fprintf(ofp, "\t0x%x\n", (int)PC + (int)(sign_ext22(imm_disp_rs2*4)));
-            last_sethi = 0;
+            //last_sethi = 0;
         }
         break;
 
@@ -216,7 +217,7 @@ void disDecodePrint(u32 PC, u32 opcode)
             disShowRegName(rd & LOBITS5);
         }
         fprintf(ofp, "\n");
-        last_sethi = 0;
+        //last_sethi = 0;
         
         break;
 
@@ -271,7 +272,7 @@ void disDecodePrint(u32 PC, u32 opcode)
         if (is_sethi_or)
             fprintf(ofp, "\t! 0x%x", last_sethi_value | imm_disp_rs2);
         fprintf(ofp, "\n");
-        last_sethi = 0;
+        //last_sethi = 0;
 
         break;
    }
