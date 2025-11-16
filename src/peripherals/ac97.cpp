@@ -14,9 +14,15 @@ void AC97Pci::init_codec() {
     codec_regs_[0x26 >> 1] = 0x0000;
 
     // Extended Audio ID / Control
-    codec_regs_[0x28 >> 1] = 0x0039; // VRA + VRM + PCM DAC + PCM ADC
-    codec_regs_[0x2A >> 1] = 0x0001;
-    
+    //codec_regs_[0x28 >> 1] = 0x0039; // VRA + VRM + PCM DAC + PCM ADC
+    //codec_regs_[0x2A >> 1] = 0x0001;
+    codec_regs_[0x28 >> 1] = 0x0001;   // Extended Audio ID = PCM only
+    codec_regs_[0x2A >> 1] = 0x0007;   // Extended Audio Status:
+                                   // bit0 = VRA supported? no (0)
+                                   // bit1 = VRM? no (0)
+                                   // bit2 = PCM DAC supported (1)
+                                   // bit3 = PCM ADC supported (1)
+                                   // bit2|bit3|bit0 maybe -> 0x0007
     // Rates
     codec_regs_[0x2C >> 1] = 0xBB80; // PCM Front DAC Rate  = 48000
     codec_regs_[0x32 >> 1] = 0xBB80; // PCM ADC Rate        = 48000
@@ -72,6 +78,9 @@ void AC97Pci::tick() {
 
     // Read samples from guest memory
     std::vector<int16_t> samples(buf_len / 2);
+    // Update PICB so ALSA sees progress and correct period size
+    po_picb_ = buf_len / 2;
+
     for (size_t i = 0; i < samples.size(); ++i) {
         uint16_t buf;
         mem_read_(buf_paddr + i * 2, &buf, 2);
@@ -305,11 +314,7 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
             
             break;
         default:
-            //uint16_t val = static_cast<uint16_t>(value & 0xFFFF);
             codec_regs_[offset >> 1] = (value);
-
-            
-    
             break;
     }
 
@@ -509,24 +514,40 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
             case BMOff::PO_BASE + BMOff::CR: {
                 uint8_t old = po_control_;
                 po_control_ = value & 0x1F;
-                if (po_control_ & 0x02) {
-                    if(old & 0x1)
-                        throw std::runtime_error("Reset called when running bit is 1.");
-                    // Reset requested
-                    po_control_ &= ~0x02; // immediately clear reset bit
 
-                    // reset
+                // Handle reset bit
+                if (po_control_ & 0x02) {
+                    if (old & 0x01)
+                        throw std::runtime_error("Reset called while RUN=1.");
+                    po_control_ &= ~0x02; // auto-clear reset bit
+
                     running_ = false;
                     po_civ_ = 0;
                     po_status_ = 0x0001; // DCH=1
                     po_picb_ = 0;
-                    
+                    break;
                 }
-                bool old_run = old & 0x01;
-                bool new_run = value & 0x01;
 
-                if (new_run != old_run)
-                    set_run(new_run);
+                bool old_run = old & 0x01;
+                bool new_run = po_control_ & 0x01;
+
+                if (new_run && !old_run) {
+                    // RUN just transitioned 0 → 1
+
+                    set_run(true);
+
+                    // --- IMPORTANT: initialize PICB from BD ---
+                    uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
+
+                    uint16_t buf_len = 0;
+                    mem_read_(bd_addr + 4, &buf_len, 2);
+
+                    // PICB = #samples remaining
+                    po_picb_ = buf_len / 2;
+                }
+                else if (!new_run && old_run) {
+                    set_run(false);
+                }
 
                 break;
             }

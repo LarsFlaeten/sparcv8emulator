@@ -278,8 +278,6 @@ private:
             po_status_ |=  0x0001;  // halted
             po_status_ &= ~0x0002;  // clear CIP
         }
-
-        po_picb_ = 0x2000 / 4; //buf_len_in_samples; 
     }
 
     void init_pci_config(){
@@ -293,6 +291,7 @@ private:
         write16(0x06,read16(0x06)|kStatusCapsListBit);
         write32(BAR0,0x00000001); 
         write32(BAR1,0x00000001);
+        write32(0x2C, 0x0000000C); // stereo + 16-bit
         write32(0x30, 0x00000000); // No expansion ROM
         config_[0x3D]=0x01; 
         config_[0x3C]=0xFF;
@@ -339,7 +338,10 @@ private:
                 } else {
                     probing_bar_[bar_idx] = false;
                     // Keep BAR0/1 as I/O type (bit0=1), ignore writes to bits [3:0].
-                    bar_values_[bar_idx] = (v & 0xFFFFFFF0u) | 0x1u;
+                    //bar_values_[bar_idx] = (v & 0xFFFFFFF0u) | 0x1u;
+
+                    // AC97 NAM + NABM require MMIO bars
+                    bar_values_[bar_idx] = (v & 0xFFFFFFF0u);   // bit0 = 0 → memory BAR
                 }
                 break;
             }
@@ -368,7 +370,8 @@ private:
 
                 if (probing_bar_[bar_idx]) {
                     // Return mask to indicate 256-byte I/O space
-                    return 0xFFFFFF01u;
+                    //return 0xFFFFFF01u;
+                    return 0xFFFFF000u; // MMIO bars
                 }
                 return bar_values_[bar_idx];
             default:
