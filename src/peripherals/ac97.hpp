@@ -280,44 +280,9 @@ private:
         }
     }
 
-    void init_pci_config(){
-        write16(0x00,kVendorId); 
-        write16(0x02,kDeviceId);
-        config_[0x08]=0x01; 
-        config_[0x09]=kProgIf; 
-        config_[0x0A]=kClassSub; 
-        config_[0x0B]=kClassBase; 
-        config_[0x0E]=kHeaderType;
-        write16(0x06,read16(0x06)|kStatusCapsListBit);
-        write32(BAR0,0x00000001); 
-        write32(BAR1,0x00000001);
-        write32(0x2C, 0x0000000C); // stereo + 16-bit
-        write32(0x30, 0x00000000); // No expansion ROM
-        config_[0x3D]=0x01; 
-        config_[0x3C]=0xFF;
-        config_[kCapPtrOffset]=0x50;
-        
-        // Initialize GRPCI2 capability at 0x50
-        init_grpci2_cap(0x50, 0x00);
+    void init_pci_config();
 
-        
-        init_codec();
-    }
-
-    void init_grpci2_cap(uint8_t off, uint8_t next) {
-        // Vendor-specific GRPCI2 capability
-        config_[off + 0x00] = 0x80; // capability ID (custom)
-        config_[off + 0x01] = next; // next pointer = none
-
-        // PCI->AMBA mapping (optional mock values)
-        write32(off + 0x04, 0xFA000000); // I/O mapping
-        write32(off + 0x08, 0x24000000); // MEM mapping
-
-        // Endianness config (the GRPCI2 endian register)
-        // bit 0 = 1 => little endian I/O
-        // bit 1 = 1 => little endian MEM
-        write32(off + 0x20, 0x00000001); // I/O little-endian, MEM big-endian
-    }
+    void init_grpci2_cap(uint8_t off, uint8_t next);
 
     void init_codec();
 

@@ -2,6 +2,48 @@
 
 #include <bit>
 
+void AC97Pci::init_pci_config(){
+    write16(0x00,kVendorId); 
+    write16(0x02,kDeviceId);
+    config_[0x08]=0x01; 
+    config_[0x09]=kProgIf; 
+    config_[0x0A]=kClassSub; 
+    config_[0x0B]=kClassBase; 
+    config_[0x0E]=kHeaderType;
+    write16(0x06,read16(0x06)|kStatusCapsListBit);
+    //write32(BAR0,0x00000001); 
+    //write32(BAR1,0x00000001);
+    write32(BAR0, 0x24000000);   // memory BAR
+    write32(BAR1, 0x24000100);   // memory BAR
+    
+    write32(0x2C, 0x0000000C); // stereo + 16-bit
+    write32(0x30, 0x00000000); // No expansion ROM
+    config_[0x3D]=0x01; 
+    config_[0x3C]=0xFF;
+    config_[kCapPtrOffset]=0x50;
+    
+    // Initialize GRPCI2 capability at 0x50
+    init_grpci2_cap(0x50, 0x00);
+
+    
+    init_codec();
+}
+
+void AC97Pci::init_grpci2_cap(uint8_t off, uint8_t next) {
+    // Vendor-specific GRPCI2 capability
+    config_[off + 0x00] = 0x80; // capability ID (custom)
+    config_[off + 0x01] = next; // next pointer = none
+
+    // PCI->AMBA mapping (optional mock values)
+    write32(off + 0x04, 0xFA000000); // I/O mapping
+    write32(off + 0x08, 0x24000000); // MEM mapping
+
+    // Endianness config (the GRPCI2 endian register)
+    // bit 0 = 1 => little endian I/O
+    // bit 1 = 1 => little endian MEM
+    write32(off + 0x20, 0x00000001); // I/O little-endian, MEM big-endian
+}
+
 void AC97Pci::init_codec() {
     for(u_int8_t i = 0; i <64; ++i)
         codec_regs_[i] = 0x0U;
@@ -330,18 +372,16 @@ uint32_t AC97Pci::read_glob_sta()
     uint32_t val = glob_sta_;
 
     if (semaphore_pulse_pending_) {
-        val &= ~GS_S0R;
-        // First read after command -> toggle to ready
+        val &= ~GS_S0R;          // clear semaphore bit
         semaphore_state_ = true;
         semaphore_pulse_pending_ = false;
     } else {
-        val |= GS_S0R;
+        val |= GS_S0R;           // set semaphore bit
     }
-
-    
 
     return val;
 }
+
 uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
 {
     uint32_t val = 0;
@@ -657,13 +697,12 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 break;
             }
             case BMOff::GLOB_STA: {
-                // Preserve codec-ready bits (0x00000100,0x00000200,0x00000400)
-                uint32_t clear_mask = value & ~(0x00000100 | 0x00000200 | 0x00000400);
-                glob_sta_ &= ~clear_mask;
+                // Only bits 4,5,6,7,15,23.. etc are W1C on real hardware
+                // For now: allow clearing ONLY GS_S0R
+                if (value & GS_S0R)
+                    glob_sta_ &= ~GS_S0R;
+
                 break;
-                // Writing 1s clears bits
-                //glob_sta_ &= ~value;
-                //break;
             }
             default:
                 throw("[AC97 NABM] Read16 not valid for register " + to_hex(offset));
@@ -677,14 +716,11 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
 void AC97Pci::cold_reset() {
     
-    // Clear codec registers
     memset(codec_regs_, 0, sizeof(codec_regs_));
-
-    // Clear DMA state
     bdbar_playback_ = 0;
     bdbar_capture_  = 0;
-    glob_sta_ = 0x00000100;
 
+    glob_sta_ = GS_CRDY_CODEC0; // bit 8 set
 }
 
 
