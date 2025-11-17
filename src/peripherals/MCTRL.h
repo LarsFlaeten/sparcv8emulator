@@ -340,12 +340,13 @@ public:
             size_t size    = end - start + 1;
             std::string size_str = (size >= (1024 * 1024)) ?
                 std::to_string(size / (1024 * 1024)) + " MB" :
-                std::to_string(size / 1024) + " KB";
+                (size >= 1024) ? std::to_string(size / 1024) + " KB" :
+                std::to_string(size) + " B";
 
             // Try-write to detect read-only status (non-destructive)
             bool writable = true;
             try {
-                bank->write8(start, bank->read8(start));
+                bank->write32(start, bank->read32(start));
             } catch (...) {
                 writable = false;
             }
@@ -357,7 +358,7 @@ public:
             std::cout << std::setw(3) << i << " | 0x"
                     << std::hex << std::setw(8) << std::setfill('0') << start
                     << " - 0x" << std::setw(8) << end
-                    << " | " << std::right << std::setw(8) << std::left << size_str
+                    << " | " << std::right << std::setw(8) << std::setfill(' ') << std::left << size_str
                     << " | " << std::setw(6) << access
                     << " | " << std::setw(6) << endian
                     << " | " << type << "\n";
