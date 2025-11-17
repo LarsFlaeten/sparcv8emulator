@@ -261,30 +261,13 @@ u32 GRPCI2::config_read(u32 paddr, u8 size){
 }
 
 u32 GRPCI2::io_read(u32 paddr, u8 size) {
-
-    auto offs = paddr - GRPCI2::Map::PCI_IO_BASE;
-
-    if(offs>0x10000) {
-        throw std::runtime_error("PCI io read, addr=" + to_hex(paddr) + ", sz=" + to_hex(size));  
-    }
-
+    // PCI I/O not implemented — return ~0
     switch (size) {
-        case 8: {
-            uint8_t v = device_->io_read8(offs);
-            return v;  // 8-bit endian neutral
-        }
-        case 16: {
-            uint16_t v = device_->io_read16(offs);
-            return std::byteswap(v);  // swap to host order
-        }
-        case 32: {
-            uint32_t v = device_->io_read32(offs);
-            return std::byteswap(v);  // swap to host order
-        }
-        default:
-            throw std::runtime_error("IO read: unsupported size " + std::to_string(size));
+        case 8:  return 0xFF;
+        case 16: return 0xFFFF;
+        case 32: return 0xFFFFFFFF;
+        default: return 0xFFFFFFFF;
     }
-    
 }
 
 void GRPCI2::config_write(u32 paddr, u32 val, u8 size){
@@ -341,25 +324,6 @@ void GRPCI2::config_write(u32 paddr, u32 val, u8 size){
 }
 
 void GRPCI2::io_write(u32 paddr, u32 value, u8 size){
-    auto offs = paddr - GRPCI2::Map::PCI_IO_BASE;
-
-    if(offs>0x10000) {
-        throw std::runtime_error("PCI io write, addr=" + to_hex(paddr) + ", val=" + to_hex(value) + ", sz=" + to_hex(size));
-    }
-
-    switch (size) {
-        case 8:
-            device_->io_write8(offs, value & 0xFF);
-            break;
-        case 16:
-            device_->io_write16(offs, std::byteswap<uint16_t>(value & 0xFFFF));
-            break;
-        case 32:
-            device_->io_write32(offs, std::byteswap<uint32_t>(value));
-            break;
-        default:
-            throw std::runtime_error("IO write: unsupported size " + std::to_string(size));
-    }
-    
-    
+    // Ignore all PCI I/O writes
+    return;
 }
