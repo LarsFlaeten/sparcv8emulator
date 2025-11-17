@@ -188,9 +188,11 @@ int main(int argc, char **argv)
         return true;
     };
     
-    auto ac97pci = std::make_unique<AC97Pci>(0, mem_read, mem_write);
+    auto ac97pci = std::make_unique<AC97Pci>(0, mem_read, mem_write, mctrl);
 
-
+    // Main RAM bank
+    mctrl.attach_bank<RamBank>(0x40000000, 64 * 1024 * 1024); // Main memory
+ 
 
     // Video RAM bank
     //mctrl.attach_bank<RamBank>(0x20000000, 8 * 1024 * 1024); // 8MB video memory
@@ -200,13 +202,13 @@ int main(int argc, char **argv)
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
     
 
-    // PCI memory 0x2400000 - 0x24ffffff, 16 MB
-    mctrl.attach_bank<RamBank>(0x24000000, 16 * 1024 * 1024);
+    // PCI MMIO BARS
+    mctrl.attach_bank<PCIMMIOBank>(*ac97pci, 0x24000800, 0x100);
+    mctrl.attach_bank<PCIMMIOBank>(*ac97pci, 0x24000900, 0x100);
+    
      
 
-    // Main RAM bank
-    mctrl.attach_bank<RamBank>(0x40000000, 64 * 1024 * 1024); // Main memory
- 
+    
     // Amba PNP area
     mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
     mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
