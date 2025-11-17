@@ -109,6 +109,60 @@ private:
     int sample_rate_;
 };
 
+#include "MCTRL.h"
+#include "pcidevice.hpp"
+
+class PCIMMIOBank : public IMemoryBank {
+public:
+    PciDevice& dev;
+    uint32_t base_addr_;
+    uint32_t size_;
+
+    PCIMMIOBank(PciDevice& d, uint32_t base_addr, uint32_t size) : IMemoryBank(Endian::Little), dev(d), base_addr_(base_addr), size_(size) {}
+
+    virtual uint32_t read32(uint32_t addr, bool) const override {
+        //uint32_t off = addr - base_addr_;
+        return dev.io_read32(addr);
+    }
+
+    virtual uint16_t read16(uint32_t addr, bool) const override {
+        //uint32_t off = addr - base_addr_;
+        return dev.io_read16(addr);
+    }
+
+    virtual uint8_t read8(uint32_t addr) const override {
+        //uint32_t off = addr - base_addr_;
+        return dev.io_read8(addr);
+    }
+
+    virtual void write32(uint32_t addr, uint32_t val, bool) override {
+        //uint32_t off = addr - base_addr_;
+        dev.io_write32(addr, val);
+    }
+
+    virtual void write16(uint32_t addr, uint16_t val, bool) override {
+        //uint32_t off = addr - base_addr_;
+        dev.io_write16(addr, val);
+    }
+
+    virtual void write8(uint32_t addr, uint8_t val) override {
+        //uint32_t off = addr - base_addr_;
+        dev.io_write8(addr, val);
+    }
+
+    virtual bool contains(uint32_t paddr) const 
+    {
+        return (paddr >= base_addr_) && (paddr < (base_addr_ + size_));
+    }
+
+    // Gets a pointer to the host data buffer
+    virtual u32* get_ptr() {throw std::runtime_error("get_ptr not implemented for PCIMMIO.");};
+
+    u32 get_base() const override { return base_addr_; }
+    u32 get_limit() const override { return base_addr_ + size_; }
+
+};
+
 #include "pcidevice.hpp"
 
 class AC97Pci final : public PciDevice {
@@ -154,8 +208,9 @@ public:
     
     explicit AC97Pci(uint8_t device_number,
                      std::function<bool(uint32_t, void*, size_t)> mem_read,
-                     std::function<bool(uint32_t, const void*, size_t)> mem_write)
-        : dev_num_(device_number), mem_read_(mem_read), mem_write_(mem_write) {
+                     std::function<bool(uint32_t, const void*, size_t)> mem_write,
+                     MCtrl& mctrl)
+        : dev_num_(device_number), mem_read_(mem_read), mem_write_(mem_write), mctrl_(mctrl) {
 
         host_audio_ = std::make_unique<HostAudioOut>(48000, 2);
 
@@ -189,12 +244,13 @@ public:
     }
 
 private:
-
     uint8_t dev_num_{0};
     std::array<uint8_t,256> config_{};
     std::array<uint8_t,256> nam_{};
     std::function<bool(uint32_t, void*, size_t)> mem_read_;
     std::function<bool(uint32_t, const void*, size_t)> mem_write_;
+    MCtrl& mctrl_;
+    
     std::function<void()> raise_intx_;
     std::unique_ptr<HostAudioOut> host_audio_;
 
@@ -205,6 +261,8 @@ private:
     uint32_t bar_values_[kNumBars]{};  // store assigned base addresses
     bool probing_bar_[kNumBars]{};     // optional flags for 0xFFFFFFFF probe
     bool running_ = false;
+    uint32_t nam_base_ = 0;
+    uint32_t nabm_base_ = 0;
     
     // NAM = codec register file (0x00–0x7F)
     uint16_t codec_regs_[0x80/2] = {};
@@ -213,10 +271,12 @@ private:
     //static constexpr uint32_t GS_CRDY = 0x00000100;     // Codec ready
     static constexpr uint32_t GS_S0R  = 0x00800000;   // semaphore bit for codec 0
     static constexpr uint32_t GS_S1R  = 0x01000000;     // Codec semaphore (Codec 1)
+    static constexpr uint32_t GLOB_CNT_WARM_RST = 1u << 20;
+    static constexpr uint32_t GLOB_CNT_COLD_RST = 1u << 21;  // optional
     
     // semaphore state variables
-    bool semaphore_pulse_pending_ = false;
-    bool semaphore_state_ = false; // false = 0 (busy), true = 1 (ready)
+    //bool semaphore_pulse_pending_ = false;
+    //bool semaphore_state_ = false; // false = 0 (busy), true = 1 (ready)
 
     // NABM = bus-master / DMA control area
     uint32_t bdbar_playback_ = 0;
@@ -257,6 +317,8 @@ private:
     void write_nabm(uint32_t of, uint32_t val, uint8_t width);
 
     void cold_reset();
+    void warm_reset();
+    
     
     uint16_t read_po_sr() const {
         return po_status_;
@@ -293,24 +355,69 @@ private:
 
     void write32(uint16_t off, uint32_t v) noexcept {
         switch (off) {
-            case BAR0:
-            case BAR1: {
-                uint8_t bar_idx = (off - BAR0) / 4;
-
+            case BAR0: {   // NAM BAR
+                uint8_t bar_idx = 0;
                 if (v == 0xFFFFFFFFu) {
-                    // Linux probing BAR size
-                    probing_bar_[bar_idx] = true;
-                } else {
-                    probing_bar_[bar_idx] = false;
-                    // Keep BAR0/1 as I/O type (bit0=1), ignore writes to bits [3:0].
-                    //bar_values_[bar_idx] = (v & 0xFFFFFFF0u) | 0x1u;
+                    //std::cout << "[AC97] write32, probing NAM bar\n";
 
-                    // AC97 NAM + NABM require MMIO bars
-                    bar_values_[bar_idx] = (v & 0xFFFFFFF0u);   // bit0 = 0 → memory BAR
+                    probing_bar_[bar_idx] = true;
+                } else if (v == 0) {
+                    //std::cout << "[AC97] write32, disabling NAM bar, idx=" << to_hex(bar_idx) << "\n";
+
+                    // BAR disabled
+                    probing_bar_[bar_idx] = false;
+                    bar_values_[bar_idx] = 0;
+
+                    // DO NOT ATTACH MEMORY
+                    nam_base_ = 0;
+                    
+                } else {
+                    //std::cout << "[AC97] write32, creating NAM bar, 0x" << to_hex(v) << "\n";
+
+                    probing_bar_[bar_idx] = false;
+
+                    // Linux writes a physical MMIO address here
+                    bar_values_[bar_idx] = (v & 0xFFFFFFF0u);
+
+                    // AC'97 NAM region = first BAR
+                    nam_base_ = bar_values_[bar_idx];
+                    //std::cout << "[AC97] write32, creating new memory area at 0x" << to_hex(nam_base_) << "\n";
+
+                    //mctrl_.attach_bank<PCIMMIOBank>(*this, nam_base_);
                 }
                 break;
             }
 
+            case BAR1: {   // NABM BAR
+                uint8_t bar_idx = 1;
+                if (v == 0xFFFFFFFFu) {
+                    //std::cout << "[AC97] write32, probing NABM bar\n";
+
+                    probing_bar_[bar_idx] = true;
+                } else if (v == 0) {
+                    //std::cout << "[AC97] write32, disabling NAM bar, idx=" << to_hex(bar_idx) << "\n";
+
+                    // BAR disabled
+                    probing_bar_[bar_idx] = false;
+                    bar_values_[bar_idx] = 0;
+
+                    // DO NOT ATTACH MEMORY
+                    nabm_base_ = 0;
+                    
+                } else {
+                    //std::cout << "[AC97] write32, creating NABM bar, 0x" << to_hex(v) << "\n";
+
+                    probing_bar_[bar_idx] = false;
+
+                    bar_values_[bar_idx] = (v & 0xFFFFFFF0u);
+
+                    // AC'97 NABM region = second BAR
+                    nabm_base_ = bar_values_[bar_idx];
+                    //std::cout << "[AC97] write32, creating new memory area at 0x" << to_hex(nabm_base_) << "\n";
+                    //mctrl_.attach_bank<PCIMMIOBank>(*this, nabm_base_);
+                }
+                break;
+            }
             default:
                 config_[off + 0] = static_cast<uint8_t>(v & 0x000000FF);
                 config_[off + 1] = static_cast<uint8_t>((v >> 8) & 0x000000FF);
@@ -334,9 +441,12 @@ private:
                 bar_idx = (off - BAR0) / 4;  // 0 or 1
 
                 if (probing_bar_[bar_idx]) {
-                    // Return mask to indicate 256-byte I/O space
-                    //return 0xFFFFFF01u;
-                    return 0xFFFFF000u; // MMIO bars
+                    //std::cout << "[AC97] read32, probing NABM or NAM bar\n";
+
+                    // 256-byte I/O aperture → return I/O mask
+                    //return 0xFFFF00FCu;  // bit0=0 for mask, BAR says I/O
+                    // Return size mask for 256-byte memory BAR
+                    return 0xFFFFFF00u;
                 }
                 return bar_values_[bar_idx];
             default:

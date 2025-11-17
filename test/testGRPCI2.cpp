@@ -384,7 +384,7 @@ TEST_F(GRPCI2Test, ac97_init)
         return true;
     };
     
-    auto ac97pci = std::make_unique<AC97Pci>(0, mem_read, mem_write);
+    auto ac97pci = std::make_unique<AC97Pci>(0, mem_read, mem_write, mctrl);
     
 
     // Set up what we need of memory and peripherals to test all this:

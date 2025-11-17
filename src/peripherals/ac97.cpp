@@ -10,11 +10,14 @@ void AC97Pci::init_pci_config(){
     config_[0x0A]=kClassSub; 
     config_[0x0B]=kClassBase; 
     config_[0x0E]=kHeaderType;
-    write16(0x06,read16(0x06)|kStatusCapsListBit);
+    // DO NOT advertise any PCI capabilities (avoids MMIO BARs)
+    write16(0x06, read16(0x06) & ~kStatusCapsListBit);
+    //write16(0x06,read16(0x06)|kStatusCapsListBit);
+    
     //write32(BAR0,0x00000001); 
     //write32(BAR1,0x00000001);
-    write32(BAR0, 0x24000000);   // memory BAR
-    write32(BAR1, 0x24000100);   // memory BAR
+    //write32(BAR0, 0x24000000);   // memory BAR
+    //write32(BAR1, 0x24000100);   // memory BAR
     
     write32(0x2C, 0x0000000C); // stereo + 16-bit
     write32(0x30, 0x00000000); // No expansion ROM
@@ -30,6 +33,7 @@ void AC97Pci::init_pci_config(){
 }
 
 void AC97Pci::init_grpci2_cap(uint8_t off, uint8_t next) {
+    /*
     // Vendor-specific GRPCI2 capability
     config_[off + 0x00] = 0x80; // capability ID (custom)
     config_[off + 0x01] = next; // next pointer = none
@@ -42,6 +46,7 @@ void AC97Pci::init_grpci2_cap(uint8_t off, uint8_t next) {
     // bit 0 = 1 => little endian I/O
     // bit 1 = 1 => little endian MEM
     write32(off + 0x20, 0x00000001); // I/O little-endian, MEM big-endian
+    */
 }
 
 void AC97Pci::init_codec() {
@@ -52,8 +57,7 @@ void AC97Pci::init_codec() {
     codec_regs_[0x7C >> 1] = 0x4144;  // 'AD'
     codec_regs_[0x7E >> 1] = 0x5348; // "AD1881A"
 
-    // Codec Powerdown: fully powered
-    codec_regs_[0x26 >> 1] = 0x0000;
+    codec_regs_[0x26 >> 1] = 0x80F0;  // many real codecs report this
 
     // Extended Audio ID / Control
     //codec_regs_[0x28 >> 1] = 0x0039; // VRA + VRM + PCM DAC + PCM ADC
@@ -80,10 +84,13 @@ void AC97Pci::init_codec() {
     codec_regs_[0x18 >> 1] = 0x0808;  // PCM out volume
     codec_regs_[0x1A >> 1] = 0x0808;  // Line out
 
-    glob_sta_ |= GS_CRDY_CODEC0;
-    glob_sta_ &= ~GS_S0R;              // start with semaphore = 0 (busy)
-    semaphore_state_ = false;
-    semaphore_pulse_pending_ = false;
+    //glob_sta_ |= GS_CRDY_CODEC0;
+    //glob_sta_ &= ~GS_S0R;              // start with semaphore = 0 (busy)
+    //semaphore_state_ = false;
+    //semaphore_pulse_pending_ = false;
+
+    glob_sta_ |= GS_CRDY_CODEC0;   // Codec is present & ready
+    glob_sta_ |= GS_S0R;           // No pending codec command (idle)
 }
 
 
@@ -162,120 +169,136 @@ void AC97Pci::tick() {
     
 }
 
+uint32_t AC97Pci::io_read32(uint32_t addr) {
+    uint32_t ret;
+    if (addr < nam_base_ || addr >= nam_base_+0x100)
+        printf("NOT NAM read: %08x\n", addr);
 
-/*
-    // Advance CIV
-    po_civ_ = (po_civ_ + 1) & 0x1F;
+    if (addr < nabm_base_ || addr >= nabm_base_+0x100)
+        printf("NOT NABM read: %08x\n", addr);
 
-    // Check for buffer completion
-    if (po_civ_ == po_lvi_) {
-        po_status_ |= 0x08; // BIS (Buffer Interrupt)
-        po_status_ |= 0x04; // LVB (Last Valid Buffer)
-
-        // If interrupts enabled in PO_CR (bit 4)
-        if (po_control_ & 0x10) {
-            // trigger PCI interrupt line
-            if (raise_intx_) raise_intx_();
-        }
-
-        // Wrap CIV for next round
-        po_civ_ = 0;
-    }
-}
-*/
-uint32_t AC97Pci::io_read32(uint32_t port) {
-
-    // NAM or NABM
-    if(port >= 0x1000) {
-        if((port - 0x1000) >= 0x100) {
-            // NABM
-            auto of = port & 0xFFU;
-            return read_nabm(of, 4);
-        } 
+    if ((addr >= nam_base_) && (addr < (nam_base_ + 0x100))) {
+        uint32_t of = addr - nam_base_;
+        uint32_t val = read_nam(of & 0xFF);
+        ret = 0xFFFF0000u | val;     // REQUIRED BY AC'97
+    } else if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
+        uint32_t of = addr - nabm_base_;
+        ret = read_nabm(of & 0xFF, 4);
+    } else {
+        ret = 0xFFFFFFFF;
     }
 
-    throw std::runtime_error("Halt here");
-}
-
-uint16_t AC97Pci::io_read16(uint32_t port) {
-    //printf("[AC97 IOREAD16]  read  @%02x\n", port);
+    std::cout << "[AC97] io_read32 addr=0x" << to_hex(addr) << " -> " << to_hex(ret) << "\n";
     
-    // NAM or NABM
-    if(port >= 0x1000) {
-        if((port - 0x1000) < 0x100) {
-            // NAM
-            auto of = port & 0xFFU;
-            return read_nam(of);
-        } else if((port - 0x1000) >= 0x100) {
-            // NABM
-            auto of = port & 0xFFU;
-            return read_nabm(of, 2);
-        } 
+    //throw std::runtime_error("AC97: invalid io_read32 port: 0x" + to_hex(port));
+    return ret;
+}
+
+
+uint16_t AC97Pci::io_read16(uint32_t addr) {
+    uint16_t ret;
+    if ((addr >= nam_base_) && (addr < (nam_base_ + 0x100))) {
+        uint32_t of = addr - nam_base_;
+        ret = read_nam(of & 0xFF);
+    } else if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
+        uint32_t of = addr - nabm_base_;
+        ret = read_nabm(of & 0xFF, 2);
+    } else {
+        ret = 0xFFFF;
     }
 
-    throw std::runtime_error("Halt here");
+    std::cout << "[AC97] io_read16 addr=0x" << to_hex(addr) << " -> " << to_hex(ret) << "\n";
+    
+    //throw std::runtime_error("AC97: invalid io_read16 port: 0x" + to_hex(port));
+    return ret;
+    
 }
 
-uint8_t AC97Pci::io_read8(uint32_t port) {
+uint8_t AC97Pci::io_read8(uint32_t addr) {
+    uint8_t ret;
+    /*
+    if (port >= nam_base_ && port < nam_base_ + 0x100) {
+        uint32_t of = port - nam_base_;
+        return read_nam(of & 0xFF);
+    }
+    */
 
-    // NAM or NABM
-    if(port >= 0x1000) {
-        if((port - 0x1000) >= 0x100) {
-            // NABM
-            auto of = port & 0xFFU;
-            return read_nabm(of, 1) & 0xff;
-        } 
+    if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
+        uint32_t of = addr - nabm_base_;
+        ret = read_nabm(of & 0xFF, 1);
+    } else {
+        ret = 0xFF;
     }
 
-    throw std::runtime_error("Halt here");
+    std::cout << "[AC97] io_read8 addr=0x" << to_hex(addr) << " -> " << to_hex(ret) << "\n";
+    //throw std::runtime_error("AC97: invalid io_read8 port: 0x" + to_hex(port));
+    return ret;
 }
 
-void AC97Pci::io_write32(uint32_t port, uint32_t v) {
-    // NAM or NABM
-    if(port >= 0x1000) {
-        if((port - 0x1000) >= 0x100) {
-            // NABM
-            auto of = port & 0xFFU;
-            write_nabm(of, v, 4);
-        } else {
-            // NAM
-            auto of = port & 0xFFU;
-            write_nam(of, v);
-        }
-    } else
-        throw std::runtime_error("Halt here");
-}
-
-void AC97Pci::io_write16(uint32_t port, uint16_t v) {
-    //printf("[AC97 IOWRITE16]  write  @%02x -> %04x\n", port, v);
+void AC97Pci::io_write32(uint32_t addr, uint32_t v) {
+    std::cout << "[AC97] io_write32 addr=0x" << to_hex(addr) << " <- " << to_hex(v) << "\n";
     
-    // NAM or NABM
-    if(port >= 0x1000) {
-        if((port - 0x1000) >= 0x100) {
-            // NABM
-            auto of = port & 0xFFU;
-            write_nabm(of, v, 2);
-        } else {
-            // NAM
-            auto of = port & 0xFFU;
-            write_nam(of, v);
-        }
-    } else
-        throw std::runtime_error("Halt here");
+    if ((addr >= nam_base_) && (addr < (nam_base_ + 0x100))) {
+        uint32_t of = addr - nam_base_;
+        write_nam(of & 0xFF, v);
+        return;
+    }
+
+    if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
+        uint32_t of = addr - nabm_base_;
+        write_nabm(of & 0xFF, v, 4);
+        return;
+    }
+
+    // Silently ignore writes outside the BARS
+    std::cout << "[AC97] io_write32 addr=0x" << to_hex(addr) << ", val=" << to_hex(v) << " (ignored)\n";
+    
+    //throw std::runtime_error("AC97: invalid io_write32 port: 0x" + to_hex(addr) + ", v=0x" + to_hex(v));
+    
 }
 
-void AC97Pci::io_write8(uint32_t port, uint8_t v) {
-    //printf("[AC97 IOWRITE16]  write  @%02x -> %04x\n", port, v);
+void AC97Pci::io_write16(uint32_t addr, uint16_t v) {
+    std::cout << "[AC97] io_write16 addr=0x" << to_hex(addr) << " <- " << to_hex(v) << "\n";
     
-    // NAM or NABM
-    if(port >= 0x1000) {
-        if((port - 0x1000) >= 0x100) {
-            // NABM
-            auto of = port & 0xFFU;
-            write_nabm(of, v, 1);
-        }
-    } else 
-        throw std::runtime_error("Halt here");
+    if ((addr >= nam_base_) && (addr < (nam_base_ + 0x100))) {
+        uint32_t of = addr - nam_base_;
+        write_nam(of & 0xFF, v);
+        return;
+    }
+
+    if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
+        uint32_t of = addr - nabm_base_;
+        write_nabm(of & 0xFF, v, 2);
+        return;
+    }
+
+    // Silently ignore writes outside the BARS
+    std::cout << "[AC97] io_write16 addr=0x" << to_hex(addr) << ", val=" << to_hex(v) << " (ignored)\n";
+    
+    //throw std::runtime_error("AC97: invalid io_write32 port: 0x" + to_hex(port) + ", v=0x" + to_hex(v));
+}
+
+void AC97Pci::io_write8(uint32_t addr, uint8_t v) {
+    std::cout << "[AC97] io_write8 addr=0x" << to_hex(addr) << " <- " << to_hex(v) << "\n";
+    
+    /*   
+    if (port >= nam_base_ && port < nam_base_ + 0x100) {
+        uint32_t of = port - nam_base_;
+        write_nam(of & 0xFF, v);
+        return;
+    }
+    */
+    if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
+        uint32_t of = addr - nabm_base_;
+        write_nabm(of & 0xFF, v, 2);
+        return;
+    }
+
+    // Silently ignore writes outside the BARS
+    std::cout << "[AC97] io_write8 addr=0x" << to_hex(addr) << ", val=" << to_hex(v) << " (ignored)\n";
+    
+    //throw std::runtime_error("AC97: invalid io_write32 port: 0x" + to_hex(port) + ", v=0x" + to_hex(v));
+
 }
 
 
@@ -287,8 +310,6 @@ void AC97Pci::io_write8(uint32_t port, uint8_t v) {
 
 void AC97Pci::codec_command_begin()
 {
-    semaphore_state_ = false;          // busy
-    semaphore_pulse_pending_ = true;   // next read will set it ready
     glob_sta_ &= ~GS_S0R;
 }
 
@@ -369,17 +390,19 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
 //----------------------------------------------------------------------
 uint32_t AC97Pci::read_glob_sta()
 {
-    uint32_t val = glob_sta_;
+    constexpr uint32_t allowed_mask =
+        (1u << 8) |   // CRDY
+        0x0F;         // DMA req + semaphore bits
 
-    if (semaphore_pulse_pending_) {
-        val &= ~GS_S0R;          // clear semaphore bit
-        semaphore_state_ = true;
-        semaphore_pulse_pending_ = false;
-    } else {
-        val |= GS_S0R;           // set semaphore bit
+    // Mask off irrelevant bits
+    uint32_t v = glob_sta_ & allowed_mask;
+
+    // If S0R is set, reading GLOB_STA *auto-clears* it
+    if (v & GS_S0R) {
+        glob_sta_ &= ~GS_S0R;
     }
 
-    return val;
+    return v;
 }
 
 uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
@@ -621,40 +644,91 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
         }
         return;
     } else if(width == 2) {
-        value = value & 0xFFFFU;
+        value = value & 0xFFFFu;
         printf("[AC97 NABM] write16 @%02x <- %08x\n", offset, value);
 
-
-        switch(offset) {
+        switch (offset) {
             case BMOff::PI_BASE + BMOff::SR: {
                 pi_status_ = value & 0x1F;  // only lower bits valid
-                // Low byte write — handle W1C for bits 4..2
-                uint8_t clear_mask = value & 0x1C;     // bits 4–2
-                pi_status_ &= ~clear_mask;             // clear only those bits
-                
+                uint8_t clear_mask = value & 0x1C; // bits 4–2 W1C
+                pi_status_ &= ~clear_mask;
                 break;
             }
             case BMOff::PO_BASE + BMOff::SR: {
-                po_status_ = value & 0x1F;  // only lower bits valid
-                // Low byte write — handle W1C for bits 4..2
-                uint8_t clear_mask = value & 0x1C;     // bits 4–2
-                po_status_ &= ~clear_mask;             // clear only those bits
-                
+                po_status_ = value & 0x1F;
+                uint8_t clear_mask = value & 0x1C;
+                po_status_ &= ~clear_mask;
                 break;
             }
             case BMOff::MC_BASE + BMOff::SR: {
-                mc_status_ = value & 0x1F;  // only lower bits valid
-                // Low byte write — handle W1C for bits 4..2
-                uint8_t clear_mask = value & 0x1C;     // bits 4–2
-                mc_status_ &= ~clear_mask;             // clear only those bits
-                
+                mc_status_ = value & 0x1F;
+                uint8_t clear_mask = value & 0x1C;
+                mc_status_ &= ~clear_mask;
                 break;
             }
+
+            // ----- CONTROL REGISTERS (16-bit writes, low byte is CR) -----
+            case BMOff::PI_BASE + BMOff::CR: { // 0x0B
+                uint8_t v = static_cast<uint8_t>(value & 0x1F);
+                pi_control_ = v;
+                if (pi_control_ & 0x02) {
+                    // reset capture DMA
+                    pi_control_ &= ~0x02;
+                    pi_status_ = 0x0001; // DCH=1 (stopped)
+                    pi_civ_ = 0;
+                }
+                // run bit (bit0) is not used much for capture in your current code,
+                // but we could add set_run_capture() later if needed.
+                break;
+            }
+
+            case BMOff::PO_BASE + BMOff::CR: { // 0x1B
+                uint8_t old = po_control_;
+                uint8_t v   = static_cast<uint8_t>(value & 0x1F);
+                po_control_ = v;
+
+                if (po_control_ & 0x02) {
+                    if (old & 0x01)
+                        throw std::runtime_error("Reset called when running bit is 1.");
+                    // Reset requested
+                    po_control_ &= ~0x02;
+
+                    running_   = false;
+                    po_civ_    = 0;
+                    po_status_ = 0x0001; // DCH=1
+                    po_picb_   = 0;
+                }
+
+                bool old_run = old & 0x01;
+                bool new_run = v   & 0x01;
+                if (new_run != old_run)
+                    set_run(new_run);
+
+                break;
+            }
+
+            case BMOff::MC_BASE + BMOff::CR: { // 0x2B
+                uint8_t v = static_cast<uint8_t>(value & 0x1F);
+                mc_control_ = v;
+                if (mc_control_ & 0x02) {
+                    mc_control_ &= ~0x02;
+                    mc_status_ = 0x0001; // DCH=1
+                    mc_civ_ = 0;
+                }
+                break;
+            }
+
+            // ----- PICB (playback PICB at least is used) -----
+            case BMOff::PO_BASE + BMOff::PICB: { // 0x18
+                po_picb_ = static_cast<uint16_t>(value);
+                break;
+            }
+
             default:
                 throw("[AC97 NABM] Write16 not valid for register " + to_hex(offset));
 
         }
-        
+        return;
 
     } else {
 
@@ -689,10 +763,11 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                 // --- Warm reset: bit25 rises ---
                 if (!old_warm && new_warm) {
-                    printf("[AC97] Warm reset triggered\n");
+                    std::cout << "[AC97] Warm reset triggered\n";
 
-                    // Real hardware sets Codec Ready bit (bit 16) after warm reset
-                    glob_sta_ |= 0x00010000;  // CODEC_READY
+                    warm_reset();
+
+                    
                 }
                 break;
             }
@@ -721,6 +796,23 @@ void AC97Pci::cold_reset() {
     bdbar_capture_  = 0;
 
     glob_sta_ = GS_CRDY_CODEC0; // bit 8 set
+}
+
+void AC97Pci::warm_reset()
+{
+    printf("[AC97] Warm reset triggered\n");
+
+    // 1. Restore analog subsections ready
+    codec_regs_[0x26 >> 1] = 0x000F;
+
+    // 2. Extended Audio Status → bits 0–3 are writable
+    codec_regs_[0x2A >> 1] &= 0x000F;
+
+    // 3. Codec ready (bit 8)
+    glob_sta_ |= GS_CRDY_CODEC0;
+
+    // 4. Clear warm-reset trigger bit (GLOB_CNT bit 16)
+    glob_cnt_ &= ~(1u << 16);
 }
 
 
