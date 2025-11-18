@@ -122,12 +122,12 @@ public:
 
     virtual uint32_t read32(uint32_t addr, bool) const override {
         //uint32_t off = addr - base_addr_;
-        return dev.io_read32(addr);
+        return std::byteswap(dev.io_read32(addr));
     }
 
     virtual uint16_t read16(uint32_t addr, bool) const override {
         //uint32_t off = addr - base_addr_;
-        return dev.io_read16(addr);
+        return std::byteswap(dev.io_read16(addr));
     }
 
     virtual uint8_t read8(uint32_t addr) const override {
@@ -137,12 +137,12 @@ public:
 
     virtual void write32(uint32_t addr, uint32_t val, bool) override {
         //uint32_t off = addr - base_addr_;
-        dev.io_write32(addr, val);
+        dev.io_write32(addr, std::byteswap(val));
     }
 
     virtual void write16(uint32_t addr, uint16_t val, bool) override {
         //uint32_t off = addr - base_addr_;
-        dev.io_write16(addr, val);
+        dev.io_write16(addr, std::byteswap(val));
     }
 
     virtual void write8(uint32_t addr, uint8_t val) override {
