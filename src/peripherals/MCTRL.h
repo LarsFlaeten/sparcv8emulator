@@ -259,7 +259,8 @@ public:
         for (const auto& bank : banks) {
             if (bank->contains(addr)) return bank.get();
         }
-        throw std::out_of_range("No memory mapped at given address.");// + to_hex(addr));
+        //debug_list_banks();
+        throw std::out_of_range("No memory mapped at addr " + to_hex(addr));
     }
 
     void debug_read8(u32 addr) const {
