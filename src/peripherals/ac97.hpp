@@ -20,7 +20,7 @@
 #include <memory>
 
 #include <pthread.h>
-void set_audio_thread_name() {
+static void set_audio_thread_name() {
     pthread_setname_np(pthread_self(), "host audio");
 }
 
@@ -209,10 +209,12 @@ public:
     explicit AC97Pci(uint8_t device_number,
                      std::function<bool(uint32_t, void*, size_t)> mem_read,
                      std::function<bool(uint32_t, const void*, size_t)> mem_write,
-                     MCtrl& mctrl)
+                     MCtrl& mctrl,
+                     bool start_host_audio = true)
         : dev_num_(device_number), mem_read_(mem_read), mem_write_(mem_write), mctrl_(mctrl) {
 
-        host_audio_ = std::make_unique<HostAudioOut>(48000, 2);
+        if(start_host_audio)
+            host_audio_ = std::make_unique<HostAudioOut>(48000, 2);
 
         init_pci_config();
     }
@@ -241,6 +243,10 @@ public:
 
     void set_intx_cb(std::function<void()> cb) {
         raise_intx_ = std::move(cb);
+    }
+
+    void reset() {
+        cold_reset();
     }
 
 private:
@@ -289,7 +295,7 @@ private:
     uint8_t mc_control_ = 0;
 
     uint16_t pi_status_ = 0;
-    uint16_t po_status_ = 0x0001; // DCH=1, stopped initially
+    uint16_t po_status_  = 0x0000;   // RUN=0, BCIS=0, LVBCI=0
     uint16_t mc_status_ = 0;
 
     uint8_t pi_civ_ = 0;
@@ -300,11 +306,18 @@ private:
     uint8_t po_lvi_ = 0;
     uint8_t mc_lvi_ = 0;
 
-    uint16_t po_picb_ = 0x0100;
+    uint16_t po_picb_ = 0x0;
 
     uint16_t power_ctrl_ = 0;
     uint16_t power_status_ = 0;
     
+    // PO state variables
+    uint32_t po_cur_ptr_ = 0;
+    uint32_t po_cur_len_ = 0;                 
+    uint16_t po_cur_ctl_ = 0;
+    bool     po_running_ = false;
+
+    uint64_t dma_tick_counter_ = 0;
     
 
     uint16_t read_nam(uint32_t of);
@@ -476,5 +489,19 @@ private:
         char buf[11];
         snprintf(buf, sizeof(buf), "%02X", val);
         return buf;
+    }
+
+    uint32_t mem_read32(uint32_t addr) {
+        uint32_t val = 0;
+        if(!mem_read_(addr, &val, 4))
+            throw std::runtime_error("[AC97] mem_read32: Could no access memory at 0x" + to_hex(addr));
+        return val;
+    }
+
+    uint16_t mem_read16(uint32_t addr) {
+        uint16_t val = 0;
+        if(!mem_read_(addr, &val, 2))
+            throw std::runtime_error("[AC97] mem_read16: Could no access memory at 0x" + to_hex(addr));
+        return val;
     }
 };
