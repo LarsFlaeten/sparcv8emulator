@@ -236,7 +236,7 @@ u32 GRPCI2::config_read(u32 paddr, u8 size){
             // 1- and 2-byte sizes normally aren't used directly by GRPCI2;
             // it always reads 32 bits then shifts. We implement them
             // later if needed.
-            throw("Config reads for 8 and 16 bits not implemented.");
+            throw std::runtime_error("Config reads for 8 and 16 bits not implemented.");
         case 32: 
             // 1) get dword in *bus little-endian* from the device
             data = device_->config_read32(reg);
