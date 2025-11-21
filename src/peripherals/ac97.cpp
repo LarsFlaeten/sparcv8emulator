@@ -488,8 +488,11 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
                 val = pi_control_;
                 break;
             case BMOff::PO_BASE + BMOff::CR: {
-                // Only bits 0–4 are readable; bits 5–7 must always be zero.
-                return po_control_ & 0x1F;
+                // CR is just the stored writable bits 0..4.
+                // RESETREGS (bit1) always reads as 0 (self-clearing),
+                // reserved bits 5–7 always read as zero.
+                val = po_control_ & 0x1D;  // 0b00011101 (bit1 masked out)
+                break;
             }
             case BMOff::MC_BASE + BMOff::CR:
                 val = mc_control_;
@@ -557,7 +560,7 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
         
         }
         
-        //printf("[AC97 NABM] read32  @%02x -> %08x\n", offset, val);
+        printf("[AC97 NABM] read32  @%02x -> %08x\n", offset, val);
         return val;
     }
 
@@ -613,13 +616,14 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 }
                 break;
             case BMOff::PO_BASE + BMOff::CR: {
-                uint8_t new_ctl = value & 0x1F;
-                bool start = (new_ctl & 0x01);
-                bool stop  = !start;
+                uint8_t raw = value & 0x1D; // exclude bit 1
                 
-                // If bit1 (ICH_RESETREGS) is set, reset channel registers
-                if (value & 0x02) {
-                    // reset internal state
+                // Update control reg excluding resetbit
+                po_control_ = raw;
+
+                // ----- 1. RESETREGS handling (bit1) -----
+                if (raw & 0x02) {
+                    // Reset internal DMA state
                     po_running_ = false;
                     po_civ_ = 0;
                     po_cur_ptr_ = 0;
@@ -628,78 +632,76 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                     po_cur_bd_frame_offset_bytes_ = 0;
                     po_picb_ = 0;
 
-                    // set DCH, clear RUN/BCIS/LVBCI
-                    po_status_ = 0x02;
+                    // Status reset: RUN=0, BCIS=0, LVBCI=0, DCH=1
+                    po_status_ = 0x01;
 
-                    // clear reset bit: hardware self-clears it
-                    po_control_ = value & ~0x02;
+                    // PO_CR: bit1 self-clears, all other bits unchanged
+                    po_control_ &= ~0x02;
 
                     TRACE_PO_SR_CHANGE();
                     return;
                 }
-                
-                po_control_ = new_ctl;
 
+                bool start = (raw & 0x01);
+                bool stop  = !start;
+
+                
+
+                // ----- 2. STOP -----
                 if (stop) {
-                    // STOP DMA
                     po_running_ = false;
 
-                    // Clear RUN, BCIS, LVBCI
-                    // Clear RUN, BCIS, LVBCI, and DCH
-                    //po_status_ &= ~(0x01 | 0x08 | 0x04 | 0x02);
-                    po_status_ &= ~(0x01 | 0x08 | 0x04);
-                    po_status_ |= 0x02;   // DCH = 1
+                    // STOP DMA:
+                    // Clear BCIS (0x04) and LVBCI (0x08)
+                    // Set DCH (0x01) — DMA halted
+                    po_status_ &= ~(0x04 | 0x08); 
+                    po_status_ |= 0x01;
 
                     TRACE_PO_SR_CHANGE();
                     return;
                 }
 
-                // START DMA
-                // Reject invalid DMA start
-                if (bdbar_playback_ == 0 ||
-                    po_civ_ >= 32 ||
-                    !mctrl_.find_bank(bdbar_playback_)) 
-                {
-                    return;  // ignore invalid start
-                }
+                // ----- 3. START -----
+                // Reject invalid start
+                if (/*bdbar_playback_ == 0 ||*/
+                    po_civ_ >= 32 /*||
+                    !mctrl_.find_bank(bdbar_playback_)*/)
+                    return;
 
                 po_running_ = true;
 
-                // Set RUN bit
-                po_running_ = true;
-                po_status_ &= ~0x02; // DCH = 0
-                po_status_ |= 0x01;  // RUN = 1
+                // START DMA: DCH=0
+                po_status_ &= ~0x01;   // clear DCH
                 TRACE_PO_SR_CHANGE();
 
-                // Load initial BD
+                // --- If BDBAR is zero or unmapped, DMA goes into "idle running" ---
+                if (bdbar_playback_ == 0 || !mctrl_.find_bank(bdbar_playback_)) {
+                    po_cur_ptr_  = 0;
+                    po_cur_len_  = 0;
+                    po_cur_ctl_  = 0;
+                    po_picb_     = 0;       // nothing to consume
+                    po_cur_bd_frame_offset_bytes_ = 0;
+                    return;                 // IMPORTANT: do NOT read memory
+                }
+
+                // Load BD
                 uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
                 po_cur_ptr_ = mem_read32(bd_addr + 0);
-
                 uint16_t len = mem_read16(bd_addr + 4);
                 po_cur_ctl_ = mem_read16(bd_addr + 6);
 
                 po_cur_len_ = (uint32_t)len + 1;
                 po_cur_bd_frame_offset_bytes_ = 0;
 
-                // If BD is empty (len==0): do NOT consider it complete.
-                // Just wait for tick() to run again after ALSA fills the BD.
-                //if (po_cur_len_ == 1) {
-                //    po_picb_ = 0;
-                //   return;
-                //}
-                // If BD is uninitialized, DMA engine must "stall" with RUN=1
+                // Empty BD stalls DMA but stays running
                 if (po_cur_ptr_ == 0 || len == 0) {
                     po_picb_ = 0;
-                    // do NOT clear RUN
-                    // do NOT advance CIV
-                    // do NOT fire interrupts
                     return;
                 }
 
                 po_picb_ = po_cur_len_ / 4;
-
                 return;
-            }
+            }            
             case BMOff::MC_BASE + BMOff::CR:  // MC_CONTROL (also 8-bit)
                 mc_control_ = value & 0x1F;
                 if(mc_control_ & 0x02) {
@@ -813,7 +815,7 @@ void AC97Pci::cold_reset() {
     bdbar_capture_  = 0;
 
     // Status: RUN=0, BCIS=0, LVBCI=0, DCH=1
-    po_status_ = 0x02;
+    po_status_ = 0x01;
 
     // Control register must reflect halted state (DCH=1)
     po_control_ = 0x02;

@@ -264,13 +264,12 @@ TEST_F(AC97Test, POCR_StartClearsBCISAndLVBCI)
     // 3. Read SR
     uint8_t sr = read8(NABM_BASE + 0x16);
 
-    // RUN must be 1, BCIS=LVBCI=0
-    EXPECT_EQ(sr & 0x01, 0x01);    // RUN = 1
+    // DCH must be 0, BCIS=LVBCI=0
+    EXPECT_EQ(sr & 0x01, 0x00);    // DCH = 1
     EXPECT_EQ(sr & 0x0C, 0x00);    // BCIS/LVBCI cleared
 }
 
-TEST_F(AC97Test, POCR_ReservedBitsAlwaysZeroAndLowBitsPreserved)
-{
+TEST_F(AC97Test, POCR_ReservedBitsAlwaysZeroAndLowBitsPreserved) {
     make_device();
 
     const uint32_t PO_CR = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
@@ -280,15 +279,14 @@ TEST_F(AC97Test, POCR_ReservedBitsAlwaysZeroAndLowBitsPreserved)
 
     uint8_t cr = read8(PO_CR);
 
-    // upper 3 bits must always be zero
-    EXPECT_EQ(cr & 0xE0, 0x00)
-        << "Reserved bits [7:5] must always read as zero";
+    // Bit1 must always read zero (RESETREGS self-clears)
+    EXPECT_EQ(cr & 0x02, 0);
 
-    // lower 5 bits must follow ICH rules:
-    // - writable bits preserved
-    // - RESETREGS self-cleared
-    EXPECT_EQ(cr & 0x1F, 0x1D)
-        << "Writable low 5 bits must preserve behavior but RESETREGS must auto-clear";
+    // Bits 5–7 must always read zero
+    EXPECT_EQ(cr & 0xE0, 0);
+
+    // Writable bits (0,2,3,4) must survive
+    EXPECT_EQ(cr & 0x1D, 0x1D);
 }
 
 //
@@ -556,7 +554,7 @@ TEST_F(AC97Test, StatusRegistersAreClearedOnColdReset) {
     // -----------------------------
     // Assert: All status and CIV registers must be cleared
     // -----------------------------
-    EXPECT_EQ(read8(PO_SR), 0x02u)
+    EXPECT_EQ(read8(PO_SR), 0x01u)
         << "Cold reset must set DCH=1 and clear RUN/BCIS/LVBCI";
 
     // After cold reset, MC_SR must have DCH=1 (bit1), and everything else 0
@@ -615,8 +613,8 @@ TEST_F(AC97Test, BcisAndLvBciAreClearedWhenStoppingDma)
     EXPECT_EQ(sr & 0x0C, 0x00)
         << "BCIS/LVBCI must clear on STOP";
 
-    EXPECT_EQ(sr & 0x01, 0x00)
-        << "RUN bit must clear on STOP";
+    EXPECT_EQ(sr & 0x01, 0x01)
+        << "Expect DMA halted";
 }
 
 
@@ -637,7 +635,7 @@ TEST_F(AC97Test, DchBitSetOnResetAndStop)
 
     // After reset, DCH must be 1
     uint8_t sr = read8(PO_SR);
-    EXPECT_EQ((sr & 0x02), 0x02)
+    EXPECT_EQ((sr & 0x01), 0x01)
         << "After cold reset, DCH must be 1 (DMA halted)";
 
     // --- Start + Stop cycle ---
@@ -645,7 +643,7 @@ TEST_F(AC97Test, DchBitSetOnResetAndStop)
     write8(PO_CR, 0x00); // STOP
 
     sr = read8(PO_SR);
-    EXPECT_EQ((sr & 0x02), 0x02)
+    EXPECT_EQ((sr & 0x01), 0x01)
         << "After STOP, DCH must be 1 (DMA halted)";
 }
 
@@ -666,7 +664,7 @@ TEST_F(AC97Test, DchBitClearedOnStart)
 
     // Confirm DCH=1 after reset
     uint8_t sr = read8(PO_SR);
-    ASSERT_EQ(sr & 0x02, 0x02)
+    ASSERT_EQ(sr & 0x01, 0x01)
         << "Sanity: After reset, DCH must be 1";
 
     // --- Need valid BD BAR before START ---
@@ -685,7 +683,7 @@ TEST_F(AC97Test, DchBitClearedOnStart)
     write8(PO_CR, 0x01); // START DMA
 
     sr = read8(PO_SR);
-    EXPECT_EQ((sr & 0x02), 0x00)
+    EXPECT_EQ((sr & 0x01), 0x00)
         << "DCH must be 0 when DMA is running";
 }
 
@@ -709,7 +707,7 @@ TEST_F(AC97Test, DmaStallsOnEmptyBufferDescriptor)
 
     // After reset, DCH=1, other bits clear
     uint8_t sr = read8(PO_SR);
-    ASSERT_EQ(sr & 0x02, 0x02) << "Sanity check: DCH must be 1 after cold reset";
+    ASSERT_EQ(sr & 0x01, 0x01) << "Sanity check: DCH must be 1 after cold reset";
 
     // --- Set BD BAR ---
     uint32_t bd_base = 0x42097000;
@@ -728,10 +726,9 @@ TEST_F(AC97Test, DmaStallsOnEmptyBufferDescriptor)
 
     // Engine must start running
     sr = read8(PO_SR);
-    EXPECT_EQ(sr & 0x01, 0x01) << "RUN bit must be set after START";
-
+   
     // DCH must be 0 once DMA starts, even if BD is empty
-    EXPECT_EQ(sr & 0x02, 0x00) << "DCH must clear when DMA engine is running";
+    EXPECT_EQ(sr & 0x01, 0x00) << "DCH must clear when DMA engine is running";
 
     // --- Tick the engine several times ---
     for (int i = 0; i < 50; ++i)
@@ -741,12 +738,10 @@ TEST_F(AC97Test, DmaStallsOnEmptyBufferDescriptor)
     sr = read8(PO_SR);
 
     // EXPECTATIONS:
-    // 1. RUN=1 must stay set (engine does NOT stop)
-    EXPECT_EQ(sr & 0x01, 0x01)
-        << "RUN must remain 1: empty BD must not cause completion";
+    
 
     // 2. DCH=0 (engine is running, not halted)
-    EXPECT_EQ(sr & 0x02, 0x00)
+    EXPECT_EQ(sr & 0x01, 0x00)
         << "DCH must remain cleared during stall";
 
     // 3. BCIS and LVBCI must NOT fire
@@ -757,67 +752,122 @@ TEST_F(AC97Test, DmaStallsOnEmptyBufferDescriptor)
 }
 
 
-TEST_F(AC97Test, PoCrResetRegisterBitMustSelfClear)
+TEST_F(AC97Test, PoCrResetRegisterBitMustSelfClear) {
+    make_device();
+
+    const uint32_t PO_CR = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t GLOB_CNT = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
+
+    // Cold reset: CR must be 0x00
+    write32_le(GLOB_CNT, 0);
+    write32_le(GLOB_CNT, 2); // cold reset
+
+    EXPECT_EQ(read8(PO_CR), 0x00)
+        << "After cold reset, PO_CR must be 0x00";
+
+    // Write RESETREGS (bit1)
+    write8(PO_CR, 0x02);
+
+    // Must always read zero
+    EXPECT_EQ(read8(PO_CR) & 0x02, 0)
+        << "RESETREGS bit must self-clear and always read as 0";
+}
+
+TEST_F(AC97Test, AC97_ResetCompliance) {
+    make_device();
+
+    const uint32_t GLOB_CNT = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
+    const uint32_t PO_CR    = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR    = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+
+    // Cold reset
+    write32_le(GLOB_CNT, 0);
+    write32_le(GLOB_CNT, 2);
+
+    // CR must be zero after reset
+    EXPECT_EQ(read8(PO_CR), 0x00)
+        << "After cold reset, PO_CR must be 0x00";
+
+    // Status must show DCH=1
+    EXPECT_EQ(read8(PO_SR) & 0x01, 0x01)
+        << "After cold reset, PO_SR.DCH must be 1";
+
+    // Write RESETREGS=1 (bit1)
+    write8(PO_CR, 0x02);
+
+    // RESETREGS must self-clear
+    EXPECT_EQ(read8(PO_CR) & 0x02, 0)
+        << "RESETREGS bit must self-clear";
+
+    // Status must still report halted (DCH=1)
+    EXPECT_EQ(read8(PO_SR) & 0x01, 0x01)
+        << "DCH must remain 1 after RESETREGS write";
+}
+
+TEST_F(AC97Test, DchBitSetOnResetAndStop2)
 {
-    mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
+   
     make_device();
 
     const uint32_t base = NABM_BASE;
+    const uint32_t PO_CR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
 
-    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
-    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    // --- Cold reset ---
+    write32_le(base + AC97Pci::BMOff::GLOB_CNT, 0);
+    write32_le(base + AC97Pci::BMOff::GLOB_CNT, 0x02);
 
-    // ----- 1. Cold reset -----
-    write32_le(GLOB_CNT, 0x00000000);
-    write32_le(GLOB_CNT, 0x00000002);
+    uint8_t sr = read8(PO_SR);
+    EXPECT_EQ(sr & 0x01, 0x01) << "After cold reset, DCH (bit0) must be 1";
 
-    EXPECT_EQ(read8(PO_CR) & 0x1F, 0x02)
-        << "After reset PO_CR must show RUN=0, DCH=1";
+    // --- Start DMA (RUN=1) ---
+    write8(PO_CR, 0x01);
+    sr = read8(PO_SR);
+    EXPECT_EQ(sr & 0x01, 0x00) << "After RUN=1, DCH must be cleared";
 
-    // ----- 2. Linux writes RESETREGS (bit 1) -----
-    write8(PO_CR, 0x02);
-
-    // ----- 3. Device must clear bit1 internally -----
-    uint8_t cr = read8(PO_CR);
-
-    EXPECT_EQ(cr & 0x02, 0u)
-        << "PO_CR bit1 (RESETREGS) must self-clear; "
-        << "Linux polls until this becomes 0. If it stays 1, Linux hangs.";
-
-    // Additionally RUN must be 0
-    EXPECT_EQ(cr & 0x01, 0u)
-        << "PO_CR.RUN must remain 0 during reset.";
-
-    // This matches exactly the behavior that PI and MC channels already implement.
+    // --- STOP DMA (RUN=0) ---
+    write8(PO_CR, 0x00);
+    sr = read8(PO_SR);
+    EXPECT_EQ(sr & 0x01, 0x01) << "After STOP, DCH must be set again";
 }
 
-
-TEST_F(AC97Test, AC97_ResetCompliance)
+TEST_F(AC97Test, DchBitClearedOnStart2)
 {
     make_device();
 
-    const uint32_t PO_CR = NABM_BASE +
-        AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t base = NABM_BASE;
+    const uint32_t PO_CR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
 
-    const uint32_t GLOB_CNT = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
+    // Reset first
+    write32_le(base + AC97Pci::BMOff::GLOB_CNT, 0);
+    write32_le(base + AC97Pci::BMOff::GLOB_CNT, 0x02);
 
-    // ---- Cold reset ----
-    write32_le(GLOB_CNT, 0x0);
-    write32_le(GLOB_CNT, 0x2);
+    uint8_t sr = read8(PO_SR);
+    EXPECT_EQ(sr & 0x01, 0x01) << "Sanity: DCH must be 1 after reset";
 
-    // After reset: RUN=0, BCIS=0, LVBCI=0, DCH=1
-    uint8_t cr = read8(PO_CR);
-    EXPECT_EQ(cr & 0x1F, 0x02)
-        << "CR must be in reset state after cold reset";
-    EXPECT_EQ(cr & 0xE0, 0x00)
-        << "Reserved bits must be zero";
+    // Start DMA (RUN=1)
+    write8(PO_CR, 0x01);
 
-    // ---- RESETREGS sequence ----
+    sr = read8(PO_SR);
+    EXPECT_EQ(sr & 0x01, 0x00) << "Starting DMA must clear DCH (bit0)";
+}
+
+TEST_F(AC97Test, ResetRegsSetsDchAndClearsStatus)
+{
+    make_device();
+
+    const uint32_t base = NABM_BASE;
+    const uint32_t PO_CR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+
+    // Write RESETREGS (bit1)
     write8(PO_CR, 0x02);
-    cr = read8(PO_CR);
 
-    EXPECT_EQ(cr & 0x02, 0u)
-        << "RESETREGS must self-clear";
-    EXPECT_EQ(cr & 0x1F, 0x00 | 0x02)
-        << "After reset, CR must be RUN=0, DCH=1";
+    uint8_t cr = read8(PO_CR);
+    EXPECT_EQ(cr & 0x02, 0x00) << "RESETREGS bit must self-clear in CR";
+
+    uint8_t sr = read8(PO_SR);
+    EXPECT_EQ(sr & 0x01, 0x01) << "RESETREGS must set DCH";
+    EXPECT_EQ(sr & 0x0E, 0x00) << "RESETREGS must clear BCIS/LVBCI/FIFO";
 }
