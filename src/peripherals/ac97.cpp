@@ -768,16 +768,17 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 uint32_t old = glob_cnt_;
                 glob_cnt_ = value;
 
-                bool old_cold = old & 0x02;
-                bool new_cold = value & 0x02;
+                bool old_cold = old & CNT_COLD;
+                bool new_cold = value & CNT_COLD;
 
-                bool old_warm = old & 0x02000000;
-                bool new_warm = value & 0x02000000;
+                bool old_warm = old & CNT_WARM;
+                bool new_warm = value & CNT_WARM;
 
                 // --- Cold reset: bit1 rises ---
                 if (!old_cold && new_cold) {
                     printf("[AC97] Cold reset triggered\n");
                     cold_reset();
+                    glob_cnt_ &= ~(CNT_COLD | CNT_WARM); // clear both COLD and WARM after done
                 }
 
                 // --- Warm reset: bit25 rises ---
@@ -785,6 +786,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                     std::cout << "[AC97] Warm reset triggered\n";
 
                     warm_reset();
+                    glob_cnt_ &= ~(CNT_COLD | CNT_WARM); // clear both COLD and WARM after done
 
                     
                 }
@@ -831,7 +833,9 @@ void AC97Pci::cold_reset() {
 
     glob_sta_ = GS_CRDY_CODEC0;
 
-    printf("AFTER RESET: po_control_=0x%02x po_status_=0x%02x\n", po_control_, po_status_);
+    
+
+    printf("AFTER RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%02x glob_cnt_=0x%02x\n", po_control_, po_status_, glob_sta_, glob_cnt_);
 }
 
 void AC97Pci::warm_reset()
@@ -846,7 +850,7 @@ void AC97Pci::warm_reset()
 
     glob_sta_ |= GS_CRDY_CODEC0;
 
-    glob_cnt_ &= ~(1u << 25);   // correct warm-reset clear
+    
 }
 
 

@@ -137,11 +137,11 @@ TEST_F(AC97Test, WarmResetSetsCRDYAndClearsResetBit)
 
     // Assert warm reset (write bit 16)
     // Linux writes byteswapped
-    write32_le(NABM_BASE + 0x2c, 1u << 25);
+    write32_le(NABM_BASE + 0x2c, 0x4);
     
     // Read back GLOB_CNT must have the bit cleared after warm reset
     uint32_t cnt = read32_le(NABM_BASE + 0x2C);
-    ASSERT_EQ(cnt & (1u << 25), 0u) << "Warm reset bit must auto-clear";
+    ASSERT_EQ(cnt & 0x4, 0u) << "Warm reset bit must auto-clear";
 
     // GLOB_STA must have CRDY set
     uint32_t sta = read32_le(NABM_BASE + 0x30);
@@ -870,4 +870,56 @@ TEST_F(AC97Test, ResetRegsSetsDchAndClearsStatus)
     uint8_t sr = read8(PO_SR);
     EXPECT_EQ(sr & 0x01, 0x01) << "RESETREGS must set DCH";
     EXPECT_EQ(sr & 0x0E, 0x00) << "RESETREGS must clear BCIS/LVBCI/FIFO";
+}
+
+TEST_F(AC97Test, GlobCnt_HasCapabilitiesAfterColdReset)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
+    make_device();
+
+    const uint32_t base     = NABM_BASE;
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+
+    // Cold reset
+    write32_le(GLOB_CNT, 0x00000002);
+
+    uint32_t gc = read32_le(GLOB_CNT);
+
+    // --- EXPECTATION ---
+    // Hardware must auto-clear RESET bit and not set capability flags.
+
+    // PR (PCM Out Ready)
+    EXPECT_EQ(gc & (1u << 2),0) << "GLOB_CNT: PR (bit2) must not be set after cold reset";
+
+    // CR (PCM In Ready)
+    EXPECT_EQ(gc & (1u << 3),0) << "GLOB_CNT: CR (bit3) must not be set after cold reset";
+
+    // PRD (PCM Out double-buffer supported)
+    EXPECT_EQ(gc & (1u << 4),0) << "GLOB_CNT: PRD (bit4) must not be set after cold reset";
+
+    // CRD (PCM In double-buffer supported)
+    EXPECT_EQ(gc & (1u << 5),0) << "GLOB_CNT: CRD (bit5) must not be set after cold reset";
+
+    // VRA (Variable Rate Audio)
+    EXPECT_EQ(gc & (1u << 18),0) << "GLOB_CNT: VRA (bit18) must not be set after cold reset";
+
+    // Cold reset bit must clear itself
+    EXPECT_FALSE(gc & 0x02) << "GLOB_CNT bit1 must auto-clear after reset";
+}
+
+TEST_F(AC97Test, GlobCnt_NoFragmentsImplementedinGLOBCNT)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
+    make_device();
+
+    const uint32_t base     = NABM_BASE;
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+
+    // Cold reset
+    write32_le(GLOB_CNT, 0x00000002);
+
+    uint32_t gc = read32_le(GLOB_CNT);
+
+    ASSERT_EQ(gc & 0x2, 0);
+
 }
