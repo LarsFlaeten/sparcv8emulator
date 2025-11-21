@@ -271,27 +271,25 @@ TEST_F(AC97Test, POCR_StartClearsBCISAndLVBCI)
 
 TEST_F(AC97Test, POCR_ReservedBitsAlwaysZeroAndLowBitsPreserved)
 {
-    mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
     make_device();
 
-    // At reset, CR should be 0
-    // PO_CR is 0x1B
-    uint8_t cr = read8(NABM_BASE + 0x1B);
-    ASSERT_EQ(cr, 0x00);
+    const uint32_t PO_CR = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
 
-    // Write junk (all bits set)
-    write8(NABM_BASE + 0x1B, 0xFF);
+    // Write all ones
+    write8(PO_CR, 0xFF);
 
-    // Read back
-    cr = read8(NABM_BASE + 0x1B);
+    uint8_t cr = read8(PO_CR);
 
-    // Reserved bits (7..5) must always be 0
-    ASSERT_EQ(cr & 0xE0, 0x00);
+    // upper 3 bits must always be zero
+    EXPECT_EQ(cr & 0xE0, 0x00)
+        << "Reserved bits [7:5] must always read as zero";
 
-    // Low 5 bits (4..0) should reflect the write, masked to 0x1F
-    ASSERT_EQ(cr & 0x1F, 0x1F);
+    // lower 5 bits must follow ICH rules:
+    // - writable bits preserved
+    // - RESETREGS self-cleared
+    EXPECT_EQ(cr & 0x1F, 0x1D)
+        << "Writable low 5 bits must preserve behavior but RESETREGS must auto-clear";
 }
-
 
 //
 // AC’97 NABM — Playback Engine Register Tests
@@ -299,25 +297,22 @@ TEST_F(AC97Test, POCR_ReservedBitsAlwaysZeroAndLowBitsPreserved)
 
 TEST_F(AC97Test, POCR_ResetValueAndReservedBits)
 {
-    mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
     make_device();
 
-    const uint32_t CR = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_CR = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
 
-    // Reset state: CR = 0
-    EXPECT_EQ(read8(CR), 0x00);
+    // Write all ones
+    write8(PO_CR, 0xFF);
 
-    // Write junk: all bits set
-    write8(CR, 0xFF);
+    uint8_t cr = read8(PO_CR);
 
-    uint8_t cr = read8(CR);
+    // upper bits must be 0
+    EXPECT_EQ(cr & 0xE0, 0x00)
+        << "Reserved bits [7:5] must read zero after write";
 
-    // Only RUN (bit0) is meaningful, but your implementation masks to 0x1F
-    // So verify:
-    EXPECT_EQ(cr & 0x1F, 0x1F);  // writable bits preserved
-
-    // Reserved bits [7..5] always read zero
-    EXPECT_EQ(cr & 0xE0, 0x00);
+    // RESETREGS must self clear → 0x1D
+    EXPECT_EQ(cr & 0x1F, 0x1D)
+        << "PO_CR should return masked writable bits, with RESETREGS self-cleared";
 }
 
 TEST_F(AC97Test, POCR_WriteDoesNotAffectHighByte)
@@ -522,4 +517,308 @@ TEST_F(AC97Test, ReservedBytesAlwaysReadZero_nowait_ShouldAlwaysThrow)
     EXPECT_THROW(read8(reserved1), std::runtime_error);
     EXPECT_THROW(read8(reserved2), std::runtime_error);
     EXPECT_THROW(read8(reserved3), std::runtime_error);
+}
+
+TEST_F(AC97Test, StatusRegistersAreClearedOnColdReset) {
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
+    make_device();
+
+
+    // Convenience aliases
+    const uint32_t base = NABM_BASE;
+
+    // Playback registers
+    const uint32_t PO_CIV = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV;
+    const uint32_t PO_SR  = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+
+    // Mic/Capture registers
+    const uint32_t MC_CIV = base + AC97Pci::BMOff::MC_BASE + AC97Pci::BMOff::CIV;
+    const uint32_t MC_SR  = base + AC97Pci::BMOff::MC_BASE + AC97Pci::BMOff::SR;
+
+    // Global control register
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+
+    // -----------------------------
+    // Precondition: simulate a device state *before* Linux resets it
+    // -----------------------------
+    write8(PO_SR,  0x0C);  // BCIS + LVBCR set (the exact bits Linux polls)
+    write8(MC_SR,  0x1E);  // all W1C bits set
+    write8(PO_CIV, 7);     // non-zero CIV
+    write8(MC_CIV, 3);     // non-zero CIV
+
+    // -----------------------------
+    // Act: Trigger a cold reset like Linux does
+    // -----------------------------
+    // Rising edge on bit 1 of GLOB_CNT = cold reset
+    write32_le(GLOB_CNT, 0x00000000);
+    write32_le(GLOB_CNT, 0x00000002);
+
+    // -----------------------------
+    // Assert: All status and CIV registers must be cleared
+    // -----------------------------
+    EXPECT_EQ(read8(PO_SR), 0x02u)
+        << "Cold reset must set DCH=1 and clear RUN/BCIS/LVBCI";
+
+    EXPECT_EQ(read8(MC_SR), 0x00u)
+        << "Cold reset must clear MC_SR";
+
+    EXPECT_EQ(read8(PO_CIV), 0u)
+        << "Cold reset must reset PO_CIV to zero";
+
+    EXPECT_EQ(read8(MC_CIV), 0u)
+        << "Cold reset must reset MC_CIV to zero";
+
+}
+
+TEST_F(AC97Test, BcisAndLvBciAreClearedWhenStoppingDma)
+{
+    // Map BD BAR memory
+    uint32_t bd_base = 0x42097000;
+    mctrl.attach_bank<RamBank>(bd_base, 0x1000);
+
+    make_device();
+
+    const uint32_t base = NABM_BASE;
+
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t PO_CIV   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV;
+    const uint32_t PO_LVI   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI;
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+
+    // Install BD BAR and one BD
+    write32_le(PO_BDBAR, bd_base);
+    write8(PO_CIV, 0);
+    write8(PO_LVI, 0);
+
+    uint32_t bd0 = bd_base + 0;
+    write32_le(bd0 + 0, bd_base + 0x200);
+    write16_le(bd0 + 4, 0x00FF);      // len = 256 bytes → real BD
+    write16_le(bd0 + 6, 0x8000);      // BCIS enabled
+
+    // Start DMA
+    write8(PO_CR, 0x01);
+
+    for (int i = 0; i < 20; i++)
+        dev->tick();
+    
+
+    // Now BCIS must be set
+    ASSERT_EQ(read8(PO_SR) & 0x08, 0x08)
+        << "Precondition failed: BCIS should be set after BD completion";
+
+    // STOP DMA
+    write8(PO_CR, 0x00);
+
+    uint8_t sr = read8(PO_SR);
+
+    EXPECT_EQ(sr & 0x0C, 0x00)
+        << "BCIS/LVBCI must clear on STOP";
+
+    EXPECT_EQ(sr & 0x01, 0x00)
+        << "RUN bit must clear on STOP";
+}
+
+
+TEST_F(AC97Test, DchBitSetOnResetAndStop)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
+    make_device();
+
+    const uint32_t base = NABM_BASE;
+
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+
+    // --- Cold reset (Linux behavior) ---
+    write32_le(GLOB_CNT, 0x00000000);
+    write32_le(GLOB_CNT, 0x00000002);   // rising edge triggers cold reset
+
+    // After reset, DCH must be 1
+    uint8_t sr = read8(PO_SR);
+    EXPECT_EQ((sr & 0x02), 0x02)
+        << "After cold reset, DCH must be 1 (DMA halted)";
+
+    // --- Start + Stop cycle ---
+    write8(PO_CR, 0x01); // START
+    write8(PO_CR, 0x00); // STOP
+
+    sr = read8(PO_SR);
+    EXPECT_EQ((sr & 0x02), 0x02)
+        << "After STOP, DCH must be 1 (DMA halted)";
+}
+
+TEST_F(AC97Test, DchBitClearedOnStart)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
+    make_device();
+
+    const uint32_t base = NABM_BASE;
+
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+
+    // --- Cold reset ---
+    write32_le(GLOB_CNT, 0x00000000);
+    write32_le(GLOB_CNT, 0x00000002);
+
+    // Confirm DCH=1 after reset
+    uint8_t sr = read8(PO_SR);
+    ASSERT_EQ(sr & 0x02, 0x02)
+        << "Sanity: After reset, DCH must be 1";
+
+    // --- Need valid BD BAR before START ---
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+
+    // Setup BD table
+    uint32_t bd_base = 0x42097000;
+    mctrl.attach_bank<RamBank>(bd_base, 0x1000);
+    write32_le(PO_BDBAR, bd_base);
+
+    // Put valid BD with nonzero len
+    write32_le(bd_base + 0, bd_base + 0x200); // pointer
+    write16_le(bd_base + 4, 0x00FF);          // len = 256 bytes
+    write16_le(bd_base + 6, 0x0000);          // control
+
+    write8(PO_CR, 0x01); // START DMA
+
+    sr = read8(PO_SR);
+    EXPECT_EQ((sr & 0x02), 0x00)
+        << "DCH must be 0 when DMA is running";
+}
+
+
+TEST_F(AC97Test, DmaStallsOnEmptyBufferDescriptor)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
+    make_device();
+
+    const uint32_t base = NABM_BASE;
+
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+
+    // --- Cold reset ---
+    write32_le(GLOB_CNT, 0x00000000);
+    write32_le(GLOB_CNT, 0x00000002);
+
+    // After reset, DCH=1, other bits clear
+    uint8_t sr = read8(PO_SR);
+    ASSERT_EQ(sr & 0x02, 0x02) << "Sanity check: DCH must be 1 after cold reset";
+
+    // --- Set BD BAR ---
+    uint32_t bd_base = 0x42097000;
+    mctrl.attach_bank<RamBank>(bd_base, 0x1000);
+    write32_le(PO_BDBAR, bd_base);
+
+    // Leave BD0 completely zero:
+    // ptr=0, len=0, ctl=0
+    // (Linux does this before filling descriptors)
+    write32_le(bd_base + 0, 0x00000000); // ptr
+    write16_le(bd_base + 4, 0x0000);     // len
+    write16_le(bd_base + 6, 0x0000);     // ctl
+
+    // --- Start DMA ---
+    write8(PO_CR, 0x01);  // RUN=1
+
+    // Engine must start running
+    sr = read8(PO_SR);
+    EXPECT_EQ(sr & 0x01, 0x01) << "RUN bit must be set after START";
+
+    // DCH must be 0 once DMA starts, even if BD is empty
+    EXPECT_EQ(sr & 0x02, 0x00) << "DCH must clear when DMA engine is running";
+
+    // --- Tick the engine several times ---
+    for (int i = 0; i < 50; ++i)
+        dev->tick();
+
+    // Re-read status register
+    sr = read8(PO_SR);
+
+    // EXPECTATIONS:
+    // 1. RUN=1 must stay set (engine does NOT stop)
+    EXPECT_EQ(sr & 0x01, 0x01)
+        << "RUN must remain 1: empty BD must not cause completion";
+
+    // 2. DCH=0 (engine is running, not halted)
+    EXPECT_EQ(sr & 0x02, 0x00)
+        << "DCH must remain cleared during stall";
+
+    // 3. BCIS and LVBCI must NOT fire
+    EXPECT_EQ(sr & 0x0C, 0x00)
+        << "BCIS/LVBCI must not fire for empty BD";
+
+    // If the test reaches this point, empty BD behavior is correct.
+}
+
+
+TEST_F(AC97Test, PoCrResetRegisterBitMustSelfClear)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
+    make_device();
+
+    const uint32_t base = NABM_BASE;
+
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+
+    // ----- 1. Cold reset -----
+    write32_le(GLOB_CNT, 0x00000000);
+    write32_le(GLOB_CNT, 0x00000002);
+
+    // Sanity: PO_CR is initially zero
+    EXPECT_EQ(read8(PO_CR), 0x00) 
+        << "After reset PO_CR should start at zero.";
+
+    // ----- 2. Linux writes RESETREGS (bit 1) -----
+    write8(PO_CR, 0x02);
+
+    // ----- 3. Device must clear bit1 internally -----
+    uint8_t cr = read8(PO_CR);
+
+    EXPECT_EQ(cr & 0x02, 0u)
+        << "PO_CR bit1 (RESETREGS) must self-clear; "
+        << "Linux polls until this becomes 0. If it stays 1, Linux hangs.";
+
+    // Additionally RUN must be 0
+    EXPECT_EQ(cr & 0x01, 0u)
+        << "PO_CR.RUN must remain 0 during reset.";
+
+    // This matches exactly the behavior that PI and MC channels already implement.
+}
+
+
+TEST_F(AC97Test, AC97_ResetCompliance)
+{
+    make_device();
+
+    const uint32_t PO_CR = NABM_BASE +
+        AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+
+    const uint32_t GLOB_CNT = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
+
+    // ---- Cold reset ----
+    write32_le(GLOB_CNT, 0x0);
+    write32_le(GLOB_CNT, 0x2);
+
+    // After reset: RUN=0, BCIS=0, LVBCI=0, DCH=1
+    uint8_t cr = read8(PO_CR);
+    EXPECT_EQ(cr & 0x1F, 0x02)
+        << "CR must be in reset state after cold reset";
+    EXPECT_EQ(cr & 0xE0, 0x00)
+        << "Reserved bits must be zero";
+
+    // ---- RESETREGS sequence ----
+    write8(PO_CR, 0x02);
+    cr = read8(PO_CR);
+
+    EXPECT_EQ(cr & 0x02, 0u)
+        << "RESETREGS must self-clear";
+    EXPECT_EQ(cr & 0x1F, 0x00 | 0x02)
+        << "After reset, CR must be RUN=0, DCH=1";
 }

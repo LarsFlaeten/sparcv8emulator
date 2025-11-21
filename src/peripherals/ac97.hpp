@@ -2,7 +2,7 @@
 // AC97_Generic_PCI_Device.cpp (GRPCI2-integrated, Intel-compatible IDs)
 // Generic AC'97 PCI audio controller emulating an Intel ICH AC'97 device (0x8086:0x2415)
 // with GRPCI2-style AHB mappings:
-//   - PCI I/O space:   0xFFFA0000
+//   - PCI I/O space:   0xFFFA0000  <-- No....
 //   - PCI Config space:0xFFFB0000
 //   - PCI Memory space:0x24000000
 //
@@ -23,6 +23,9 @@
 static void set_audio_thread_name() {
     pthread_setname_np(pthread_self(), "host audio");
 }
+
+#define TRACE_PO_SR_CHANGE() \
+    printf("[AC97 Debug] PO_SR changed to %02x (file %s:%d)\n", po_status_, __FILE__, __LINE__);
 
 
 
@@ -315,6 +318,7 @@ private:
     uint32_t po_cur_ptr_ = 0;
     uint32_t po_cur_len_ = 0;                 
     uint16_t po_cur_ctl_ = 0;
+    uint32_t po_cur_bd_frame_offset_bytes_ = 0;
     bool     po_running_ = false;
 
     uint64_t dma_tick_counter_ = 0;
@@ -340,6 +344,7 @@ private:
     void write_po_sr(uint16_t val) {
         // Write-1-to-clear for bits 2–4
         po_status_ &= ~(val & 0x001C);
+        TRACE_PO_SR_CHANGE();
     }
 
     void set_run(bool enable) {
@@ -347,11 +352,13 @@ private:
         if (enable) {
             po_status_ &= ~0x0001;  // clear DCH
             po_status_ |=  0x0002;  // set CIP
+            TRACE_PO_SR_CHANGE();
 
             
         } else {
             po_status_ |=  0x0001;  // halted
             po_status_ &= ~0x0002;  // clear CIP
+            TRACE_PO_SR_CHANGE();
         }
     }
 

@@ -32,6 +32,7 @@ void AC97Pci::init_pci_config(){
     init_codec();
 
     po_status_  = 0x0000;   // RUN=0, BCIS=0, LVBCI=0
+    TRACE_PO_SR_CHANGE();
 }
 
 void AC97Pci::init_grpci2_cap(uint8_t off, uint8_t next) {
@@ -100,77 +101,111 @@ void AC97Pci::init_codec() {
 
 void AC97Pci::tick()
 {
-    
-    if (!po_running_) {
-        po_status_ &= ~0x01;   // RUN = 0
+
+    //if (po_running_ && po_picb_ == 0 && po_cur_len_ > 0)
+    //{
+    //    printf("[AC97 BUG] BD completed immediately on start! len=%u ptr=%08x ctl=%04x\n",
+    //       po_cur_len_, po_cur_ptr_, po_cur_ctl_);
+    //}
+    // 0. DMA not running?
+    if (!po_running_)
+        return;
+
+    // 1. No active buffer?
+    if (po_picb_ == 0) {
+        // No frames remaining — nothing to consume yet.
         return;
     }
 
-    // Timing: only run DMA every N AC97 frames
-    if (++dma_tick_counter_ < dma_ticks_per_buffer_)
-        return;
-
-    dma_tick_counter_ = 0;
-
-    
     //
-    // 1. Fetch current buffer descriptor
+    // 2. Consume a limited number of frames this tick
     //
-    uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
+    // Tune this value to get smooth audio. 32 or 48 is usually good.
+    const uint32_t FRAMES_PER_TICK = 32;
 
-    uint32_t ptr  = mem_read32(bd_addr + 0);   // PCM buffer guest address
-    uint16_t len  = mem_read16(bd_addr + 4);   // length-1
-    uint16_t ctl  = mem_read16(bd_addr + 6);   // control bits
-
-    uint32_t bytes = ((uint32_t)len + 1);
-    uint32_t frames = bytes / 4;               // 4 bytes per stereo frame
-
-    // Update PICB (decrements toward zero in hardware,
-    // but ALSA only requires that PICB > 0 and stable)
-    po_picb_ = frames;
+    uint32_t todo = std::min<uint32_t>(po_picb_, FRAMES_PER_TICK);
 
     //
-    // 2. Fetch PCM samples and push to host
+    // 3. Fetch 'todo' stereo frames from guest memory
     //
-    std::vector<int16_t> samples(frames * 2);
+    std::vector<int16_t> samples(todo * 2);   // stereo: 2 samples per frame
 
-    for (uint32_t i = 0; i < frames * 2; ++i) {
+    uint32_t sample_ptr = po_cur_ptr_ + po_cur_bd_frame_offset_bytes_;
+
+    for (uint32_t i = 0; i < todo * 2; ++i) {
         uint16_t v;
-        mem_read_(ptr + i*2, &v, 2);
+        mem_read_(sample_ptr + i * 2, &v, 2);
         samples[i] = (int16_t)v;
     }
 
-
-    if(host_audio_)
+    // Push audio to host
+    if (host_audio_)
         host_audio_->pushSamples(samples);
 
     //
-    // 3. Advance CIV
+    // 4. Advance pointers
     //
+    po_cur_bd_frame_offset_bytes_ += todo * 4;  // 4 bytes per stereo frame
+    po_picb_ -= todo;
+
+    //
+    // 5. If buffer is not finished, return
+    //
+    if (po_picb_ > 0)
+        return;
+
+    //
+    // 6. Buffer is COMPLETED
+    //
+
+    // Advance CIV to next buffer index
     po_civ_ = (po_civ_ + 1) & 0x1F;
 
-    //
-    // 4. BCIS interrupt if BD requested it
-    //
-    if (ctl & 0x8000) {
-        po_status_ |= 0x0008;   // set BCIS
+    // BCIS: Buffer Completion Interrupt
+    if (po_cur_ctl_ & 0x8000) {
+        po_status_ |= 0x08;
+        printf("[AC97 DEBUG] BCIS FIRED in tick! CIV=%u LVI=%u PICB=%u RUN=%u\n",
+    po_civ_, po_lvi_, po_picb_, po_running_);
+        TRACE_PO_SR_CHANGE();
     }
 
-    //
-    // 5. LVBCI interrupt if CIV == (LVI+1)
-    //
+    // LVBCI: Last Valid Buffer Completion
     if (po_civ_ == ((po_lvi_ + 1) & 0x1F)) {
-        po_status_ |= 0x0004;   // LVBCI
+        po_status_ |= 0x04;
+        TRACE_PO_SR_CHANGE();
     }
 
-    //
-    // 6. Raise INT if enabled
-    //
-    if ((po_status_ & 0x000C) && (po_control_ & 0x10)) {
+    // Interrupt if enabled
+    if ((po_status_ & 0x0C) && (po_control_ & 0x10)) {
         if (raise_intx_)
             raise_intx_();
     }
+
+    //
+    // 7. Load the next BD for playback
+    //
+    uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
+
+    uint32_t ptr  = mem_read32(bd_addr + 0);
+    uint16_t len  = mem_read16(bd_addr + 4);
+    uint16_t ctl  = mem_read16(bd_addr + 6);
+
+    po_cur_ptr_ = ptr;
+    po_cur_len_ = (uint32_t)len + 1;
+    po_cur_ctl_ = ctl;
+
+    po_cur_bd_frame_offset_bytes_ = 0;
+    
+    if (po_cur_len_ == 1) {
+        // Empty BD; do not complete, do not fire interrupts,
+        // do not advance CIV beyond this. Just idle.
+        po_picb_ = 0;
+        return;
+    }
+
+    po_picb_ = po_cur_len_ / 4; // frames
 }
+
 
 uint32_t AC97Pci::io_read32(uint32_t addr) {
     uint32_t ret;
@@ -452,9 +487,10 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
             case (BMOff::PI_BASE + BMOff::CR):
                 val = pi_control_;
                 break;
-            case BMOff::PO_BASE + BMOff::CR:
-                val = po_control_;
-                break;
+            case BMOff::PO_BASE + BMOff::CR: {
+                // Only bits 0–4 are readable; bits 5–7 must always be zero.
+                return po_control_ & 0x1F;
+            }
             case BMOff::MC_BASE + BMOff::CR:
                 val = mc_control_;
                 break;
@@ -539,6 +575,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
             case BMOff::PO_BASE + BMOff::SR: {
                 uint8_t clear_mask = value & 0x1E;   // bits 1..4 are W1C
                 po_status_ &= ~clear_mask;
+                TRACE_PO_SR_CHANGE();
                 break;
             }
 
@@ -576,54 +613,92 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 }
                 break;
             case BMOff::PO_BASE + BMOff::CR: {
-                uint8_t new_ctl = value & 0x1F;       // Only bits 0..4 are writable
+                uint8_t new_ctl = value & 0x1F;
                 bool start = (new_ctl & 0x01);
-                bool stop  = !(new_ctl & 0x01);
+                bool stop  = !start;
+                
+                // If bit1 (ICH_RESETREGS) is set, reset channel registers
+                if (value & 0x02) {
+                    // reset internal state
+                    po_running_ = false;
+                    po_civ_ = 0;
+                    po_cur_ptr_ = 0;
+                    po_cur_len_ = 0;
+                    po_cur_ctl_ = 0;
+                    po_cur_bd_frame_offset_bytes_ = 0;
+                    po_picb_ = 0;
 
-                // Save written control bits
+                    // set DCH, clear RUN/BCIS/LVBCI
+                    po_status_ = 0x02;
+
+                    // clear reset bit: hardware self-clears it
+                    po_control_ = value & ~0x02;
+
+                    TRACE_PO_SR_CHANGE();
+                    return;
+                }
+                
                 po_control_ = new_ctl;
 
-                if (start) {
-                    // Reject invalid DMA start
-                    if (bdbar_playback_ == 0 ||
-                        po_civ_ >= 32 ||            // 32 descriptors max
-                        !mctrl_.find_bank(bdbar_playback_))   // We'll add helper for this
-                    {
-                        // Ignore the write completely
-                        // Real hardware defines this as "undefined", but ignoring is safe
-                        // and matches behavior of other emulators (QEMU does this).
-                        return;
-                    }
-
-                    // Now safe to start DMA
-                    // Running
-                    po_running_ = true;
-
-                    // FIX: set RUN bit in PO_SR
-                    po_status_ |= 0x01;
-
-                    // Load the current BD entry for CIV
-                    uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
-
-                    uint32_t ptr  = mem_read32(bd_addr + 0);
-                    uint16_t len  = mem_read16(bd_addr + 4);
-                    uint16_t ctl  = mem_read16(bd_addr + 6);
-
-                    // Store current BD contents
-                    po_cur_ptr_ = ptr;
-                    po_cur_len_ = (uint32_t)len + 1;
-                    po_cur_ctl_ = ctl;
-
-                    // PICB = frames remaining = bytes/4 (S16, 2ch)
-                    po_picb_ = po_cur_len_ / 4;
-
-                    
-                } else {
-                    // Stop (ICH behavior)
+                if (stop) {
+                    // STOP DMA
                     po_running_ = false;
-                    po_status_ &= ~0x01;       // clear RUN bit in SR
+
+                    // Clear RUN, BCIS, LVBCI
+                    // Clear RUN, BCIS, LVBCI, and DCH
+                    //po_status_ &= ~(0x01 | 0x08 | 0x04 | 0x02);
+                    po_status_ &= ~(0x01 | 0x08 | 0x04);
+                    po_status_ |= 0x02;   // DCH = 1
+
+                    TRACE_PO_SR_CHANGE();
+                    return;
                 }
-                break;
+
+                // START DMA
+                // Reject invalid DMA start
+                if (bdbar_playback_ == 0 ||
+                    po_civ_ >= 32 ||
+                    !mctrl_.find_bank(bdbar_playback_)) 
+                {
+                    return;  // ignore invalid start
+                }
+
+                po_running_ = true;
+
+                // Set RUN bit
+                po_running_ = true;
+                po_status_ &= ~0x02; // DCH = 0
+                po_status_ |= 0x01;  // RUN = 1
+                TRACE_PO_SR_CHANGE();
+
+                // Load initial BD
+                uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
+                po_cur_ptr_ = mem_read32(bd_addr + 0);
+
+                uint16_t len = mem_read16(bd_addr + 4);
+                po_cur_ctl_ = mem_read16(bd_addr + 6);
+
+                po_cur_len_ = (uint32_t)len + 1;
+                po_cur_bd_frame_offset_bytes_ = 0;
+
+                // If BD is empty (len==0): do NOT consider it complete.
+                // Just wait for tick() to run again after ALSA fills the BD.
+                //if (po_cur_len_ == 1) {
+                //    po_picb_ = 0;
+                //   return;
+                //}
+                // If BD is uninitialized, DMA engine must "stall" with RUN=1
+                if (po_cur_ptr_ == 0 || len == 0) {
+                    po_picb_ = 0;
+                    // do NOT clear RUN
+                    // do NOT advance CIV
+                    // do NOT fire interrupts
+                    return;
+                }
+
+                po_picb_ = po_cur_len_ / 4;
+
+                return;
             }
             case BMOff::MC_BASE + BMOff::CR:  // MC_CONTROL (also 8-bit)
                 mc_control_ = value & 0x1F;
@@ -737,6 +812,12 @@ void AC97Pci::cold_reset() {
     bdbar_playback_ = 0;
     bdbar_capture_  = 0;
 
+    po_status_ = 0x02;  // DCH = 1, engine halted
+    TRACE_PO_SR_CHANGE();
+    mc_status_ = 0x00;
+    po_civ_ = 0;
+    mc_civ_ = 0;
+
     glob_sta_ = GS_CRDY_CODEC0; // bit 8 set
 }
 
@@ -745,6 +826,10 @@ void AC97Pci::warm_reset()
     codec_regs_[0x26 >> 1] = 0x000F;
 
     codec_regs_[0x2A >> 1] &= 0x000F;
+
+    po_status_ = 0x00;
+    TRACE_PO_SR_CHANGE();
+    mc_status_ = 0x00;
 
     glob_sta_ |= GS_CRDY_CODEC0;
 
