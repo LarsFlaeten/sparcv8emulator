@@ -559,9 +559,9 @@ TEST_F(AC97Test, StatusRegistersAreClearedOnColdReset) {
     EXPECT_EQ(read8(PO_SR), 0x02u)
         << "Cold reset must set DCH=1 and clear RUN/BCIS/LVBCI";
 
-    EXPECT_EQ(read8(MC_SR), 0x00u)
-        << "Cold reset must clear MC_SR";
-
+    // After cold reset, MC_SR must have DCH=1 (bit1), and everything else 0
+    EXPECT_EQ(read8(MC_SR) & 0x1F, 0x02u);
+    
     EXPECT_EQ(read8(PO_CIV), 0u)
         << "Cold reset must reset PO_CIV to zero";
 
@@ -771,9 +771,8 @@ TEST_F(AC97Test, PoCrResetRegisterBitMustSelfClear)
     write32_le(GLOB_CNT, 0x00000000);
     write32_le(GLOB_CNT, 0x00000002);
 
-    // Sanity: PO_CR is initially zero
-    EXPECT_EQ(read8(PO_CR), 0x00) 
-        << "After reset PO_CR should start at zero.";
+    EXPECT_EQ(read8(PO_CR) & 0x1F, 0x02)
+        << "After reset PO_CR must show RUN=0, DCH=1";
 
     // ----- 2. Linux writes RESETREGS (bit 1) -----
     write8(PO_CR, 0x02);

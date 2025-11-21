@@ -812,13 +812,24 @@ void AC97Pci::cold_reset() {
     bdbar_playback_ = 0;
     bdbar_capture_  = 0;
 
-    po_status_ = 0x02;  // DCH = 1, engine halted
-    TRACE_PO_SR_CHANGE();
-    mc_status_ = 0x00;
-    po_civ_ = 0;
-    mc_civ_ = 0;
+    // Status: RUN=0, BCIS=0, LVBCI=0, DCH=1
+    po_status_ = 0x02;
 
-    glob_sta_ = GS_CRDY_CODEC0; // bit 8 set
+    // Control register must reflect halted state (DCH=1)
+    po_control_ = 0x02;
+
+    // Reset DMA engine internal pointers
+    po_running_ = false;
+    po_civ_ = 0;
+    po_cur_ptr_ = 0;
+    po_cur_len_ = 0;
+    po_cur_ctl_ = 0;
+    po_cur_bd_frame_offset_bytes_ = 0;
+    po_picb_ = 0;
+
+    glob_sta_ = GS_CRDY_CODEC0;
+
+    printf("AFTER RESET: po_control_=0x%02x po_status_=0x%02x\n", po_control_, po_status_);
 }
 
 void AC97Pci::warm_reset()
