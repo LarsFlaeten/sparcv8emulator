@@ -95,6 +95,15 @@ void AC97Pci::init_codec() {
 
 void AC97Pci::tick()
 {
+    // ---- CRDY delayed ready handling ----
+    if (reset_delay_counter_ > 0) {
+        reset_delay_counter_--;
+        if (reset_delay_counter_ == 0) {
+            glob_sta_ |= (1 << 8);      // CRDY = ready
+            printf("[AC97] CRDY READY after delay\n");
+        }
+    }
+
     // 0. DMA not running?
     if (!po_running_)
         return;
@@ -152,34 +161,39 @@ void AC97Pci::tick()
     //
     // 6. Buffer is COMPLETED
     //
-    printf("[BD_COMPLETE] civ=%u lvi=%u ptr=%08x len=%u ctl=%04x\n",
-       po_civ_,
-       po_lvi_,
-       po_cur_ptr_,
-       po_cur_len_,
-       po_cur_ctl_);
+    printf("[AC97 TICK] CIV=%u LVI=%u PICB=%u LEN=%u OFFS=%u CTL=%04x RUN=%u BD_PTR=%08x\n",
+        po_civ_, po_lvi_, po_picb_, po_cur_len_, po_cur_bd_frame_offset_bytes_,
+        po_cur_ctl_, po_running_, po_cur_ptr_);
 
-    // Advance CIV to next buffer index
-    po_civ_ = (po_civ_ + 1) & 0x1F;
+    // CIV always increments modulo 32
+    uint8_t old_civ = po_civ_;
+    //po_civ_ = (old_civ + 1) & 0x1F;
 
-    // BCIS: Buffer Completion Interrupt
+    // Default increment (mod 32)
+    uint8_t next_civ = (old_civ + 1) & 0x1F;
+
+    // Wrap ring: if we passed LVI, restart at BD0
+    if (next_civ > po_lvi_)
+        next_civ = 0;
+
+    po_civ_ = next_civ;
+
+    // BCIS (buffer completion)
     if (po_cur_ctl_ & 0x8000) {
         po_status_ |= 0x08;
-        printf("[AC97 DEBUG] BCIS FIRED in tick! CIV=%u LVI=%u PICB=%u RUN=%u\n",
-    po_civ_, po_lvi_, po_picb_, po_running_);
         TRACE_PO_SR_CHANGE();
     }
 
-    // LVBCI: Last Valid Buffer Completion
-    if (po_civ_ == ((po_lvi_ + 1) & 0x1F)) {
+    // LVBCI: CIV == (LVI+1)
+    uint8_t next_after_lvi = (po_lvi_ + 1) & 0x1F;
+    if (po_civ_ == next_after_lvi) {
         po_status_ |= 0x04;
         TRACE_PO_SR_CHANGE();
     }
 
-    // Interrupt if enabled
+    // Raise interrupt if enabled
     if ((po_status_ & 0x0C) && (po_control_ & 0x10)) {
-        if (raise_intx_)
-            raise_intx_();
+        if (raise_intx_) raise_intx_();
     }
 
     //
@@ -190,7 +204,8 @@ void AC97Pci::tick()
     uint32_t ptr  = mem_read32(bd_addr + 0);
     uint16_t len  = mem_read16(bd_addr + 4);
     uint16_t ctl  = mem_read16(bd_addr + 6);
-
+    printf("[AC97 BD LOAD from tick] %08x: ptr=%08x len=%08x ctl=%08x",
+        bd_addr, ptr, len, ctl);
     po_cur_ptr_ = ptr;
     po_cur_len_ = (uint32_t)len + 1;
     po_cur_ctl_ = ctl;
@@ -424,15 +439,23 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
 //----------------------------------------------------------------------
 uint32_t AC97Pci::read_glob_sta()
 {
-    uint32_t v = glob_sta_;
+    // Mask to only allow documented readable bits
+    constexpr uint32_t allowed =
+        (1u << 0)  |   // PCR
+        (1u << 5)  |   // PCM in active
+        (1u << 6)  |   // PCM out active
+        (1u << 7)  |   // Mic ADC active
+        (1u << 8)  |   // CRDY (codec ready)
+        (1u << 15);    // S0R (sticky)
 
-    // Clear S0R (sticky) when read
-    if (v & GS_S0R)
-        glob_sta_ &= ~GS_S0R;
+    uint32_t v = glob_sta_ & allowed;
+
+    // S0R clears on read
+    if (v & (1u << 15))
+        glob_sta_ &= ~(1u << 15);
 
     return v;
 }
-
 uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
 {
     uint32_t val = 0;
@@ -664,8 +687,12 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                     return;
 
                 // BD BAR unprogrammed → cannot start yet
-                if (bdbar_playback_ == 0 || !mctrl_.find_bank(bdbar_playback_))
+                if (bdbar_playback_ == 0 || !mctrl_.find_bank(bdbar_playback_)) {
+                    po_running_ = false;
+                    po_status_ |= 0x01;
                     return;
+                }
+                
 
                 // Read BD0
                 uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
@@ -673,7 +700,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 uint16_t len = mem_read16(bd_addr + 4);
                 uint16_t ctl_field = mem_read16(bd_addr + 6);
                 // 🔥 INSERT THIS HERE — BD is valid, Linux requested RUN=1
-                printf("[BD_LOAD] civ=%u ptr=%08x len=%u ctl=%04x\n",
+                printf("[BD_LOAD from PO CR] civ=%u ptr=%08x len=%u ctl=%04x\n",
                     po_civ_,
                     ptr,
                     (unsigned)(len + 1),
@@ -684,8 +711,19 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // DMA MUST NOT START if BD0 is not VALID
                 // (Linux writes BD BAR before BD contents)
                 // ------------------------------------------
-                if (ptr == 0 || len == 0) {
-                    // Descriptor not ready yet → ignore RUN request
+                // 1. If ptr==0 → invalid BD → DMA must not start, DCH stays set
+                if (ptr == 0) {
+                    po_running_ = false; 
+                    po_status_ |= 0x01;  // DCH stays set
+                    return;
+                }
+
+                // 2. If len==0 → empty BD → DMA must NOT run, but must NOT clear DCH
+                // This matches hardware: empty BD stalls DMA without advancing CIV.
+                if (len == 0) {
+                    // Do not start DMA
+                    po_running_ = false;
+                    po_status_ |= 0x01;  // DCH must remain set
                     return;
                 }
 
@@ -814,21 +852,13 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
     throw std::runtime_error("[AC97 NABM] Read not valid for register " + to_hex(offset));
 }
 
-void AC97Pci::cold_reset() {
-    
+void AC97Pci::cold_reset()
+{
+    // Clear codec regs
     memset(codec_regs_, 0, sizeof(codec_regs_));
     init_codec();
 
-    bdbar_playback_ = 0;
-    bdbar_capture_  = 0;
-
-    // Status: RUN=0, BCIS=0, LVBCI=0, DCH=1
-    po_status_ = 0x01;
-
-    // Control register must reflect halted state (DCH=1)
-    po_control_ = 0x02;
-
-    // Reset DMA engine internal pointers
+    // DMA engine reset
     po_running_ = false;
     po_civ_ = 0;
     po_cur_ptr_ = 0;
@@ -837,19 +867,28 @@ void AC97Pci::cold_reset() {
     po_cur_bd_frame_offset_bytes_ = 0;
     po_picb_ = 0;
 
-    glob_sta_ = GS_CRDY_CODEC0;
+    bdbar_playback_ = 0;
+    bdbar_capture_  = 0;
 
-    //glob_sta_ = (1<<0) | (1<<6) | (1<<8);
-    glob_sta_ =
-      (1 << 0)   // PCR: primary codec ready
-    | (1 << 5)   // PCM in status
-    | (1 << 6)   // PCM out status
-    | GS_CRDY_CODEC0;  // PCRDY: codec responds ready
-    
-    glob_cnt_ =
-      (1 << 18);  // VRA supported
+    // Status: RUN=0, BCIS=0, LVBCI=0, DCH=1
+    po_status_ = 1;
+    po_control_ = 0x02;
 
-    printf("AFTER RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%02x glob_cnt_=0x%02x\n", po_control_, po_status_, glob_sta_, glob_cnt_);
+    // ----------- GLOB_STA initial state -----------
+    // PCR + PCM IN + PCM OUT + (CRDY delayed)
+    glob_sta_  = (1 << 0)      // PCR
+               | (1 << 5)      // PCM In active
+               | (1 << 6);     // PCM Out active
+
+    // ----------- CRDY comes later ---------------
+    glob_sta_ &= ~(1 << 8);    // make sure CRDY is off
+    reset_delay_counter_ = 4;   // appear after 4 ticks
+
+    // ----------- GLOB_CNT capabilities -----------
+    glob_cnt_ = (1 << 18);      // VRA supported only
+
+    printf("AFTER RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%08x glob_cnt_=0x%08x\n",
+           po_control_, po_status_, glob_sta_, glob_cnt_);
 }
 
 void AC97Pci::warm_reset()

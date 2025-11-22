@@ -326,6 +326,8 @@ private:
     bool     po_running_ = false;
 
     uint64_t dma_tick_counter_ = 0;
+
+    uint32_t reset_delay_counter_ = 0;
     
 
     uint16_t read_nam(uint32_t of);

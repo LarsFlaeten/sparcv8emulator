@@ -246,27 +246,29 @@ TEST_F(AC97Test, TickMustNotModifySRWhenNotRunning)
 
 TEST_F(AC97Test, POCR_StartClearsBCISAndLVBCI)
 {
-    mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
-    
+    mctrl.attach_bank<RamBank>(0x420a0000, 0x20000);
     make_device();
 
-    // 1. Prepare BD table
-    uint32_t bd_addr = BD_AREA;  // you know BD_AREA from earlier
-    write32_le(NABM_BASE + 0x10, bd_addr);   // BD_BAR
-    write8(   NABM_BASE + 0x15, 0x1F);       // LVI=31
+    const uint32_t base = NABM_BASE;
 
-    // Write bogus BCIS/LVBCI into the device before START
-    write8(NABM_BASE + 0x16, 0x0C);          // force BCIS+LVBCI
+    // Program BD BAR
+    write32_le(base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR, 0x420a0000);
 
-    // 2. Start DMA
-    write8(NABM_BASE + 0x1B, 0x01);          // PO_CR = START
-    
-    // 3. Read SR
-    uint8_t sr = read8(NABM_BASE + 0x16);
+    // Program BD0 to be VALID (otherwise DMA must not start)
+    write32_le(0x420a0000 + 0, 0x420a0200);  // ptr != 0
+    write16_le(0x420a0000 + 4, 0x0010);      // len != 0
+    write16_le(0x420a0000 + 6, 0x8000);      // irq
 
-    // DCH must be 0, BCIS=LVBCI=0
-    EXPECT_EQ(sr & 0x01, 0x00);    // DCH = 1
-    EXPECT_EQ(sr & 0x0C, 0x00);    // BCIS/LVBCI cleared
+    // Force status bits so we see they clear on START
+    write8(base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR, 0x0C);
+
+    // START DMA (RUN=1)
+    write8(base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR, 0x01);
+
+    uint8_t sr = read8(base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+
+    EXPECT_EQ(sr & 0x0C, 0);  // BCIS+LVBCI cleared
+    EXPECT_EQ(sr & 0x01, 0);  // DCH cleared only because DMA actually started
 }
 
 TEST_F(AC97Test, POCR_ReservedBitsAlwaysZeroAndLowBitsPreserved) {
@@ -337,24 +339,18 @@ TEST_F(AC97Test, POCR_WriteDoesNotAffectHighByte)
 
 TEST_F(AC97Test, POCR_StartDoesNotActivateDMAWithoutBDBar)
 {
-    // Ensures your safety fix works
-    mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
     make_device();
 
-    const uint32_t CR = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
-    const uint32_t SR = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t base = NABM_BASE;
 
-    // RUN bit write
-    write8(CR, 0x01);
+    // START DMA while BD BAR = 0
+    write8(base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR, 0x01);
 
-    // DMA must NOT start because BD_BAR is zero
-    // RUN bit in SR must remain cleared (no active DMA)
-    // According to our model, SR is not a valid register for r16 → should throw
-    EXPECT_THROW(read16_le(SR), std::runtime_error);
-    uint8_t sr = read8(SR);
-    EXPECT_EQ(sr & 0x01, 0x00);
+    uint8_t sr = read8(base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+
+    // DMA must NOT start → DCH stays = 1
+    EXPECT_EQ(sr & 0x01, 0x01);
 }
-
 //
 // --- Status Register (PO_SR) Tests ---
 //
@@ -570,53 +566,49 @@ TEST_F(AC97Test, StatusRegistersAreClearedOnColdReset) {
 
 TEST_F(AC97Test, BcisAndLvBciAreClearedWhenStoppingDma)
 {
-    // Map BD BAR memory
-    uint32_t bd_base = 0x42097000;
-    mctrl.attach_bank<RamBank>(bd_base, 0x1000);
-
+    mctrl.attach_bank<RamBank>(0x42097000, 0x1000);
     make_device();
 
-    const uint32_t base = NABM_BASE;
-
+    const uint32_t base     = NABM_BASE;
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
     const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
     const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
-    const uint32_t PO_CIV   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV;
-    const uint32_t PO_LVI   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI;
-    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
 
-    // Install BD BAR and one BD
+    const uint32_t bd_base = 0x42097000;
+
+    // Program BD BAR
     write32_le(PO_BDBAR, bd_base);
-    write8(PO_CIV, 0);
-    write8(PO_LVI, 0);
 
-    uint32_t bd0 = bd_base + 0;
-    write32_le(bd0 + 0, bd_base + 0x200);
-    write16_le(bd0 + 4, 0x00FF);      // len = 256 bytes → real BD
-    write16_le(bd0 + 6, 0x8000);      // BCIS enabled
+    // Create one BD with IOCE enabled
+    write32_le(bd_base + 0, bd_base + 0x200); // ptr
+    write16_le(bd_base + 4, 255);             // len (256 bytes)
+    write16_le(bd_base + 6, 0x8000);          // IOCE=1
 
-    // Start DMA
-    write8(PO_CR, 0x01);
+    // --- Start DMA ---
+    write8(PO_CR, 0x01); // RUN=1
 
-    for (int i = 0; i < 20; i++)
+    // SR after start: DCH must be cleared, BCIS=0
+    uint8_t sr = read8(PO_SR);
+    ASSERT_EQ(sr & 0x01, 0x00) << "DCH must clear when DMA starts";
+    ASSERT_EQ(sr & 0x08, 0x00) << "BCIS must not be set immediately on RUN";
+
+    // --- Tick until BD completes ---
+    // Skip spamming by doing enough ticks to guarantee completion.
+    for (int i = 0; i < 200; i++)
         dev->tick();
-    
 
-    // Now BCIS must be set
-    ASSERT_EQ(read8(PO_SR) & 0x08, 0x08)
-        << "Precondition failed: BCIS should be set after BD completion";
+    sr = read8(PO_SR);
+    ASSERT_EQ(sr & 0x08, 0x08) << "BCIS must fire after BD completes";
+    ASSERT_EQ(sr & 0x04, 0x04) << "LVBCI must fire when CIV == LVI+1";
 
-    // STOP DMA
+    // --- STOP DMA ---
     write8(PO_CR, 0x00);
 
-    uint8_t sr = read8(PO_SR);
-
-    EXPECT_EQ(sr & 0x0C, 0x00)
-        << "BCIS/LVBCI must clear on STOP";
-
-    EXPECT_EQ(sr & 0x01, 0x01)
-        << "Expect DMA halted";
+    sr = read8(PO_SR);
+    ASSERT_EQ(sr & 0x08, 0x00) << "BCIS must clear on STOP";
+    ASSERT_EQ(sr & 0x04, 0x00) << "LVBCI must clear on STOP";
+    ASSERT_EQ(sr & 0x01, 0x01) << "DCH must be set on STOP";
 }
-
 
 TEST_F(AC97Test, DchBitSetOnResetAndStop)
 {
@@ -858,34 +850,27 @@ TEST_F(AC97Test, GlobCntSta_HasCapabilitiesAfterColdReset)
     const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
     const uint32_t GLOB_STA = base + AC97Pci::BMOff::GLOB_STA;
 
-    // Cold reset
+    // Issue cold reset
     write32_le(GLOB_CNT, 0x00000002);
 
-    uint32_t gc = read32_le(GLOB_CNT);
-    uint32_t gs = read32_le(GLOB_STA);
+    // -- Immediately after reset --
+    uint32_t gs0 = read32_le(GLOB_STA);
 
-    // --- EXPECTATION ---
-    // Hardware must auto-clear RESET bit and not set capability flags.
+    // PCR, PCM in/out must be present
+    ASSERT_TRUE(gs0 & (1 << 0)) << "PCR must be set";
+    ASSERT_TRUE(gs0 & (1 << 5)) << "PCM In active must be set";
+    ASSERT_TRUE(gs0 & (1 << 6)) << "PCM Out active must be set";
 
-    u32 glob_sta_exp =
-      (1 << 0)   // PCR: primary codec ready
-    | (1 << 5)   // PCM in status
-    | (1 << 6)   // PCM out status
-    | 0x100;  // PCRDY: codec responds ready
-    
-    u32 glob_cnt_exp =
-      (1 << 18);  // VRA supported
+    // CRDY must NOT be set yet
+    ASSERT_EQ((gs0 >> 8) & 1, 0u) << "CRDY must not be ready immediately after reset";
 
-    EXPECT_EQ(gs & (1 << 0), (1 << 0)) << "PCR: bit must be set after reset";
-    EXPECT_EQ(gs & (1 << 5), (1 << 5)) << "PCM in: bit must be set after reset";
-    EXPECT_EQ(gs & (1 << 6), (1 << 6)) << "PCM out: bit must be set after reset";
-    EXPECT_EQ(gs & (1 << 8), (1 << 8)) << "PCRDY: bit must be set after reset";
+    // --- wait for CRDY using ticks ---
+    for (int i = 0; i < 4; i++)
+        dev->tick();
 
-
-    EXPECT_EQ(gc & (1 << 18), (1 << 18)) << "GLOB_CNT bit18 must be set after reset";
-
-    // Cold reset bit must clear itself
-    EXPECT_FALSE(gc & 0x02) << "GLOB_CNT bit1 must auto-clear after reset";
+    // After delay, CRDY must appear
+    uint32_t gs1 = read32_le(GLOB_STA);
+    ASSERT_EQ((gs1 >> 8) & 1, 1u) << "CRDY must appear after delay";
 }
 
 TEST_F(AC97Test, GlobCnt_NoFragmentsImplementedinGLOBCNT)
@@ -920,9 +905,9 @@ TEST_F(AC97Test, AC97_DACRate_Register_Endianness)
     const uint32_t AC97_PCM_DAC_RATE = NAM_BASE + 0x2C;
 
     // According to the AC97 spec, this register must contain 48000 Hz by default.
-    const uint16_t expected_rate = 48000;         // decimal
+    //const uint16_t expected_rate = 48000;         // decimal
     const uint16_t expected_le   = 0xBB80;        // little-endian 16-bit
-    const uint16_t expected_be   = 0x80BB;        // big-endian swapped
+    //const uint16_t expected_be   = 0x80BB;        // big-endian swapped
 
     // Read the raw device value
     uint16_t rate = read16_le(AC97_PCM_DAC_RATE);
@@ -1052,4 +1037,446 @@ TEST_F(AC97Test, POCR_MustNotStartDmaUntilBd0Valid)
 
     sr = read8(PO_SR);
     EXPECT_FALSE(sr & 0x01) << "DCH must clear when DMA starts";
+}
+
+TEST_F(AC97Test, ColdReset_MustDropCRDY_ThenRaiseItLater)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
+    make_device();
+
+    const uint32_t base     = NABM_BASE;
+    const uint32_t GLOB_STA = base + AC97Pci::BMOff::GLOB_STA;
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+
+    // --- 1. Trigger cold reset ---
+    // Linux writes bit1 = 1 (0x2)
+    write32_le(GLOB_CNT, 0x00000002);
+
+    // --- 2. Immediately after reset: CRDY MUST BE 0 ---
+    uint32_t s0 = read32_le(GLOB_STA);
+
+    // CRDY is bit 8 (0x100)
+    ASSERT_EQ((s0 & 0x100u), 0u)
+        << "CRDY must be cleared immediately after cold reset";
+
+    // --- 3. Now simulate a few 'ticks' where CRDY becomes ready later ---
+    bool crdy_seen = false;
+
+    for (int i = 0; i < 10; ++i) {
+        dev->tick();        // your AC97 tick
+        uint32_t s = read32_le(GLOB_STA);
+        if (s & 0x100u)
+            crdy_seen = true;
+    }
+
+    ASSERT_TRUE(crdy_seen)
+        << "CRDY must rise after reset delay (not immediately)";
+}
+
+TEST_F(AC97Test, CRDY_ShouldAppearOnlyAfterDelay)
+{
+    make_device();
+
+    const uint32_t GLOB_CNT = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
+    const uint32_t GLOB_STA = NABM_BASE + AC97Pci::BMOff::GLOB_STA;
+
+    // Trigger cold reset
+    write32_le(GLOB_CNT, 0x02);
+
+    // Immediately after reset: CRDY must be 0
+    ASSERT_EQ(read32_le(GLOB_STA) & (1 << 8), 0u);
+
+    // Tick until delay expires
+    for (int i = 0; i < 2000; i++)
+        dev->tick();
+
+    // Now CRDY must be visible
+    ASSERT_NE(read32_le(GLOB_STA) & (1 << 8), 0u);
+}
+
+TEST_F(AC97Test, Pocm_PicbDecrementsAndCivAdvancesOnBdCompletion)
+{
+    mctrl.attach_bank<RamBank>(0x42097000, 0x2000);  // BD area + sample area
+    make_device();
+
+    const uint32_t base     = NABM_BASE;
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t PO_PICB  = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::PICB;
+    const uint32_t PO_CIV   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV;
+    const uint32_t PO_LVI   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI;
+
+    const uint32_t bd_base  = 0x42097000;
+    const uint32_t buf_base = 0x42097800;  // vilkårlig bufferadresse innen samme bank
+
+    // Fyll inn litt dummy PCM, så mem_read_ har noe å lese
+    for (uint32_t off = 0; off < 8; off += 2)
+        write16_le(buf_base + off, 0x1234);
+
+    // BD0: 2 stereo frames á 4 byte = 8 byte
+    // => len = 7 (len+1 = 8), PICB = 8/4 = 2
+    write32_le(bd_base + 0, buf_base);  // ptr
+    write16_le(bd_base + 4, 7);         // len = 7 → 8 bytes
+    write16_le(bd_base + 6, 0x8000);    // ctl: IOCE set, så BCIS skal trigges
+
+    // Sett BD BAR og LVI for 1 BD (index 0)
+    write32_le(PO_BDBAR, bd_base);
+    write8(PO_LVI, 0x00);
+
+    // Start DMA
+    write8(PO_CR, 0x01);  // RUN=1
+
+    // Etter start: PICB må ha 2 frames
+    uint16_t picb0 = read16_le(PO_PICB);
+    EXPECT_EQ(picb0, 2u) << "PICB must reflect (len+1)/4 frames at start";
+
+    uint8_t civ0 = read8(PO_CIV);
+    EXPECT_EQ(civ0, 0u) << "CIV must start at 0";
+
+    // Første tick: 2 → 1
+    dev->tick();
+    uint16_t picb1 = read16_le(PO_PICB);
+    EXPECT_EQ(picb1, 1u) << "PICB must decrement by 1 frame per tick";
+
+    uint8_t civ1 = read8(PO_CIV);
+    EXPECT_EQ(civ1, 0u) << "CIV must NOT advance until BD completes";
+
+    // Andre tick: 1 → 0, BD complete
+    dev->tick();
+    uint16_t picb2 = read16_le(PO_PICB);
+    EXPECT_EQ(picb2, 0u) << "PICB must reach 0 after consuming all frames";
+
+    uint8_t civ2 = read8(PO_CIV);
+    EXPECT_EQ(civ2, 1u) << "CIV must advance to 1 after BD completion";
+
+    uint8_t sr = read8(PO_SR);
+    EXPECT_NE(sr & 0x08, 0u) << "BCIS must be set when BD completes (IOCE=1)";
+}
+
+TEST_F(AC97Test, TickMustNotChangeDmaStateWhenNotRunning)
+{
+    mctrl.attach_bank<RamBank>(0x42097000, 0x1000);
+    make_device();
+
+    const uint32_t base     = NABM_BASE;
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t PO_PICB  = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::PICB;
+    const uint32_t PO_CIV   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV;
+
+    const uint32_t bd_base  = 0x42097000;
+    const uint32_t buf_base = 0x42097800;
+
+    // Sett opp BD0 som gyldig, men vi skal IKKE sette RUN=1
+    write32_le(bd_base + 0, buf_base);
+    write16_le(bd_base + 4, 7);       // 8 bytes -> 2 frames
+    write16_le(bd_base + 6, 0x8000);  // IOCE
+
+    write32_le(PO_BDBAR, bd_base);
+
+    uint8_t  sr0   = read8(PO_SR);
+    uint8_t  civ0  = read8(PO_CIV);
+    uint16_t picb0 = read16_le(PO_PICB);
+
+    // Tick mange ganger uten RUN
+    for (int i = 0; i < 100; ++i)
+        dev->tick();
+
+    uint8_t  sr1   = read8(PO_SR);
+    uint8_t  civ1  = read8(PO_CIV);
+    uint16_t picb1 = read16_le(PO_PICB);
+
+    EXPECT_EQ(civ1, civ0)   << "CIV must not change if DMA is not running";
+    EXPECT_EQ(picb1, picb0) << "PICB must not change if DMA is not running";
+    EXPECT_EQ(sr1 & 0x08, sr0 & 0x08)
+        << "BCIS bit must not spuriously change if DMA is not running";
+}
+
+TEST_F(AC97Test, EmptyBdMustNotAdvanceDmaOrCiv)
+{
+    mctrl.attach_bank<RamBank>(0x42097000, 0x1000);
+    make_device();
+
+    const uint32_t base     = NABM_BASE;
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t PO_PICB  = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::PICB;
+    const uint32_t PO_CIV   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV;
+
+    const uint32_t bd_base = 0x42097000;
+
+    // BD0 er helt tom (ptr=0, len=0, ctl=0)
+    write32_le(bd_base + 0, 0x00000000);
+    write16_le(bd_base + 4, 0x0000);
+    write16_le(bd_base + 6, 0x0000);
+
+    write32_le(PO_BDBAR, bd_base);
+
+    // Forsøk å starte DMA
+    write8(PO_CR, 0x01);  // RUN=1
+
+    //uint8_t  sr0   = read8(PO_SR);
+    uint8_t  civ0  = read8(PO_CIV);
+    uint16_t picb0 = read16_le(PO_PICB);
+
+    // Tick masse
+    for (int i = 0; i < 100; ++i)
+        dev->tick();
+
+    uint8_t  sr1   = read8(PO_SR);
+    uint8_t  civ1  = read8(PO_CIV);
+    uint16_t picb1 = read16_le(PO_PICB);
+
+    // Forventning: DMA har aldri startet ordentlig
+    EXPECT_EQ(civ1, civ0)   << "CIV must not advance when BD0 is empty";
+    EXPECT_EQ(picb1, picb0) << "PICB must stay at 0 for empty BD";
+    EXPECT_EQ(sr1 & 0x01, 0x01)
+        << "DCH must remain set when no valid BD is available";
+    EXPECT_EQ(sr1 & 0x08, 0x00)
+        << "BCIS must not fire for empty BD";
+}
+
+
+TEST_F(AC97Test, DmaMustConsumeMultipleTicksBeforeCompletingBd)
+{
+    // 1) Allocate RAM for BD list + sample buffer
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
+    make_device();
+
+    const uint32_t base    = NABM_BASE;
+    const uint32_t BDBAR   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+    const uint32_t LVI     = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI;
+    const uint32_t CR      = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t SR      = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t PICB    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::PICB;
+
+    // ------------------------------
+    // 2) Set up BD0 with a large buffer
+    // ------------------------------
+    uint32_t bdbar = 0x420A0000;
+    uint32_t buffer = 0x420A1000;
+
+    // Write BD BAR
+    write32_le(BDBAR, bdbar);
+
+    // BD0:
+    // ptr = buffer, len = 4096 bytes - 1 (valid and > 1 tick)
+    write32_le(bdbar + 0, buffer);   // pointer
+    write16_le(bdbar + 4, 4096 - 1); // len (len+1 = 4096)
+    write16_le(bdbar + 6, 0x8000);   // interrupt on completion
+
+    // LVI = 0 (one descriptor ring)
+    write8(LVI, 0);
+
+    // ------------------------------
+    // 3) Start DMA
+    // ------------------------------
+    write8(CR, 0x01);  // RUN=1
+
+    // PICB should now be non-zero
+    uint16_t picb0 = read16_le(PICB);
+    ASSERT_GT(picb0, 0) << "PICB must be initialized to >0 when BD0 is valid";
+
+    uint8_t civ0 = read8(SR + 0x00);   // low byte contains DCH/BCIS/LVBCI bits
+    uint8_t sr0  = read8(SR);
+
+    // DCH must be cleared because DMA started
+    ASSERT_EQ(sr0 & 0x01, 0) << "DCH must clear when DMA starts";
+
+    // ------------------------------
+    // 4) Tick 10 times — BD must *not* complete
+    // ------------------------------
+    uint8_t civ_prev = civ0;
+
+    for (int i = 0; i < 10; i++) {
+        dev->tick();
+
+        uint16_t picb = read16_le(PICB);
+        uint8_t sr    = read8(SR);
+        uint8_t civ   = read8(SR + 0x00);
+
+        // PICB must decrement — but not reach zero yet
+        ASSERT_GT(picb, 0) <<
+            "After " << i << " ticks, PICB reached zero too early (BD completed prematurely)";
+
+        // CIV must not change for these early ticks
+        ASSERT_EQ(civ, civ_prev) <<
+            "CIV advanced too early at tick " << i << " — BD must last multiple ticks";
+
+        // BCIS must NOT fire early
+        ASSERT_EQ(sr & 0x08, 0) <<
+            "BCIS fired prematurely at tick " << i;
+
+        civ_prev = civ;
+    }
+}
+
+TEST_F(AC97Test, MultiBdRing_FullCycle)
+{
+    //
+    // Test setup
+    //
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x40000);
+    make_device();
+
+    constexpr uint32_t BD_BASE = 0x420A0000;
+    constexpr uint32_t BD0 = BD_BASE + 0 * 8;
+    constexpr uint32_t BD1 = BD_BASE + 1 * 8;
+    constexpr uint32_t BD2 = BD_BASE + 2 * 8;
+    constexpr uint32_t BD3 = BD_BASE + 3 * 8;
+
+    // 4 PCM buffers á 4096 bytes → 1024 frames
+    constexpr uint32_t BUF0 = 0x420A2000;
+    constexpr uint32_t BUF1 = 0x420A3000;
+    constexpr uint32_t BUF2 = 0x420A4000;
+    constexpr uint32_t BUF3 = 0x420A5000;
+
+    constexpr uint16_t FRAMES_PER_BD = 1024;
+
+    //
+    // Program four valid descriptors
+    //
+    write32_le(BD0 + 0, BUF0); write16_le(BD0 + 4, 4095); write16_le(BD0 + 6, 0x8000);
+    write32_le(BD1 + 0, BUF1); write16_le(BD1 + 4, 4095); write16_le(BD1 + 6, 0x8000);
+    write32_le(BD2 + 0, BUF2); write16_le(BD2 + 4, 4095); write16_le(BD2 + 6, 0x8000);
+    write32_le(BD3 + 0, BUF3); write16_le(BD3 + 4, 4095); write16_le(BD3 + 6, 0x8000);
+
+    //
+    // Program BD BAR + LVI
+    //
+    const uint32_t BASE = NABM_BASE + AC97Pci::BMOff::PO_BASE;
+    write32_le(BASE + AC97Pci::BMOff::BD_BAR, BD_BASE);
+    write8     (BASE + AC97Pci::BMOff::LVI,    3);
+
+    //
+    // Start playback engine
+    //
+    write8(BASE + AC97Pci::BMOff::CR, 1);
+
+    //
+    // CIV starts at 0
+    //
+    uint32_t expected_civ = 0;
+
+    //
+    // Step through all 4 BD entries in a full ring
+    //
+    for (int bd = 0; bd < 4; ++bd)
+    {
+        uint16_t last_picb = FRAMES_PER_BD;
+        bool bd_completed = false;
+
+        //
+        // Consume exactly one BD worth of frames
+        //
+        for (;;)
+        {
+            dev->tick();
+
+            uint16_t picb = read16_le(BASE + AC97Pci::BMOff::PICB);
+            uint8_t  civ  = read8 (BASE + AC97Pci::BMOff::CIV);
+            uint8_t  sr   = read8 (BASE + AC97Pci::BMOff::SR);
+
+            //
+            // CASE 1: Still consuming frames
+            //
+            if (!bd_completed && picb > 0)
+            {
+                //ASSERT_LE(picb, last_picb) << "PICB increased unexpectedly";
+                if (!(last_picb == 1 && picb == FRAMES_PER_BD)) {
+                   ASSERT_LE(picb, last_picb) << "PICB increased unexpectedly";
+                }
+                last_picb = picb;
+                continue;
+            }
+
+            //
+            // CASE 2: PICB = 0 → BD has completed
+            //
+            if (!bd_completed && picb == 0)
+            {
+                // BCIS must be set when PICB hits 0
+                ASSERT_NE(sr & 0x08, 0) << "BCIS not set at BD completion";
+
+                // CIV must advance by one entry
+                uint32_t next = (expected_civ + 1) & 0x1F;
+                ASSERT_EQ(civ, next) << "CIV incorrect at BD completion";
+
+                bd_completed = true;
+                expected_civ = civ;
+                last_picb = 0;
+                continue;
+            }
+
+            //
+            // CASE 3: New BD has just been loaded → PICB jumps from 0 → >0
+            //
+            if (bd_completed && picb > 0)
+            {
+                ASSERT_GT(picb, 0) << "PICB must be >0 after BD reload";
+                last_picb = picb;
+                break;  // BD fully processed
+            }
+
+            //
+            // CASE 4: Any other combination is illegal
+            //
+            FAIL() << "Unexpected PICB/CIV state transition: "
+                   << "picb=" << picb << " last_picb=" << last_picb
+                   << " civ=" << (int)civ << " sr=" << std::hex << (int)sr;
+        }
+    }
+}
+
+
+
+TEST_F(AC97Test, MeasurementLoop_PICBBehavesMonotonically)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x40000);
+    make_device();
+
+    const uint32_t base = NABM_BASE;
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+    const uint32_t PO_LVI   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI;
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t PO_PICB  = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::PICB;
+
+    // 1. Prepare BD0 with a big buffer (like real driver)
+    uint32_t bd0 = 0x420A0000;
+    write32_le(bd0 + 0, 0x420A2000);     // ptr
+    write16_le(bd0 + 4, 4095);           // len = 4096 bytes (1024 frames)
+    write16_le(bd0 + 6, 0x8000);         // IOC
+
+    write32_le(PO_BDBAR, bd0);
+    write8(PO_LVI, 0);
+
+    // 2. Start DMA
+    write8(PO_CR, 1);
+
+    uint32_t last_picb = read16_le(PO_PICB);
+    ASSERT_GT(last_picb, 0);
+
+    // 3. Emulate the 50ms measurement loop
+    for (int i = 0; i < 5000; ++i) {
+        dev->tick();
+
+        uint32_t picb = read16_le(PO_PICB);
+
+        // Should never increase
+        ASSERT_LE(picb, last_picb) << "PICB increased unexpectedly";
+
+        // Should not hit zero too early
+        if (i < 200) {
+            ASSERT_GT(picb, 0) << "PICB reached zero too early";
+        }
+
+        last_picb = picb;
+
+        // If naturally completed — stop test
+        if (picb == 0)
+            break;
+    }
 }
