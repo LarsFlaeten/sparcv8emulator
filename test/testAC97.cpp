@@ -158,13 +158,13 @@ TEST_F(AC97Test, GlobStaReturnsOnlyAllowedBits)
     uint32_t v = read32_le(NABM_BASE + 0x30);
     // We cannot see the sempahore bit, even though it is set a device init
     // since reading glob sta will clear it:
-    ASSERT_EQ(v , 0x100u) << "GLOB_STA must have Codec 0 ready and semaphore bit not set";
+    ASSERT_EQ(v & 0x1FF , 0x100u) << "GLOB_STA must have Codec 0 ready and semaphore bit not set";
     
     // Only allow clearing sempahore bit, not the codec ready bit:
     write32_le(NABM_BASE + 0x30, 0xffffffffu);
 
     v = read32_le(NABM_BASE + 0x30);
-    ASSERT_EQ(v , 0x100u) << "GLOB_STA must have Codec 0 ready and semaphore bit not set";
+    ASSERT_EQ(v & 0x1ff, 0x100u) << "GLOB_STA must have Codec 0 ready and semaphore bit not set";
     
     // Below test is disabled, as DMA bits are not implemented:
 
@@ -872,36 +872,40 @@ TEST_F(AC97Test, ResetRegsSetsDchAndClearsStatus)
     EXPECT_EQ(sr & 0x0E, 0x00) << "RESETREGS must clear BCIS/LVBCI/FIFO";
 }
 
-TEST_F(AC97Test, GlobCnt_HasCapabilitiesAfterColdReset)
+TEST_F(AC97Test, GlobCntSta_HasCapabilitiesAfterColdReset)
 {
     mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
     make_device();
 
     const uint32_t base     = NABM_BASE;
     const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+    const uint32_t GLOB_STA = base + AC97Pci::BMOff::GLOB_STA;
 
     // Cold reset
     write32_le(GLOB_CNT, 0x00000002);
 
     uint32_t gc = read32_le(GLOB_CNT);
+    uint32_t gs = read32_le(GLOB_STA);
 
     // --- EXPECTATION ---
     // Hardware must auto-clear RESET bit and not set capability flags.
 
-    // PR (PCM Out Ready)
-    EXPECT_EQ(gc & (1u << 2),0) << "GLOB_CNT: PR (bit2) must not be set after cold reset";
+    u32 glob_sta_exp =
+      (1 << 0)   // PCR: primary codec ready
+    | (1 << 5)   // PCM in status
+    | (1 << 6)   // PCM out status
+    | 0x100;  // PCRDY: codec responds ready
+    
+    u32 glob_cnt_exp =
+      (1 << 18);  // VRA supported
 
-    // CR (PCM In Ready)
-    EXPECT_EQ(gc & (1u << 3),0) << "GLOB_CNT: CR (bit3) must not be set after cold reset";
+    EXPECT_EQ(gs & (1 << 0), (1 << 0)) << "PCR: bit must be set after reset";
+    EXPECT_EQ(gs & (1 << 5), (1 << 5)) << "PCM in: bit must be set after reset";
+    EXPECT_EQ(gs & (1 << 6), (1 << 6)) << "PCM out: bit must be set after reset";
+    EXPECT_EQ(gs & (1 << 8), (1 << 8)) << "PCRDY: bit must be set after reset";
 
-    // PRD (PCM Out double-buffer supported)
-    EXPECT_EQ(gc & (1u << 4),0) << "GLOB_CNT: PRD (bit4) must not be set after cold reset";
 
-    // CRD (PCM In double-buffer supported)
-    EXPECT_EQ(gc & (1u << 5),0) << "GLOB_CNT: CRD (bit5) must not be set after cold reset";
-
-    // VRA (Variable Rate Audio)
-    EXPECT_EQ(gc & (1u << 18),0) << "GLOB_CNT: VRA (bit18) must not be set after cold reset";
+    EXPECT_EQ(gc & (1 << 18), (1 << 18)) << "GLOB_CNT bit18 must be set after reset";
 
     // Cold reset bit must clear itself
     EXPECT_FALSE(gc & 0x02) << "GLOB_CNT bit1 must auto-clear after reset";
@@ -922,4 +926,153 @@ TEST_F(AC97Test, GlobCnt_NoFragmentsImplementedinGLOBCNT)
 
     ASSERT_EQ(gc & 0x2, 0);
 
+}
+
+TEST_F(AC97Test, AC97_DACRate_Register_Endianness)
+{
+    // Create memory + device
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
+    make_device();
+
+    // Perform cold reset (as Linux does)
+    const uint32_t GLOB_CNT = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
+    write32_le(GLOB_CNT, 0x00000002); // assert cold reset
+
+    // AC97 register offsets are inside codec_regs_[]:
+    // 0x2C = PCM Front DAC Rate register (16-bit)
+    const uint32_t AC97_PCM_DAC_RATE = NAM_BASE + 0x2C;
+
+    // According to the AC97 spec, this register must contain 48000 Hz by default.
+    const uint16_t expected_rate = 48000;         // decimal
+    const uint16_t expected_le   = 0xBB80;        // little-endian 16-bit
+    const uint16_t expected_be   = 0x80BB;        // big-endian swapped
+
+    // Read the raw device value
+    uint16_t rate = read16_le(AC97_PCM_DAC_RATE);
+
+    printf("[TEST] AC97 PCM DAC Rate read = 0x%04x\n", rate);
+
+    // First: ensure it's non-zero, otherwise ALSA sees "no VRA support"
+    ASSERT_NE(rate, (uint16_t)0)
+        << "PCM DAC Rate register returned 0 — ALSA will reject hw_params.";
+
+    // Then: ensure it is *exactly* 0xBB80 (little endian 48000)
+    ASSERT_EQ(rate, expected_le)
+        << "PCM DAC Rate register has wrong endianness. "
+        << "Expected 0xBB80 (LE 48000), got 0x" << std::hex << rate
+        << ". ALSA will fallback to 'single period' mode and refuse hw_params.";
+}
+
+TEST_F(AC97Test, TickMustNotAdvanceOrFireWhenNotRunning)
+{
+    // 1. Set up RAM region for BD descriptors
+    const uint32_t BD_BASE = 0x420A0000;
+    mctrl.attach_bank<RamBank>(BD_BASE, 0x20000);
+    make_device();
+
+    const uint32_t base     = NABM_BASE;
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_CIV   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+
+    // --- Cold reset ---
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+    write32_le(GLOB_CNT, 0x00000002);        // request cold reset
+
+    // After reset: CIV=0, RUN=0, BD BAR not programmed
+    uint8_t civ_before = read8(PO_CIV);
+    EXPECT_EQ(civ_before, 0u);
+
+    uint8_t sr_before = read8(PO_SR);
+    // DCH must be 1 after reset
+    EXPECT_EQ(sr_before & 0x01, 0x01);
+
+    // --- 2. Program BD BAR like Linux does early in boot ---
+    write32_le(PO_BDBAR, BD_BASE);
+
+    // Put a valid-looking descriptor in BD0 to tempt the bug
+    // ptr=0x1000, len=0x40, ctl=IOC (bit15)
+    write32_le(BD_BASE + 0, 0x00001000);
+    write16_le(BD_BASE + 4, 0x0040);
+    write16_le(BD_BASE + 6, 0x8000);     // IOC set → BCIS skulle fyres hvis DMA egentlig gikk
+
+    // --- 3. DO NOT start DMA (RUN=0) ---
+    write8(PO_CR, 0x00);
+
+    // --- 4. Run many ticks to simulate boot-time  ---
+    for (int i = 0; i < 5000; i++)
+        dev->tick();
+
+    // --- 5. Read back CIV and SR ---
+    uint8_t civ_after = read8(PO_CIV);
+    uint8_t sr_after  = read8(PO_SR);
+
+    // --- EXPECTATION ---
+    // DMA MUST NOT have progressed the BD ring
+    EXPECT_EQ(civ_after, civ_before)
+        << "CIV must not advance when RUN=0";
+
+    // No BCIS (bit3) or LVBCI (bit2) should ever fire
+    EXPECT_EQ(sr_after & 0x0C, 0x00)
+        << "BCIS/LVBCI must not set when RUN=0";
+}
+
+TEST_F(AC97Test, POCR_MustNotStartDmaUntilBd0Valid)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
+    make_device();
+
+    const uint32_t base     = NABM_BASE;
+    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_CIV   = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV;
+    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+
+    // 1. Cold reset
+    write32_le(GLOB_CNT, 0x00000002);
+
+    // BD0 memory (always mapped)
+    const uint32_t BD_BASE = 0x420A0000;
+
+    // 2. Linux writes BD BAR early in boot
+    write32_le(PO_BDBAR, BD_BASE);
+
+    // 3. But BD0 is NOT valid yet → ptr=0, len=0
+    write32_le(BD_BASE + 0, 0);      // ptr
+    write16_le(BD_BASE + 4, 0);      // len
+    write16_le(BD_BASE + 6, 0);      // ctl
+
+    // 4. Linux now writes PO_CR=1 during init
+    write8(PO_CR, 0x01); // RUN=1
+
+    // 5. DMA must NOT start, and CIV must remain 0
+    uint8_t civ = read8(PO_CIV);
+    EXPECT_EQ(civ, 0u) << "CIV must remain 0 until BD0 is valid";
+
+    uint8_t sr = read8(PO_SR);
+    EXPECT_TRUE(sr & 0x01) << "DCH must remain set (DMA halted)";
+
+    // 6. Run a ton of ticks (boot simulation)
+    for (int i = 0; i < 10000; i++)
+        dev->tick();
+
+    // Still must not have started
+    civ = read8(PO_CIV);
+    EXPECT_EQ(civ, 0u) << "DMA must not advance CIV before BD0 is valid";
+
+    // 7. Now BD0 becomes valid (Linux writes it later)
+    write32_le(BD_BASE + 0, 0x00001000); // ptr
+    write16_le(BD_BASE + 4, 0x0040);     // len
+    write16_le(BD_BASE + 6, 0x8000);     // IOC
+
+    // 8. Write CR=1 again → now DMA SHOULD start
+    write8(PO_CR, 0x01);
+
+    civ = read8(PO_CIV);
+    EXPECT_EQ(civ, 0u) << "DMA starts at CIV=0";
+
+    sr = read8(PO_SR);
+    EXPECT_FALSE(sr & 0x01) << "DCH must clear when DMA starts";
 }

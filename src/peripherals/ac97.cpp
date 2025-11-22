@@ -62,21 +62,15 @@ void AC97Pci::init_codec() {
 
     codec_regs_[0x26 >> 1] = 0x80F0;  // many real codecs report this
 
-    // Extended Audio ID / Control
-    //codec_regs_[0x28 >> 1] = 0x0039; // VRA + VRM + PCM DAC + PCM ADC
-    //codec_regs_[0x2A >> 1] = 0x0001;
-    codec_regs_[0x28 >> 1] = 0x0001;   // Extended Audio ID = PCM only
-    codec_regs_[0x2A >> 1] = 0x0007;   // Extended Audio Status:
-                                   // bit0 = VRA supported? no (0)
-                                   // bit1 = VRM? no (0)
-                                   // bit2 = PCM DAC supported (1)
-                                   // bit3 = PCM ADC supported (1)
-                                   // bit2|bit3|bit0 maybe -> 0x0007
-    // Rates
-    codec_regs_[0x2C >> 1] = 0xBB80; // PCM Front DAC Rate  = 48000
-    codec_regs_[0x32 >> 1] = 0xBB80; // PCM ADC Rate        = 48000
-    codec_regs_[0x30 >> 1] = 0xBB80; // LFE DAC Rate        = 48000
-    codec_regs_[0x2E >> 1] = 0xBB80; // Surround DAC Rate   = 48000
+    codec_regs_[0x28 >> 1] = 0x0101;   // Extended Audio Status:
+                                   // bit0 = VRA supported
+                                   // bit8 = Extended ID present
+
+    codec_regs_[0x2A >> 1] = 0x0001;   // Extended Audio Control:
+                                    // VRA enabled, nothing else
+
+    codec_regs_[0x2C >> 1] = 48000;    // Front DAC Rate = 48kHz
+    codec_regs_[0x32 >> 1] = 48000;    // ADC Rate = 48kHz
     
 
     // Master volume (0dB)
@@ -101,21 +95,23 @@ void AC97Pci::init_codec() {
 
 void AC97Pci::tick()
 {
-
-    //if (po_running_ && po_picb_ == 0 && po_cur_len_ > 0)
-    //{
-    //    printf("[AC97 BUG] BD completed immediately on start! len=%u ptr=%08x ctl=%04x\n",
-    //       po_cur_len_, po_cur_ptr_, po_cur_ctl_);
-    //}
     // 0. DMA not running?
     if (!po_running_)
         return;
 
-    // 1. No active buffer?
-    if (po_picb_ == 0) {
-        // No frames remaining — nothing to consume yet.
+    // 1. BD BAR not programmed? Do not run DMA.
+    if (bdbar_playback_ == 0)
         return;
-    }
+
+    // 2. No valid BD loaded yet? Do not run DMA.
+    if (po_cur_len_ == 0)
+        return;
+
+    // 3. No frames to consume? Do not run DMA.
+    if (po_picb_ == 0)
+        return;
+        
+
 
     //
     // 2. Consume a limited number of frames this tick
@@ -373,7 +369,7 @@ uint16_t AC97Pci::read_nam(uint32_t offset)
     }
     
 
-    //printf("[AC97 NAM]  read  @%02x -> %04x\n", offset, val);
+    printf("[AC97 NAM]  read  @%02x -> %04x\n", offset, val);
     
     codec_command_complete();
     return val;
@@ -384,7 +380,7 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
     if (offset >= 0x80)
         return;
 
-    //printf("[AC97 NAM]  write @%02x <- %04x\n", offset, value);
+    printf("[AC97 NAM]  write @%02x <- %04x\n", offset, value);
 
     // take semaphore:
     codec_command_begin();
@@ -423,17 +419,11 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
 //----------------------------------------------------------------------
 uint32_t AC97Pci::read_glob_sta()
 {
-    constexpr uint32_t allowed_mask =
-        (1u << 8) |   // CRDY
-        0x0F;         // DMA req + semaphore bits
+    uint32_t v = glob_sta_;
 
-    // Mask off irrelevant bits
-    uint32_t v = glob_sta_ & allowed_mask;
-
-    // If S0R is set, reading GLOB_STA *auto-clears* it
-    if (v & GS_S0R) {
+    // Clear S0R (sticky) when read
+    if (v & GS_S0R)
         glob_sta_ &= ~GS_S0R;
-    }
 
     return v;
 }
@@ -512,6 +502,7 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
                 break;
             case BMOff::PO_BASE + BMOff::LVI:
                 val = po_lvi_;
+                printf("[AC97] READ LVI -> %02x\n", po_lvi_);
                 break;
             case BMOff::MC_BASE + BMOff::LVI:
                 val = mc_lvi_;
@@ -813,6 +804,8 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 void AC97Pci::cold_reset() {
     
     memset(codec_regs_, 0, sizeof(codec_regs_));
+    init_codec();
+
     bdbar_playback_ = 0;
     bdbar_capture_  = 0;
 
@@ -833,7 +826,15 @@ void AC97Pci::cold_reset() {
 
     glob_sta_ = GS_CRDY_CODEC0;
 
+    //glob_sta_ = (1<<0) | (1<<6) | (1<<8);
+    glob_sta_ =
+      (1 << 0)   // PCR: primary codec ready
+    | (1 << 5)   // PCM in status
+    | (1 << 6)   // PCM out status
+    | GS_CRDY_CODEC0;  // PCRDY: codec responds ready
     
+    glob_cnt_ =
+      (1 << 18);  // VRA supported
 
     printf("AFTER RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%02x glob_cnt_=0x%02x\n", po_control_, po_status_, glob_sta_, glob_cnt_);
 }
@@ -850,6 +851,7 @@ void AC97Pci::warm_reset()
 
     glob_sta_ |= GS_CRDY_CODEC0;
 
+    printf("AFTER WARM RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%02x glob_cnt_=0x%02x\n", po_control_, po_status_, glob_sta_, glob_cnt_);
     
 }
 
