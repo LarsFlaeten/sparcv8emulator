@@ -690,65 +690,30 @@ TEST_F(AC97Test, DchBitClearedOnStart)
 
 TEST_F(AC97Test, DmaStallsOnEmptyBufferDescriptor)
 {
-    mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
+    // Allocate RAM for BD area
+    mctrl.attach_bank<RamBank>(0x42097000, 0x1000);
     make_device();
 
-    const uint32_t base = NABM_BASE;
-
-    const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
-    const uint32_t PO_CR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
-    const uint32_t PO_SR    = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
-
-    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+    const uint32_t BDBAR = 0x42097000;
 
     // --- Cold reset ---
-    write32_le(GLOB_CNT, 0x00000000);
-    write32_le(GLOB_CNT, 0x00000002);
+    write32_le(NABM_BASE + AC97Pci::BMOff::GLOB_CNT, 0x00000002);
 
-    // After reset, DCH=1, other bits clear
-    uint8_t sr = read8(PO_SR);
-    ASSERT_EQ(sr & 0x01, 0x01) << "Sanity check: DCH must be 1 after cold reset";
+    // Program BD BAR
+    write32_le(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR, BDBAR);
 
-    // --- Set BD BAR ---
-    uint32_t bd_base = 0x42097000;
-    mctrl.attach_bank<RamBank>(bd_base, 0x1000);
-    write32_le(PO_BDBAR, bd_base);
+    // BD0 = empty (ptr=0,len=0)
+    write32_le(BDBAR + 0, 0x00000000); // ptr
+    write16_le(BDBAR + 4, 0x0000);     // len
+    write16_le(BDBAR + 6, 0x8000);     // interrupt enable, otherwise irrelevant
 
-    // Leave BD0 completely zero:
-    // ptr=0, len=0, ctl=0
-    // (Linux does this before filling descriptors)
-    write32_le(bd_base + 0, 0x00000000); // ptr
-    write16_le(bd_base + 4, 0x0000);     // len
-    write16_le(bd_base + 6, 0x0000);     // ctl
+    // --- START playback ---
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR, 0x01);
 
-    // --- Start DMA ---
-    write8(PO_CR, 0x01);  // RUN=1
+    // --- EXPECTATION: DMA MUST NOT START ---
+    uint8_t sr = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
 
-    // Engine must start running
-    sr = read8(PO_SR);
-   
-    // DCH must be 0 once DMA starts, even if BD is empty
-    EXPECT_EQ(sr & 0x01, 0x00) << "DCH must clear when DMA engine is running";
-
-    // --- Tick the engine several times ---
-    for (int i = 0; i < 50; ++i)
-        dev->tick();
-
-    // Re-read status register
-    sr = read8(PO_SR);
-
-    // EXPECTATIONS:
-    
-
-    // 2. DCH=0 (engine is running, not halted)
-    EXPECT_EQ(sr & 0x01, 0x00)
-        << "DCH must remain cleared during stall";
-
-    // 3. BCIS and LVBCI must NOT fire
-    EXPECT_EQ(sr & 0x0C, 0x00)
-        << "BCIS/LVBCI must not fire for empty BD";
-
-    // If the test reaches this point, empty BD behavior is correct.
+    EXPECT_EQ(sr & 0x01, 0x01) << "DCH must remain set when BD0 is empty";
 }
 
 
@@ -806,51 +771,63 @@ TEST_F(AC97Test, AC97_ResetCompliance) {
 
 TEST_F(AC97Test, DchBitSetOnResetAndStop2)
 {
-   
+    mctrl.attach_bank<RamBank>(0x42097000, 0x1000);
     make_device();
 
-    const uint32_t base = NABM_BASE;
-    const uint32_t PO_CR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
-    const uint32_t PO_SR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t BDBAR = 0x42097000;
 
-    // --- Cold reset ---
-    write32_le(base + AC97Pci::BMOff::GLOB_CNT, 0);
-    write32_le(base + AC97Pci::BMOff::GLOB_CNT, 0x02);
+    // Reset
+    write32_le(NABM_BASE + AC97Pci::BMOff::GLOB_CNT, 0x00000002);
 
-    uint8_t sr = read8(PO_SR);
-    EXPECT_EQ(sr & 0x01, 0x01) << "After cold reset, DCH (bit0) must be 1";
+    // DCH must be set after reset
+    uint8_t sr = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+    EXPECT_EQ(sr & 0x01, 0x01) << "DCH must be set after cold reset";
 
-    // --- Start DMA (RUN=1) ---
-    write8(PO_CR, 0x01);
-    sr = read8(PO_SR);
-    EXPECT_EQ(sr & 0x01, 0x00) << "After RUN=1, DCH must be cleared";
+    // START with empty BD0 -> DMA MUST NOT start
+    write32_le(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR, BDBAR);
 
-    // --- STOP DMA (RUN=0) ---
-    write8(PO_CR, 0x00);
-    sr = read8(PO_SR);
-    EXPECT_EQ(sr & 0x01, 0x01) << "After STOP, DCH must be set again";
+    write32_le(BDBAR + 0, 0x00000000);  // empty ptr
+    write16_le(BDBAR + 4, 0x0000);      // empty len
+    write16_le(BDBAR + 6, 0x0000);      // ctl
+
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR, 0x01);
+
+    sr = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+
+    EXPECT_EQ(sr & 0x01, 0x01)
+        << "Starting DMA must NOT clear DCH when BD0 is empty";
+
+    // STOP should keep DCH=1
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR, 0x00);
+    sr = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+
+    EXPECT_EQ(sr & 0x01, 0x01) << "STOP must keep DCH=1";
 }
 
 TEST_F(AC97Test, DchBitClearedOnStart2)
 {
+    mctrl.attach_bank<RamBank>(0x42097000, 0x1000);
     make_device();
 
-    const uint32_t base = NABM_BASE;
-    const uint32_t PO_CR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
-    const uint32_t PO_SR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
+    const uint32_t BDBAR = 0x42097000;
 
-    // Reset first
-    write32_le(base + AC97Pci::BMOff::GLOB_CNT, 0);
-    write32_le(base + AC97Pci::BMOff::GLOB_CNT, 0x02);
+    // Reset
+    write32_le(NABM_BASE + AC97Pci::BMOff::GLOB_CNT, 0x00000002);
 
-    uint8_t sr = read8(PO_SR);
-    EXPECT_EQ(sr & 0x01, 0x01) << "Sanity: DCH must be 1 after reset";
+    // Program BDBAR
+    write32_le(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR, BDBAR);
 
-    // Start DMA (RUN=1)
-    write8(PO_CR, 0x01);
+    // Provide a VALID BD0
+    write32_le(BDBAR + 0, 0x420A8000); // valid pointer
+    write16_le(BDBAR + 4, 0x0080);     // nonzero length
+    write16_le(BDBAR + 6, 0x8000);     // interrupt enabled
 
-    sr = read8(PO_SR);
-    EXPECT_EQ(sr & 0x01, 0x00) << "Starting DMA must clear DCH (bit0)";
+    // START
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR, 0x01);
+
+    uint8_t sr = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+    EXPECT_EQ(sr & 0x01, 0x00)
+        << "With a valid BD0, starting DMA must clear DCH";
 }
 
 TEST_F(AC97Test, ResetRegsSetsDchAndClearsStatus)

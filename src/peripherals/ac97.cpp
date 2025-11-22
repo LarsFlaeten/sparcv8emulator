@@ -111,13 +111,12 @@ void AC97Pci::tick()
     if (po_picb_ == 0)
         return;
         
-
-
+    
     //
     // 2. Consume a limited number of frames this tick
     //
     // Tune this value to get smooth audio. 32 or 48 is usually good.
-    const uint32_t FRAMES_PER_TICK = 32;
+    const uint32_t FRAMES_PER_TICK = 1;
 
     uint32_t todo = std::min<uint32_t>(po_picb_, FRAMES_PER_TICK);
 
@@ -153,6 +152,12 @@ void AC97Pci::tick()
     //
     // 6. Buffer is COMPLETED
     //
+    printf("[BD_COMPLETE] civ=%u lvi=%u ptr=%08x len=%u ctl=%04x\n",
+       po_civ_,
+       po_lvi_,
+       po_cur_ptr_,
+       po_cur_len_,
+       po_cur_ctl_);
 
     // Advance CIV to next buffer index
     po_civ_ = (po_civ_ + 1) & 0x1F;
@@ -607,92 +612,100 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 }
                 break;
             case BMOff::PO_BASE + BMOff::CR: {
-                uint8_t raw = value & 0x1D; // exclude bit 1
-                
-                // Update control reg excluding resetbit
-                po_control_ = raw;
+                uint8_t ctl = value & 0x1F;
 
-                // ----- 1. RESETREGS handling (bit1) -----
-                if (raw & 0x02) {
-                    // Reset internal DMA state
+                bool req_reset = ctl & 0x02;   // RESETREGS
+                bool req_start = ctl & 0x01;   // RUN
+
+                // Update stored CR (bit1 always self-clears after we process it)
+                po_control_ = ctl & ~0x02;
+
+                // ------------------------------------------
+                // 1. RESETREGS: reset internal playback state
+                // ------------------------------------------
+                if (req_reset) {
+
+                    // Reset state
                     po_running_ = false;
                     po_civ_ = 0;
                     po_cur_ptr_ = 0;
                     po_cur_len_ = 0;
                     po_cur_ctl_ = 0;
-                    po_cur_bd_frame_offset_bytes_ = 0;
                     po_picb_ = 0;
+                    po_cur_bd_frame_offset_bytes_ = 0;
 
-                    // Status reset: RUN=0, BCIS=0, LVBCI=0, DCH=1
+                    // Status according to ICH spec: RUN=0, BCIS=0, LVBCI=0, DCH=1
                     po_status_ = 0x01;
-
-                    // PO_CR: bit1 self-clears, all other bits unchanged
-                    po_control_ &= ~0x02;
 
                     TRACE_PO_SR_CHANGE();
                     return;
                 }
 
-                bool start = (raw & 0x01);
-                bool stop  = !start;
-
-                
-
-                // ----- 2. STOP -----
-                if (stop) {
+                // -------------------------------
+                // 2. STOP request (RUN = 0)
+                // -------------------------------
+                if (!req_start) {
                     po_running_ = false;
 
-                    // STOP DMA:
-                    // Clear BCIS (0x04) and LVBCI (0x08)
-                    // Set DCH (0x01) — DMA halted
-                    po_status_ &= ~(0x04 | 0x08); 
+                    // Clear BCIS+LVBCI, set DCH=1
+                    po_status_ &= ~(0x0C);
                     po_status_ |= 0x01;
 
                     TRACE_PO_SR_CHANGE();
                     return;
                 }
 
-                // ----- 3. START -----
-                // Reject invalid start
-                if (/*bdbar_playback_ == 0 ||*/
-                    po_civ_ >= 32 /*||
-                    !mctrl_.find_bank(bdbar_playback_)*/)
+                // ------------------------------------------
+                // 3. START request (RUN = 1)
+                // ------------------------------------------
+
+                // Already running?
+                if (po_running_)
                     return;
 
+                // BD BAR unprogrammed → cannot start yet
+                if (bdbar_playback_ == 0 || !mctrl_.find_bank(bdbar_playback_))
+                    return;
+
+                // Read BD0
+                uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
+                uint32_t ptr = mem_read32(bd_addr + 0);
+                uint16_t len = mem_read16(bd_addr + 4);
+                uint16_t ctl_field = mem_read16(bd_addr + 6);
+                // 🔥 INSERT THIS HERE — BD is valid, Linux requested RUN=1
+                printf("[BD_LOAD] civ=%u ptr=%08x len=%u ctl=%04x\n",
+                    po_civ_,
+                    ptr,
+                    (unsigned)(len + 1),
+                    ctl_field);
+
+                // ------------------------------------------
+                // CORE FIX:
+                // DMA MUST NOT START if BD0 is not VALID
+                // (Linux writes BD BAR before BD contents)
+                // ------------------------------------------
+                if (ptr == 0 || len == 0) {
+                    // Descriptor not ready yet → ignore RUN request
+                    return;
+                }
+
+                // BD is valid → now it is safe to start
                 po_running_ = true;
 
-                // START DMA: DCH=0
-                po_status_ &= ~0x01;   // clear DCH
+                // DMA running → clear DCH
+                po_status_ &= ~0x01;
                 TRACE_PO_SR_CHANGE();
 
-                // --- If BDBAR is zero or unmapped, DMA goes into "idle running" ---
-                if (bdbar_playback_ == 0 || !mctrl_.find_bank(bdbar_playback_)) {
-                    po_cur_ptr_  = 0;
-                    po_cur_len_  = 0;
-                    po_cur_ctl_  = 0;
-                    po_picb_     = 0;       // nothing to consume
-                    po_cur_bd_frame_offset_bytes_ = 0;
-                    return;                 // IMPORTANT: do NOT read memory
-                }
-
-                // Load BD
-                uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
-                po_cur_ptr_ = mem_read32(bd_addr + 0);
-                uint16_t len = mem_read16(bd_addr + 4);
-                po_cur_ctl_ = mem_read16(bd_addr + 6);
-
+                po_cur_ptr_ = ptr;
                 po_cur_len_ = (uint32_t)len + 1;
+                po_cur_ctl_ = ctl_field;
                 po_cur_bd_frame_offset_bytes_ = 0;
 
-                // Empty BD stalls DMA but stays running
-                if (po_cur_ptr_ == 0 || len == 0) {
-                    po_picb_ = 0;
-                    return;
-                }
-
+                // Calculate frame count (stereo 16-bit = 4 bytes)
                 po_picb_ = po_cur_len_ / 4;
+
                 return;
-            }            
+            }       
             case BMOff::MC_BASE + BMOff::CR:  // MC_CONTROL (also 8-bit)
                 mc_control_ = value & 0x1F;
                 if(mc_control_ & 0x02) {
