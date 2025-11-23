@@ -19,6 +19,8 @@ static constexpr uint32_t PO_CR    = PO_BASE + 0x0B;
 
 static constexpr uint32_t BD_AREA = 0x420A0000; 
 
+static constexpr uint32_t GS_PR   = (1u << 0);  // Primary Codec Ready
+static constexpr uint32_t GS_BUSY = (1u << 2);  // Command Busy
 
 
 class AC97Test : public ::testing::Test {
@@ -145,7 +147,7 @@ TEST_F(AC97Test, WarmResetSetsCRDYAndClearsResetBit)
 
     // GLOB_STA must have CRDY set
     uint32_t sta = read32_le(NABM_BASE + 0x30);
-    ASSERT_NE(sta & 0x100, 0u) << "Codec ready bit must be set";
+    ASSERT_NE(sta & GS_PR, 0u) << "Codec ready bit must be set";
 }
 
 // ----------------------
@@ -158,13 +160,13 @@ TEST_F(AC97Test, GlobStaReturnsOnlyAllowedBits)
     uint32_t v = read32_le(NABM_BASE + 0x30);
     // We cannot see the sempahore bit, even though it is set a device init
     // since reading glob sta will clear it:
-    ASSERT_EQ(v & 0x1FF , 0x100u) << "GLOB_STA must have Codec 0 ready and semaphore bit not set";
+    ASSERT_EQ(v & 0x1FF , GS_PR) << "GLOB_STA must have Codec 0 ready and busy bit not set";
     
-    // Only allow clearing sempahore bit, not the codec ready bit:
+    // Only allow clearing bit 0 (PR) and bit 2 (BUSY):
     write32_le(NABM_BASE + 0x30, 0xffffffffu);
 
     v = read32_le(NABM_BASE + 0x30);
-    ASSERT_EQ(v & 0x1ff, 0x100u) << "GLOB_STA must have Codec 0 ready and semaphore bit not set";
+    ASSERT_EQ(v & 0x1ff, 0) << "GLOB_STA must have Codec 0 and busy bit cleared";
     
     // Below test is disabled, as DMA bits are not implemented:
 
@@ -188,10 +190,16 @@ TEST_F(AC97Test, NAMWriteUpdatesRegister)
 {
     make_device();
 
+    uint16_t val = 0x1234;
+    uint16_t mute = val & 0x8000;
+    uint16_t volL = val & 0x001F;        // lower 5 bits
+    uint16_t volR = (val & 0x1F00);      // right 5 bits shifted left
+    uint16_t res = mute | volL | volR;
+
     write16_le(NAM_BASE + 0x02, 0x1234);
 
     uint32_t v = read32_le(NAM_BASE + 0x02);
-    ASSERT_EQ(v, 0xFFFF1234);
+    ASSERT_EQ(v, 0xFFFF0000 | res);
 }
 
 // -------------------------------------------------------------

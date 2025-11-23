@@ -276,12 +276,12 @@ private:
     // NAM = codec register file (0x00–0x7F)
     uint16_t codec_regs_[0x80/2] = {};
 
-    static constexpr uint32_t GS_CRDY_CODEC0 = 0x00000100;  // Codec-0 ready
-    //static constexpr uint32_t GS_CRDY = 0x00000100;     // Codec ready
-    //static constexpr uint32_t GS_S0R  = 0x00800000;   // semaphore bit for codec 0
-    //static constexpr uint32_t GS_S1R  = 0x01000000;     // Codec semaphore (Codec 1)
-    static constexpr uint32_t GS_S0R  = (1u << 15);
-    
+    //static constexpr uint32_t GS_CRDY_CODEC0 = 0x00000100;  // Codec-0 ready
+    //static constexpr uint32_t GS_S0R  = (1u << 15);
+    static constexpr uint32_t GS_PR   = (1u << 0);  // Primary Codec Ready
+    static constexpr uint32_t GS_BUSY = (1u << 2);  // Command Busy
+    static constexpr uint32_t GS_W1C_MASK = (GS_PR | GS_BUSY);  
+
     static constexpr uint32_t CNT_COLD     = 0x00000002;
     static constexpr uint32_t CNT_WARM     = 0x00000004;
     static constexpr uint32_t CNT_PCM_INO  = 0x00000008;
@@ -296,7 +296,7 @@ private:
     uint32_t bdbar_playback_ = 0;
     uint32_t bdbar_capture_  = 0;
     uint32_t glob_cnt_       = 0;
-    uint32_t glob_sta_       = GS_CRDY_CODEC0;  // bit8 = Codec0 Ready
+    uint32_t glob_sta_       = GS_PR;  // Codec0 Ready
 
     uint8_t pi_control_ = 0;
     uint8_t po_control_ = 0;

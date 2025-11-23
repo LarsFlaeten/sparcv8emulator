@@ -90,8 +90,8 @@ void AC97Pci::init_codec() {
     //semaphore_state_ = false;
     //semaphore_pulse_pending_ = false;
 
-    glob_sta_ |= GS_CRDY_CODEC0;   // Codec is present & ready
-    glob_sta_ |= GS_S0R;           // No pending codec command (idle)
+    glob_sta_ |= GS_PR;      // codec ready
+    glob_sta_ &= ~GS_BUSY;   // no pending command 
 
     power_status_ = 0x000F;                  // all analog subsections ready
 }
@@ -359,13 +359,16 @@ void AC97Pci::io_write8(uint32_t addr, uint8_t v) {
 
 void AC97Pci::codec_command_begin()
 {
-    glob_sta_ &= ~GS_S0R;
+    // command starts: BUSY=1, READY=0
+    glob_sta_ |= GS_BUSY;
+    glob_sta_ &= ~GS_PR;
 }
 
 void AC97Pci::codec_command_complete()
 {
-    // nothing special; the read handler will lift the bit
-    glob_sta_ |= GS_S0R;                  // make sure internal copy high
+     // command finishes: BUSY=0, READY=1
+    glob_sta_ &= ~GS_BUSY;
+    glob_sta_ |= GS_PR;
 }
 
 uint16_t AC97Pci::read_nam(uint32_t offset)
@@ -450,7 +453,6 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
     // Typical reactions
     switch (offset) {
         case 0x00:
-            glob_sta_ |= GS_CRDY_CODEC0;// codec ready again
             init_codec();
             break;
 
@@ -886,10 +888,13 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 break;
             }
             case BMOff::GLOB_STA: {
-                // Only bits 4,5,6,7,15,23.. etc are W1C on real hardware
-                // For now: allow clearing ONLY GS_S0R
-                if (value & GS_S0R)
-                    glob_sta_ &= ~GS_S0R;
+                // AC'97 NABM Global Status is write-one-to-clear
+                
+                // Only allow clearing bits that are W1C-capable
+                uint32_t masked = value & GS_W1C_MASK;
+
+                // Clear only those bits
+                glob_sta_ &= ~masked;
 
                 break;
             }
@@ -952,7 +957,8 @@ void AC97Pci::warm_reset()
     TRACE_PO_SR_CHANGE();
     mc_status_ = 0x00;
 
-    glob_sta_ |= GS_CRDY_CODEC0;
+    glob_sta_ |= GS_PR;     // Codec ready again
+    glob_sta_ &= ~GS_BUSY;  // Ensure no command is outstanding
 
     printf("AFTER WARM RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%02x glob_cnt_=0x%02x\n", po_control_, po_status_, glob_sta_, glob_cnt_);
     
