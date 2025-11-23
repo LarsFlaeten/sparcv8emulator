@@ -62,12 +62,16 @@ void AC97Pci::init_codec() {
 
     codec_regs_[0x26 >> 1] = 0x80F0;  // many real codecs report this
 
-    codec_regs_[0x28 >> 1] = 0x0101;   // Extended Audio Status:
+    //codec_regs_[0x28 >> 1] = 0x0101;   // Extended Audio Status:
                                    // bit0 = VRA supported
                                    // bit8 = Extended ID present
 
-    codec_regs_[0x2A >> 1] = 0x0001;   // Extended Audio Control:
+    //codec_regs_[0x2A >> 1] = 0x0001;   // Extended Audio Control:
                                     // VRA enabled, nothing else
+    
+    codec_regs_[0x28 >> 1] = 0x0003;   // DAC + VRA
+
+    codec_regs_[0x2A >> 1] = 0x0003;   // DAC + VRA
 
     codec_regs_[0x2C >> 1] = 48000;    // Front DAC Rate = 48kHz
     codec_regs_[0x32 >> 1] = 48000;    // ADC Rate = 48kHz
@@ -116,10 +120,7 @@ void AC97Pci::tick()
     if (po_cur_len_ == 0)
         return;
 
-    // 3. No frames to consume? Do not run DMA.
-    if (po_picb_ == 0)
-        return;
-        
+    
     
     //
     // 2. Consume a limited number of frames this tick
@@ -169,13 +170,11 @@ void AC97Pci::tick()
     uint8_t old_civ = po_civ_;
     //po_civ_ = (old_civ + 1) & 0x1F;
 
-    // Default increment (mod 32)
+    // Compute next descriptor index
     uint8_t next_civ = (old_civ + 1) & 0x1F;
 
-    // Wrap ring: if we passed LVI, restart at BD0
-    if (next_civ > po_lvi_)
-        next_civ = 0;
 
+    // Not stopping → advance normally
     po_civ_ = next_civ;
 
     // BCIS (buffer completion)
@@ -211,11 +210,12 @@ void AC97Pci::tick()
     po_cur_ctl_ = ctl;
 
     po_cur_bd_frame_offset_bytes_ = 0;
-    
-    if (po_cur_len_ == 1) {
-        // Empty BD; do not complete, do not fire interrupts,
-        // do not advance CIV beyond this. Just idle.
-        po_picb_ = 0;
+
+    // Stop if BD is empty/invalid
+    if (ptr == 0 || len == 0) {
+        po_running_ = false;
+        po_status_ |= 0x01;      // DCH
+        TRACE_PO_SR_CHANGE();
         return;
     }
 
