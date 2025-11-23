@@ -395,6 +395,32 @@ uint16_t AC97Pci::read_nam(uint32_t offset)
     return val;
 }
 
+void AC97Pci::handle_0x26_power(uint16_t value) {
+    power_ctrl_ = value;
+    // if all bits clear -> start power-up sequence
+    if (value == 0x0000) {
+        // instant-ready for now
+        power_status_ = 0x000F;  // all analog sections ready
+    } else {
+        // some bits set -> those blocks off
+        power_status_ = (~value) & 0x000F;
+    }
+}
+
+void AC97Pci::handle_0x2A_ext_audio_status(uint16_t value) {
+    // writable bits: 1,2,3
+    constexpr uint16_t WRITE_MASK_2A = 0x000E;
+
+    uint16_t oldv = codec_regs_[0x2A >> 1];
+    uint16_t newv = (oldv & ~WRITE_MASK_2A) | (value & WRITE_MASK_2A);
+
+    // if VRA supported (bit1 of 0x28), force VRA enabled
+    if (codec_regs_[0x28 >> 1] & 0x0002)
+        newv |= 0x0002;
+
+    codec_regs_[0x2A >> 1] = newv;
+}
+
 void AC97Pci::write_nam(uint32_t offset, uint16_t value)
 {
     if (offset >= 0x80)
@@ -407,29 +433,27 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
 
     // Typical reactions
     switch (offset) {
-        case 0x00: // Reset
+        case 0x00:
             glob_sta_ |= GS_CRDY_CODEC0;// codec ready again
-            
             init_codec();
             break;
-        case 0x26: // Powerdown control/status
-            power_ctrl_ = value;
-            // if all bits clear -> start power-up sequence
-            if (value == 0x0000) {
-                // instant-ready for now
-                power_status_ = 0x000F;  // all analog sections ready
-            } else {
-                // some bits set -> those blocks off
-                power_status_ = (~value) & 0x000F;
-            }
 
-            
+        case 0x26:
+            handle_0x26_power(value);
             break;
+
+        case 0x28:
+            // ignore (RO)
+            break;
+
+        case 0x2A:
+            handle_0x2A_ext_audio_status(value);
+            break;
+
         default:
-            codec_regs_[offset >> 1] = (value);
-            break;
+            codec_regs_[offset >> 1] = value;
     }
-
+    
     // command complete → release semaphore: ready = 1
     codec_command_complete();
 }

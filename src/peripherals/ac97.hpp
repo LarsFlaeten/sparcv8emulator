@@ -334,6 +334,8 @@ private:
     void write_nam(uint32_t of, uint16_t val);
     void codec_command_begin();
     void codec_command_complete();
+    void handle_0x26_power(uint16_t value);
+    void handle_0x2A_ext_audio_status(uint16_t value);
     
     uint32_t read_glob_sta();
     uint32_t read_nabm(uint32_t of, uint8_t width);

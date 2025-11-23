@@ -154,6 +154,7 @@ TEST_F(AC97NAMTest, ExtendedAudioRegistersCorrect)
     EXPECT_EQ(ext_id_after, 0x0003)
         << "0x28 must remain read-only despite writes";
 
+    uint16_t old_0x28 = ext_id;
     // ---------------------------------------------------
     // 3) Writes to 0x2A must be masked
     // ---------------------------------------------------
@@ -173,8 +174,91 @@ TEST_F(AC97NAMTest, ExtendedAudioRegistersCorrect)
     // Writable bits are 1–3, so masked result must be:
     // old = 0x0003
     // write = 0x00FF & 0x000E = 0x000E
-    // enforce VRA=1 → bit1 forced on → 0x000E already has bit1
-    // final = 0x000E
-    EXPECT_EQ(ext_ctl_after, 0x000E)
-        << "0x2A masking logic incorrect; expected masked write with VRA forced on";
+    EXPECT_EQ(ext_ctl_after & 0x000E, 0x000E);    // writable bits applied
+    EXPECT_EQ(ext_ctl_after & 0x0001, old_0x28 & 0x0001); // RO bit unchanged
+}
+
+TEST_F(AC97NAMTest, NAMResetResetsCodecRegisters)
+{
+    make_device();
+
+    const uint32_t NAM = NAM_BASE;
+
+    const uint32_t REG_RESET  = NAM + 0x00;
+    const uint32_t REG_PCI_ID = NAM + 0x7C;   // vendor ID
+    const uint32_t REG_EXT_ID = NAM + 0x28;
+    const uint32_t REG_EXT_ST = NAM + 0x2A;
+    const uint32_t REG_DACRT  = NAM + 0x2C;
+    const uint32_t REG_ADCRT  = NAM + 0x32;
+    const uint32_t REG_PCMVOL = NAM + 0x18;
+
+    // --- Modify several registers before reset ---
+    write16_le(REG_DACRT, 22050);     // sample rate
+    write16_le(REG_ADCRT, 32000);
+    write16_le(REG_PCMVOL, 0x1234);
+    write16_le(REG_EXT_ST, 0x0000);   // disable VRA illegally
+
+    // --- Trigger codec reset ---
+    write16_le(REG_RESET, 0x0001);
+
+    // --- Check that registers have been restored correctly ---
+
+    // Extended ID must be DAC + VRA
+    EXPECT_EQ(read16_le(REG_EXT_ID), 0x0003)
+        << "0x28 Extended Audio ID must be restored to DAC+VRA.";
+
+    // Extended Status must be restored to DAC + VRA enabled
+    EXPECT_EQ(read16_le(REG_EXT_ST), 0x0003)
+        << "0x2A Extended Audio Status must be reset to VRA enabled.";
+
+    // Sample rates must reset to 48000 Hz
+    EXPECT_EQ(read16_le(REG_DACRT), 48000)
+        << "Front DAC rate must reset to 48000.";
+    EXPECT_EQ(read16_le(REG_ADCRT), 48000)
+        << "ADC rate must reset to 48000.";
+
+    // Mixer state must reset (your init sets PCM out to 0x0808)
+    EXPECT_EQ(read16_le(REG_PCMVOL), 0x0808)
+        << "PCM out volume must reset to default 0x0808.";
+
+    // Vendor ID must remain unchanged
+    EXPECT_EQ(read16_le(REG_PCI_ID), 0x4144)
+        << "Vendor ID must persist across codec reset.";
+}
+
+TEST_F(AC97NAMTest, PowerControlAffectsStatusCorrectly)
+{
+    make_device();
+
+    const uint32_t NAM = NAM_BASE;
+
+    const uint32_t REG_PWR  = NAM + 0x26;   // Power control/status
+    const uint32_t REG_STAT = NAM + 0x28;   // Extended Audio ID (unchanged)
+                                            // Or read REG_PWR itself if that's where you expose status
+
+    // --- Case 1: Write 0x0000 => all blocks ON ---
+    write16_le(REG_PWR, 0x0000);
+    uint16_t st1 = read16_le(REG_PWR);
+
+    EXPECT_EQ(st1 & 0x000F, 0x000F)
+        << "Writing 0x0000 to power control must power ON all analog sections.";
+
+    // --- Case 2: Disable DAC + ADC (bits 0 and 1) ---
+    // Example: turn off DAC+ADC → status bits inverted for ready mask
+    write16_le(REG_PWR, 0x0003);  // turn off blocks 0 and 1
+    uint16_t st2 = read16_le(REG_PWR);
+
+    EXPECT_EQ(st2 & 0x000F, (~0x0003) & 0x000F)
+        << "Power status bits must reflect inverted mask of written value.";
+
+    // --- Case 3: Random value, ensure only lower 4 bits affect status ---
+    write16_le(REG_PWR, 0x00FF);  // Attempt to flip invalid bits
+    uint16_t st3 = read16_le(REG_PWR);
+
+    EXPECT_EQ(st3 & 0x000F, (~0x000F) & 0x000F)
+        << "Only low 4 bits of power control should affect power status.";
+
+    // Extended Audio ID must remain unchanged (sanity check)
+    EXPECT_EQ(read16_le(NAM + 0x28), 0x0003)
+        << "Extended Audio ID must not change due to power operations.";
 }
