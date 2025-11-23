@@ -23,6 +23,10 @@ static constexpr uint32_t BD_AREA = 0x420A0000;
 static constexpr uint32_t GS_PR   = (1u << 0);  // Primary Codec Ready
 static constexpr uint32_t GS_BUSY = (1u << 2);  // Command Busy
 
+static constexpr uint32_t CNT_COLD     = 0x00000002;
+static constexpr uint32_t CNT_WARM     = 0x00000004;
+    
+
 
 
 class AC97NAMTest : public ::testing::Test {
@@ -182,53 +186,6 @@ TEST_F(AC97NAMTest, ExtendedAudioRegistersCorrect)
     EXPECT_EQ(ext_ctl_after & 0x0001, old_0x28 & 0x0001); // RO bit unchanged
 }
 
-TEST_F(AC97NAMTest, NAMResetResetsCodecRegisters)
-{
-    make_device();
-
-    const uint32_t NAM = NAM_BASE;
-
-    const uint32_t REG_RESET  = NAM + 0x00;
-    const uint32_t REG_PCI_ID = NAM + 0x7C;   // vendor ID
-    const uint32_t REG_EXT_ID = NAM + 0x28;
-    const uint32_t REG_EXT_ST = NAM + 0x2A;
-    const uint32_t REG_DACRT  = NAM + 0x2C;
-    const uint32_t REG_ADCRT  = NAM + 0x32;
-    const uint32_t REG_PCMVOL = NAM + 0x18;
-
-    // --- Modify several registers before reset ---
-    write16_le(REG_DACRT, 22050);     // sample rate
-    write16_le(REG_ADCRT, 32000);
-    write16_le(REG_PCMVOL, 0x1234);
-    write16_le(REG_EXT_ST, 0x0000);   // disable VRA illegally
-
-    // --- Trigger codec reset ---
-    write16_le(REG_RESET, 0x0001);
-
-    // --- Check that registers have been restored correctly ---
-
-    // Extended ID must be DAC + VRA
-    EXPECT_EQ(read16_le(REG_EXT_ID), 0x0003)
-        << "0x28 Extended Audio ID must be restored to DAC+VRA.";
-
-    // Extended Status must be restored to DAC + VRA enabled
-    EXPECT_EQ(read16_le(REG_EXT_ST), 0x0003)
-        << "0x2A Extended Audio Status must be reset to VRA enabled.";
-
-    // Sample rates must reset to 48000 Hz
-    EXPECT_EQ(read16_le(REG_DACRT), 48000)
-        << "Front DAC rate must reset to 48000.";
-    EXPECT_EQ(read16_le(REG_ADCRT), 48000)
-        << "ADC rate must reset to 48000.";
-
-    // Mixer state must reset (your init sets PCM out to 0x0808)
-    EXPECT_EQ(read16_le(REG_PCMVOL), 0x0808)
-        << "PCM out volume must reset to default 0x0808.";
-
-    // Vendor ID must remain unchanged
-    EXPECT_EQ(read16_le(REG_PCI_ID), 0x4144)
-        << "Vendor ID must persist across codec reset.";
-}
 
 TEST_F(AC97NAMTest, PowerControlAffectsStatusCorrectly)
 {
@@ -405,3 +362,196 @@ TEST_F(AC97NAMTest, NAMWriteTogglesBusyAndReadyBitsProperly)
     EXPECT_FALSE(st2 & GS_BUSY);
     EXPECT_TRUE(st2 & GS_PR);
 }
+
+
+
+TEST_F(AC97NAMTest, WarmResetRestoresMixerButNotCapabilities)
+{
+    make_device();
+
+    const uint32_t NAM = NAM_BASE;
+    const uint32_t REG_PCM  = NAM + 0x18;
+    const uint32_t REG_LINE = NAM + 0x1A;
+    const uint32_t REG_GP   = NAM + 0x20;
+
+    // Randomize mixer and capabilities
+    write16_le(REG_PCM,  0x9999);
+    write16_le(REG_LINE, 0xAAAA);
+    write16_le(REG_GP,   0x7777);
+
+    // Warm reset
+    write16_le(NAM + 0x00, 0x0000);
+
+    // Mixer reset
+    EXPECT_EQ(read16_le(REG_PCM),  0x0808);
+    EXPECT_EQ(read16_le(REG_LINE), 0x0808);
+
+    // GP unaffected
+    EXPECT_EQ(read16_le(REG_GP),   0x7777);
+}
+
+TEST_F(AC97NAMTest, GLOBCNT_Reset_Matches_NAMReset)
+{
+    make_device();
+
+    const uint32_t NAM      = NAM_BASE;
+    const uint32_t GLOB_CNT = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
+    const uint32_t REG_PCM  = NAM + 0x18;
+    const uint32_t REG_DACR = NAM + 0x2C;
+    const uint32_t REG_ADCR = NAM + 0x32;
+    const uint32_t REG_GP   = NAM + 0x20;
+
+    // Mutate a few registers
+    write16_le(REG_PCM, 0xFEEE);
+    write16_le(REG_GP,  0x0005);
+    write16_le(REG_DACR, 44100);
+    write16_le(REG_ADCR, 44100);
+
+    //
+    // First: warm reset via GLOB_CNT
+    //
+    write32_le(GLOB_CNT, CNT_WARM);
+    uint16_t pcm_after_glob = read16_le(REG_PCM);
+    uint16_t gp_after_glob  = read16_le(REG_GP);
+
+    //
+    // Reset everything again
+    //
+    write16_le(REG_PCM, 0xFEEE);
+    write16_le(REG_GP,  0x0005);
+
+    //
+    // Now warm reset via NAM 0x00
+    //
+    write16_le(NAM + 0x00, 0x0000);
+    uint16_t pcm_after_nam = read16_le(REG_PCM);
+    uint16_t gp_after_nam  = read16_le(REG_GP);
+
+    //
+    // Must match
+    //
+    EXPECT_EQ(pcm_after_glob, pcm_after_nam);
+    EXPECT_EQ(gp_after_glob,  gp_after_nam);
+}
+
+TEST_F(AC97NAMTest, NAMResetResetsMixerOnly)
+{
+    make_device();
+    const uint32_t NAM = NAM_BASE;
+
+    // --- Pre-load state ---
+    write16_le(NAM + 0x2C, 22050);   // DAC rate
+    write16_le(NAM + 0x32, 32000);   // ADC rate
+    write16_le(NAM + 0x28, 0x00F3);  // EAID (simulated modified)
+    write16_le(NAM + 0x2A, 0x00F3);  // EAST (simulated modified)
+    write16_le(NAM + 0x20, 0xDEAD);  // GP register
+    write16_le(NAM + 0x18, 0x9999);  // PCM Out vol
+    write16_le(NAM + 0x1A, 0xBBBB);  // Line Out
+    write16_le(NAM + 0x26, 0x000F);  // Power
+
+    // --- Perform NAM soft reset ---
+    write16_le(NAM + 0x00, 0x0000);
+
+    // --- Mixer registers must reset ---
+    EXPECT_EQ(read16_le(NAM + 0x18), 0x0808);
+    EXPECT_EQ(read16_le(NAM + 0x1A), 0x0808);
+    EXPECT_EQ(read16_le(NAM + 0x02), 0x0000);
+    EXPECT_EQ(read16_le(NAM + 0x04), 0x0000);
+
+    // --- Sample rates MUST NOT reset ---
+    EXPECT_EQ(read16_le(NAM + 0x2C), 22050);
+    EXPECT_EQ(read16_le(NAM + 0x32), 32000);
+
+    // --- Capabilities MUST NOT be altered ---
+    EXPECT_EQ(read16_le(NAM + 0x28), 0x0003);   // fixed: EAID read-only
+    EXPECT_EQ(read16_le(NAM + 0x2A) & 0x0001, 0x0001);  // VRA enable preserved
+
+    // --- GP MUST NOT reset ---
+    EXPECT_EQ(read16_le(NAM + 0x20), 0xDEAD);
+
+    // --- Power retained---
+    EXPECT_EQ(read16_le(NAM + 0x26), 0x0000);
+}
+
+TEST_F(AC97NAMTest, ColdResetRestoresCodecDefaults)
+{
+    make_device();
+    const uint32_t NAM = NAM_BASE;
+
+    // --- Corrupt a lot of registers ---
+    write16_le(NAM + 0x26, 0x0000);   // Power
+    write16_le(NAM + 0x28, 0xFFFF);   // EAID
+    write16_le(NAM + 0x2A, 0xFFFF);   // EAST
+    write16_le(NAM + 0x2C, 0x1234);   // DACR
+    write16_le(NAM + 0x32, 0x5555);   // ADCR
+    write16_le(NAM + 0x20, 0xDEAD);   // GP
+    write16_le(NAM + 0x18, 0xEEEE);   // PCM out
+    write16_le(NAM + 0x1A, 0xBBBB);   // Line out
+
+    // --- Trigger cold reset via NABM GLOB_CNT bit ---
+    uint32_t globcnt = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
+    write32_le(globcnt, CNT_COLD);
+    
+    // --- Cold reset restores EAID and EAST ---
+    EXPECT_EQ(read16_le(NAM + 0x28), 0x0003);
+    EXPECT_EQ(read16_le(NAM + 0x2A), 0x0003);
+
+    // --- Sample rates restored ---
+    EXPECT_EQ(read16_le(NAM + 0x2C), 48000);
+    EXPECT_EQ(read16_le(NAM + 0x32), 48000);
+
+    // --- GP restored ---
+    EXPECT_EQ(read16_le(NAM + 0x20), 0x0008);
+
+    // --- Mixer defaults restored ---
+    EXPECT_EQ(read16_le(NAM + 0x18), 0x0808);
+    EXPECT_EQ(read16_le(NAM + 0x1A), 0x0808);
+
+    // --- Power restored ---
+    EXPECT_EQ(read16_le(NAM + 0x26), 0x000F);
+
+    // --- Vendor ID unchanged ---
+    EXPECT_EQ(read16_le(NAM + 0x7C), 0x4144);
+    EXPECT_EQ(read16_le(NAM + 0x7E), 0x5348);
+}
+
+TEST_F(AC97NAMTest, WarmResetPreservesCapabilities)
+{
+    make_device();
+    const uint32_t NAM = NAM_BASE;
+
+    // Modify codec state
+    write16_le(NAM + 0x26, 0x0000);   // Power
+    write16_le(NAM + 0x28, 0x00F3);   // EAID
+    write16_le(NAM + 0x2A, 0x00F3);   // EAST
+    write16_le(NAM + 0x2C, 0xAC44);   // DACR
+    write16_le(NAM + 0x32, 0xAC44);   // ADCR
+    write16_le(NAM + 0x20, 0x1234);   // GP
+
+    // Trigger warm reset via NAM write(0x00)
+    write16_le(NAM + 0x00, 0x0000);
+
+    // Mixer resets
+    EXPECT_EQ(read16_le(NAM + 0x18), 0x0808);
+    EXPECT_EQ(read16_le(NAM + 0x1A), 0x0808);
+
+    // Capabilities preserved
+    EXPECT_EQ(read16_le(NAM + 0x28), 0x0003);   // fixed: EAID read-only
+    EXPECT_EQ(read16_le(NAM + 0x2A) & 0x0001, 0x0001);  // VRA enable preserved
+
+    // Sample rates preserved
+    EXPECT_EQ(read16_le(NAM + 0x2C), 0xAC44);
+    EXPECT_EQ(read16_le(NAM + 0x32), 0xAC44);
+
+    // GP preserved
+    EXPECT_EQ(read16_le(NAM + 0x20), 0x1234);
+
+    // Power preserved
+    EXPECT_EQ(read16_le(NAM + 0x26), 0x000F);
+
+    // Vendor ID unchanged
+    EXPECT_EQ(read16_le(NAM + 0x7C), 0x4144);
+    EXPECT_EQ(read16_le(NAM + 0x7E), 0x5348);
+}
+
+

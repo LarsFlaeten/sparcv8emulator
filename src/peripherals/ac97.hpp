@@ -375,7 +375,8 @@ private:
 
     void init_grpci2_cap(uint8_t off, uint8_t next);
 
-    void init_codec();
+    void init_codec_cold();
+    void init_codec_warm();
 
     void write16(uint16_t off, uint16_t v) noexcept {
         config_[off + 0] = static_cast<uint8_t>(v & 0x00FF);

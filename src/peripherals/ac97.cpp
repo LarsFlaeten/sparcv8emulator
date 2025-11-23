@@ -29,7 +29,7 @@ void AC97Pci::init_pci_config(){
     init_grpci2_cap(0x50, 0x00);
 
     
-    init_codec();
+    init_codec_cold();
 
     po_status_  = 0x0000;   // RUN=0, BCIS=0, LVBCI=0
     TRACE_PO_SR_CHANGE();
@@ -52,48 +52,63 @@ void AC97Pci::init_grpci2_cap(uint8_t off, uint8_t next) {
     */
 }
 
-void AC97Pci::init_codec() {
-    for(u_int8_t i = 0; i <64; ++i)
-        codec_regs_[i] = 0x0U;
+void AC97Pci::init_codec_cold() {
+    // Zero register file
+    memset(codec_regs_, 0, sizeof(codec_regs_));
 
-    // Codec Vendor ID (Analog Devices AD1881A)
+    // Vendor ID
     codec_regs_[0x7C >> 1] = 0x4144;  // 'AD'
-    codec_regs_[0x7E >> 1] = 0x5348; // "AD1881A"
+    codec_regs_[0x7E >> 1] = 0x5348;  // 'SH' for AD1881A
 
-    codec_regs_[0x26 >> 1] = 0x80F0;  // many real codecs report this
+    // Power Status: all analog blocks ON
+    codec_regs_[0x26 >> 1] = 0x000F;
 
-    //codec_regs_[0x28 >> 1] = 0x0101;   // Extended Audio Status:
-                                   // bit0 = VRA supported
-                                   // bit8 = Extended ID present
+    // Extended Audio ID 
+    codec_regs_[0x28 >> 1] = 0x0003;  // VRA + DAC
 
-    //codec_regs_[0x2A >> 1] = 0x0001;   // Extended Audio Control:
-                                    // VRA enabled, nothing else
-    
-    codec_regs_[0x28 >> 1] = 0x0003;   // DAC + VRA
+    // Extended Audio Status 
+    codec_regs_[0x2A >> 1] = 0x0003;  // VRA enabled
 
-    codec_regs_[0x2A >> 1] = 0x0003;   // DAC + VRA
-
-    codec_regs_[0x2C >> 1] = 48000;    // Front DAC Rate = 48kHz
-    codec_regs_[0x32 >> 1] = 48000;    // ADC Rate = 48kHz
-    
-
-    // Master volume (0dB)
-    codec_regs_[0x02 >> 1] = 0x0000;
-    codec_regs_[0x04 >> 1] = 0x0000;
+    // Sample Rates reset to 48k
+    codec_regs_[0x2C >> 1] = 48000;
+    codec_regs_[0x32 >> 1] = 48000;
 
     // Mixer defaults
-    codec_regs_[0x18 >> 1] = 0x0808;  // PCM out volume
-    codec_regs_[0x1A >> 1] = 0x0808;  // Line out
+    codec_regs_[0x02 >> 1] = 0x0000;  
+    codec_regs_[0x04 >> 1] = 0x0000;
+    codec_regs_[0x18 >> 1] = 0x0808;
+    codec_regs_[0x1A >> 1] = 0x0808;
 
-    //glob_sta_ |= GS_CRDY_CODEC0;
-    //glob_sta_ &= ~GS_S0R;              // start with semaphore = 0 (busy)
-    //semaphore_state_ = false;
-    //semaphore_pulse_pending_ = false;
+    // General Purpose Register
+    codec_regs_[0x20 >> 1] = 0x0008;
 
-    glob_sta_ |= GS_PR;      // codec ready
-    glob_sta_ &= ~GS_BUSY;   // no pending command 
+    // Hardware READY state
+    glob_sta_ |= GS_PR;
+    glob_sta_ &= ~GS_BUSY;
 
-    power_status_ = 0x000F;                  // all analog subsections ready
+    power_status_ = 0x000F;
+    
+}
+
+void AC97Pci::init_codec_warm() {
+
+    // Mixer register defaults only
+    codec_regs_[0x02 >> 1] = 0x0000;
+    codec_regs_[0x04 >> 1] = 0x0000;
+    codec_regs_[0x18 >> 1] = 0x0808;
+    codec_regs_[0x1A >> 1] = 0x0808;
+
+    // Keep GP (0x20)
+    // Keep Extended Audio ID (0x28)
+    // Keep Extended Audio Status bits
+    // Keep DAC/ADC rates
+
+    // Power status unchanged
+    // Vendor ID unchanged
+
+    // READY state
+    glob_sta_ |= GS_PR;
+    glob_sta_ &= ~GS_BUSY;
 }
 
 
@@ -453,7 +468,7 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
     // Typical reactions
     switch (offset) {
         case 0x00:
-            init_codec();
+            init_codec_warm();
             break;
 
         case 0x26:
@@ -873,15 +888,15 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 if (!old_cold && new_cold) {
                     printf("[AC97] Cold reset triggered\n");
                     cold_reset();
-                    glob_cnt_ &= ~(CNT_COLD | CNT_WARM); // clear both COLD and WARM after done
+                    glob_cnt_ &= ~(CNT_COLD); // clear COLD after done
                 }
 
-                // --- Warm reset: bit25 rises ---
+                // --- Warm reset: bit2 rises ---
                 if (!old_warm && new_warm) {
                     std::cout << "[AC97] Warm reset triggered\n";
 
                     warm_reset();
-                    glob_cnt_ &= ~(CNT_COLD | CNT_WARM); // clear both COLD and WARM after done
+                    glob_cnt_ &= ~(CNT_WARM); // clear WARM after done
 
                     
                 }
@@ -910,11 +925,17 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
 void AC97Pci::cold_reset()
 {
-    // Clear codec regs
-    memset(codec_regs_, 0, sizeof(codec_regs_));
-    init_codec();
+    //
+    // --- Correct AC'97 Cold Reset Semantics ---
+    // Reset ALL codec registers (NAM space) to defaults.
+    // Do NOT touch codec_regs_[] here directly — init_codec_cold()
+    // owns the entire NAM-visible reset state.
+    //
+    init_codec_cold();   // <-- this does all codec register reset
 
-    // DMA engine reset
+    //
+    // --- DMA Engine Reset (correct for cold reset) ---
+    //
     po_running_ = false;
     po_civ_ = 0;
     po_cur_ptr_ = 0;
@@ -926,44 +947,57 @@ void AC97Pci::cold_reset()
     bdbar_playback_ = 0;
     bdbar_capture_  = 0;
 
-    // Status: RUN=0, BCIS=0, LVBCI=0, DCH=1
-    po_status_ = 1;
-    po_control_ = 0x02;
+    // SR: only DCH bit must be 1, others zero
+    po_status_  = 0x0001;  
+    po_control_ = 0x0000;  // RUN=0, RESET bit auto-clears
 
-    // ----------- GLOB_STA initial state -----------
-    // PCR + PCM IN + PCM OUT + (CRDY delayed)
-    glob_sta_  = (1 << 0)      // PCR
-               | (1 << 5)      // PCM In active
-               | (1 << 6);     // PCM Out active
+    //
+    // --- GLOB_STA Hardware Reset State ---
+    //
+    glob_sta_  = (1 << 0)    // PCR (codec ready pipeline)
+               | (1 << 5)    // PCM in active
+               | (1 << 6);   // PCM out active
 
-    // ----------- CRDY comes later ---------------
-    glob_sta_ &= ~(1 << 8);    // make sure CRDY is off
-    reset_delay_counter_ = 4;   // appear after 4 ticks
+    // CRDY will be asserted later by init_codec_cold()
+    glob_sta_ &= ~(1 << 8);
 
-    // ----------- GLOB_CNT capabilities -----------
-    glob_cnt_ = (1 << 18);      // VRA supported only
+    reset_delay_counter_ = 4;   // realistic delay
 
-    printf("AFTER RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%08x glob_cnt_=0x%08x\n",
+    //
+    // --- GLOB_CNT Codec Feature Bits ---
+    //
+    glob_cnt_ = (1 << 18);      // VRA only
+
+    printf("AFTER COLD RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%08x glob_cnt_=0x%08x\n",
            po_control_, po_status_, glob_sta_, glob_cnt_);
 }
 
 void AC97Pci::warm_reset()
 {
-    codec_regs_[0x26 >> 1] = 0x000F;
+    //
+    // --- Correct AC'97 Warm Reset Semantics ---
+    // Only mixer defaults must be reset.
+    //
+    init_codec_warm();   // <-- this resets ONLY mixer regs
 
-    codec_regs_[0x2A >> 1] &= 0x000F;
-
-    po_status_ = 0x00;
+    //
+    // --- DMA & MC state reset is allowed ---
+    // Warm reset synchronizes AC’97 link but does not reset codec features.
+    //
+    po_status_ = 0x0000;     // DCH=0 (temp), RUN=0, BCIS/LVBCI cleared
     TRACE_PO_SR_CHANGE();
-    mc_status_ = 0x00;
 
-    glob_sta_ |= GS_PR;     // Codec ready again
-    glob_sta_ &= ~GS_BUSY;  // Ensure no command is outstanding
+    mc_status_ = 0x0000;
 
-    printf("AFTER WARM RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%02x glob_cnt_=0x%02x\n", po_control_, po_status_, glob_sta_, glob_cnt_);
-    
+    //
+    // READY state restored after warm reset
+    //
+    glob_sta_ |= GS_PR;      // Codec ready
+    glob_sta_ &= ~GS_BUSY;   // Clear busy
+
+    printf("AFTER WARM RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%08x glob_cnt_=0x%08x\n",
+           po_control_, po_status_, glob_sta_, glob_cnt_);
 }
-
 
 
 
