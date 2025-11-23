@@ -379,6 +379,9 @@ uint16_t AC97Pci::read_nam(uint32_t offset)
     uint16_t val = 0;
     switch (offset)
     {
+        case 0x00:
+            return 0x0A00; // Dummy, return something != 0
+            break;
         case 0x26: // Power-status
             val = power_status_;
             break;
@@ -421,6 +424,19 @@ void AC97Pci::handle_0x2A_ext_audio_status(uint16_t value) {
     codec_regs_[0x2A >> 1] = newv;
 }
 
+static uint16_t mask_volume_reg(uint16_t value)
+{
+    // Mute = bit 15
+    // Volume L = bits 4..0
+    // Volume R = bits 12..8
+    // Reserved = must be zero
+    uint16_t mute = value & 0x8000;
+    uint16_t volL = value & 0x001F;        // lower 5 bits
+    uint16_t volR = (value & 0x1F00);      // right 5 bits shifted left
+
+    return mute | volR | volL;
+}
+
 void AC97Pci::write_nam(uint32_t offset, uint16_t value)
 {
     if (offset >= 0x80)
@@ -449,9 +465,20 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
         case 0x2A:
             handle_0x2A_ext_audio_status(value);
             break;
+        
+        case 0x02: // Master Volume
+        case 0x04: // Headphone Volume
+        case 0x18: // PCM Out Volume
+        case 0x1A: // Line Out Volume
+        {
+            codec_regs_[offset >> 1] = mask_volume_reg(value);
+            break;
+        }
 
         default:
+            //throw std::runtime_error("Default NAM not implemented");
             codec_regs_[offset >> 1] = value;
+            break;
     }
     
     // command complete → release semaphore: ready = 1

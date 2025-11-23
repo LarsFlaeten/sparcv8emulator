@@ -278,8 +278,9 @@ private:
 
     static constexpr uint32_t GS_CRDY_CODEC0 = 0x00000100;  // Codec-0 ready
     //static constexpr uint32_t GS_CRDY = 0x00000100;     // Codec ready
-    static constexpr uint32_t GS_S0R  = 0x00800000;   // semaphore bit for codec 0
-    static constexpr uint32_t GS_S1R  = 0x01000000;     // Codec semaphore (Codec 1)
+    //static constexpr uint32_t GS_S0R  = 0x00800000;   // semaphore bit for codec 0
+    //static constexpr uint32_t GS_S1R  = 0x01000000;     // Codec semaphore (Codec 1)
+    static constexpr uint32_t GS_S0R  = (1u << 15);
     
     static constexpr uint32_t CNT_COLD     = 0x00000002;
     static constexpr uint32_t CNT_WARM     = 0x00000004;

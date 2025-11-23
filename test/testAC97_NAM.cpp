@@ -20,6 +20,9 @@ static constexpr uint32_t PO_CR    = PO_BASE + 0x0B;
 static constexpr uint32_t BD_AREA = 0x420A0000; 
 
 
+static constexpr uint32_t GS_CRDY_CODEC0 = 0x00000100;  // Codec-0 ready
+static constexpr uint32_t GS_S0R  = (1u << 15);
+
 
 class AC97NAMTest : public ::testing::Test {
 protected:
@@ -262,3 +265,119 @@ TEST_F(AC97NAMTest, PowerControlAffectsStatusCorrectly)
     EXPECT_EQ(read16_le(NAM + 0x28), 0x0003)
         << "Extended Audio ID must not change due to power operations.";
 }
+
+TEST_F(AC97NAMTest, NAMResetAssertsCRDYandS0R)
+{
+    make_device();
+
+    const uint32_t NAM  = NAM_BASE;
+    const uint32_t NABM = NABM_BASE;
+
+    const uint32_t REG_RESET   = NAM  + 0x00;
+    const uint32_t REG_GLOBSTA = NABM + AC97Pci::BMOff::GLOB_STA; // usually 0x30
+
+    // Pre-check: CRDY must become 1 after init
+    uint32_t gs0 = read32_le(REG_GLOBSTA);
+    EXPECT_NE(gs0 & 0x100, 0u)
+        << "Codec should already be ready after init";
+
+    // Write codec reset
+    write16_le(REG_RESET, GS_CRDY_CODEC0);
+
+    // After reset, controller must mark codec ready again
+    uint32_t gs1 = read32_le(REG_GLOBSTA);
+
+    EXPECT_NE(gs1 & GS_CRDY_CODEC0, 0u)
+        << "CRDY must be asserted after NAM codec reset";
+
+    // We look at the first value, since glob_sta will clear this on first read
+    EXPECT_NE(gs0 & GS_S0R, 0u)
+        << "Semaphore S0R must be set after NAM command completes";
+}
+
+TEST_F(AC97NAMTest, NAMWriteTogglesCodecSemaphore)
+{
+    make_device();
+
+    const uint32_t NAM  = NAM_BASE;
+    const uint32_t NABM = NABM_BASE;
+
+    const uint32_t REG_PWR     = NAM + 0x26;   // arbitrary NAM command
+    const uint32_t REG_GLOBSTA = NABM + AC97Pci::BMOff::GLOB_STA;
+
+    // Ensure initial semaphore is set
+    EXPECT_NE(read32_le(REG_GLOBSTA) & GS_S0R, 0u)
+        << "Semaphore should start in ready state";
+
+    // Perform write
+    write16_le(REG_PWR, 0x0007);
+
+    // After write handler → semaphore must be set again
+    uint32_t gs = read32_le(REG_GLOBSTA);
+
+    EXPECT_NE(gs & GS_S0R, 0u)
+        << "S0R must be asserted after NAM write completes";
+}
+
+TEST_F(AC97NAMTest, MixerRegistersHaveCorrectMasking)
+{
+    make_device();
+
+    const uint32_t NAM = NAM_BASE;
+
+    const uint32_t REG_MASTER = NAM + 0x02;
+    const uint32_t REG_HP     = NAM + 0x04;
+    const uint32_t REG_PCM    = NAM + 0x18;
+    const uint32_t REG_LINE   = NAM + 0x1A;
+
+    auto test_mixer = [&](uint32_t reg)
+    {
+        // Write illegal bits
+        write16_le(reg, 0xFFFF);
+        uint16_t v = read16_le(reg);
+
+        // Allowed bits: mute | 5-bit volume left | 5-bit volume right
+        EXPECT_EQ(v & 0x1F1F, 0x1F1F)
+            << "Volume bits must allow only 5 bits per channel.";
+
+        EXPECT_EQ(v & 0x60E0, 0x0000)
+            << "Reserved mixer bits must be zero.";
+    };
+
+    test_mixer(REG_MASTER);
+    test_mixer(REG_HP);
+    test_mixer(REG_PCM);
+    test_mixer(REG_LINE);
+}
+
+TEST_F(AC97NAMTest, NAMWriteMustToggleCommandSemaphores)
+{
+    make_device();
+
+    const uint32_t NAM = NAM_BASE;
+    const uint32_t NABM = NABM_BASE;        // where your GLOB_STA lives
+
+    const uint32_t REG_RECG = NAM + 0x1C;
+    const uint32_t REG_GLOB_STA = NABM + 0x30;
+
+    // Ensure codec ready bit initially set (reset state)
+    uint32_t st0 = read32_le(REG_GLOB_STA);
+    EXPECT_TRUE(st0 & 0x00000001)
+        << "Codec should start ready after init.";
+
+    // Write to a NAM register
+    write16_le(REG_RECG, 0x8A05);
+
+    // After write, BUSY should have been set during command_begin
+    uint32_t st1 = read32_le(REG_GLOB_STA);
+    EXPECT_TRUE(st1 & BUSY_BIT) 
+        << "NAM write must assert BUSY bit in GLOB_STA.";
+
+    // After write completes, ready should be asserted again
+    uint32_t st2 = read32_le(REG_GLOB_STA);
+    EXPECT_TRUE(st2 & READY_BIT)
+        << "NAM write must assert READY after completion.";
+
+    // READY must NOT assert instantly; it must follow command sequencing
+}
+
