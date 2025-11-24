@@ -288,6 +288,8 @@ private:
     static constexpr uint32_t CNT_PCM_OUTO = 0x00000010;
     static constexpr uint32_t CNT_VRA      = 1u << 18;
     
+
+
     // semaphore state variables
     //bool semaphore_pulse_pending_ = false;
     //bool semaphore_state_ = false; // false = 0 (busy), true = 1 (ready)
@@ -330,6 +332,27 @@ private:
 
     uint32_t reset_delay_counter_ = 0;
     
+    // AD1881A valid registers:
+    static constexpr std::array<uint8_t, 15> VALID_NAM_REGS = {
+        0x00,       // RESET
+        0x02, 0x04, // Volumes
+        0x06,       // Mono (optional, harmless)
+        0x18, 0x1A, // PCM Out, Line Out
+        0x1C,       // Record Gain Register, used as test reg during boot
+        0x20,       // General Purpose
+        0x26,       // Power Control / Status
+        0x28,       // Extended Audio ID
+        0x2A,       // Extended Audio Status
+        0x2C,       // DAC Rate
+        0x32,       // ADC Rate
+        0x7C, 0x7E  // Vendor ID1/2
+    };
+
+    bool nam_valid(uint32_t offset) const {
+    return std::find(VALID_NAM_REGS.begin(),
+                     VALID_NAM_REGS.end(),
+                     offset) != VALID_NAM_REGS.end();
+    }
 
     uint16_t read_nam(uint32_t of);
     void write_nam(uint32_t of, uint16_t val);

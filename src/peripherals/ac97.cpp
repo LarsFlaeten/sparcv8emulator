@@ -394,11 +394,20 @@ uint16_t AC97Pci::read_nam(uint32_t offset)
     
     codec_command_begin();
 
-    uint16_t val = 0;
+    uint16_t val = 0xFFFF; // default for invalid registers
+
+    
+    if (!nam_valid(offset)) {
+        printf("[AC97 NAM]  read INVALID @%02x -> FFFF\n", offset);
+        codec_command_complete();
+        return 0xFFFF;
+    }
+    
+    
     switch (offset)
     {
         case 0x00:
-            return 0x0A00; // Dummy, return something != 0
+            val = 0x0A00; // Dummy, return something != 0
             break;
         case 0x26: // Power-status
             val = power_status_;
@@ -459,10 +468,17 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
     if (offset >= 0x80)
         return;
 
-    printf("[AC97 NAM]  write @%02x <- %04x\n", offset, value);
-
     // take semaphore:
     codec_command_begin();
+
+    if (!nam_valid(offset)) {
+        printf("[AC97 NAM]  write INVALID @%02x <- %04x (ignored)\n",
+               offset, value);
+        codec_command_complete();
+        return;
+    }
+    
+    printf("[AC97 NAM]  write @%02x <- %04x\n", offset, value);
 
     // Typical reactions
     switch (offset) {

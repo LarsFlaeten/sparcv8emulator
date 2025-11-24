@@ -26,7 +26,23 @@ static constexpr uint32_t GS_BUSY = (1u << 2);  // Command Busy
 static constexpr uint32_t CNT_COLD     = 0x00000002;
 static constexpr uint32_t CNT_WARM     = 0x00000004;
     
+static std::string to_hex(uint32_t val) {
+        char buf[11];
+        snprintf(buf, sizeof(buf), "%08X", val);
+        return buf;
+    }
 
+    static std::string to_hex(uint16_t val) {
+        char buf[11];
+        snprintf(buf, sizeof(buf), "%04X", val);
+        return buf;
+    }
+
+    static std::string to_hex(uint8_t val) {
+        char buf[11];
+        snprintf(buf, sizeof(buf), "%02X", val);
+        return buf;
+    }
 
 
 class AC97NAMTest : public ::testing::Test {
@@ -546,3 +562,98 @@ TEST_F(AC97NAMTest, EAID_EAST_Masking)
     // bit0 is VRA enable
     EXPECT_TRUE(east & 0x0001);
 }
+
+TEST_F(AC97NAMTest, ResetRegisterTriggersSemaphoreTransition)
+{
+    make_device();
+    const uint32_t NAM = NAM_BASE;
+    const uint32_t REG_RESET = NAM + 0x00;
+    const uint32_t REG_GLOB_STA = NABM_BASE + 0x30;
+
+    // Read GLOB_STA before read (should be PR=1)
+    uint32_t st_before = read32_le(REG_GLOB_STA);
+    EXPECT_TRUE(st_before & GS_PR);
+
+    // Perform NAM read of 0x00
+    uint16_t r = read16_le(REG_RESET);
+    EXPECT_NE(r, 0x0000);
+
+    // After read, PR must be set again
+    uint32_t st_after = read32_le(REG_GLOB_STA);
+    EXPECT_TRUE(st_after & GS_PR)
+        << "Reading NAM 0x00 must set PR via command_complete()";
+}
+
+TEST_F(AC97NAMTest, InvalidRegistersReturnFFFF)
+{
+    make_device();
+    const uint32_t NAM = NAM_BASE;
+
+    for (uint32_t off = 0; off < 0x80; off += 2) {
+        switch (off) {
+            case 0x00: case 0x02: case 0x04: case 0x06:
+            case 0x18: case 0x1A: case 0x1C: case 0x20:
+            case 0x26: case 0x28: case 0x2A:
+            case 0x2C: case 0x32:
+            case 0x7C: case 0x7E:
+                continue; // valid
+        }
+
+        EXPECT_EQ(read16_le(NAM + off), 0xFFFF)
+            << "Offset " << to_hex(off)
+            << " must return 0xFFFF.";
+    }
+}
+
+TEST_F(AC97NAMTest, InvalidWritesAreIgnored)
+{
+    make_device();
+    const uint32_t NAM = NAM_BASE;
+
+    for (uint32_t off = 0; off < 0x80; off += 2) {
+        switch (off) {
+            case 0x00: case 0x02: case 0x04: case 0x06:
+            case 0x18: case 0x1A: case 0x1C: case 0x20:
+            case 0x26: case 0x28: case 0x2A:
+            case 0x2C: case 0x32:
+            case 0x7C: case 0x7E:
+                continue;
+        }
+
+        write16_le(NAM + off, 0x1234);
+
+        EXPECT_EQ(read16_le(NAM + off), 0xFFFF)
+            << "Invalid offset " << to_hex(off)
+            << " must ignore writes and return 0xFFFF.";
+    }
+}
+
+TEST_F(AC97NAMTest, NoMultiChannelRegisters)
+{
+    make_device();
+    const uint32_t NAM = NAM_BASE;
+
+    // These are multichannel DAC registers on other codecs:
+    uint32_t bad_regs[] = { 0x2E, 0x30, 0x36, 0x38, 0x3A };
+
+    for (uint32_t off : bad_regs) {
+        EXPECT_EQ(read16_le(NAM + off), 0xFFFF)
+            << "Offset " << to_hex(off)
+            << " must not exist on AD1881A.";
+    }
+}
+
+TEST_F(AC97NAMTest, RecordGainIsWritable)
+{
+    make_device();
+
+    const uint32_t NAM = NAM_BASE;
+    const uint32_t REG_REC_GAIN = NAM + 0x1C;
+
+    write16_le(REG_REC_GAIN, 0x8A05);
+    uint16_t v = read16_le(REG_REC_GAIN);
+
+    EXPECT_EQ(v, 0x8A05)
+        << "Record Gain must be writable for Linux AC97 reset test";
+}
+
