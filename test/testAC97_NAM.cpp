@@ -135,57 +135,31 @@ protected:
 TEST_F(AC97NAMTest, ExtendedAudioRegistersCorrect)
 {
     make_device();
-
     const uint32_t NAM = NAM_BASE;
 
-    const uint32_t REG_28 = NAM + 0x28;
-    const uint32_t REG_2A = NAM + 0x2A;
+    // EAID should be codec capability bits (read-only)
+    uint16_t eaid = read16_le(NAM + 0x28);
+    EXPECT_EQ(eaid, 0x0003);
 
-    // ---------------------------------------------------
-    // 1) Check initial values
-    // ---------------------------------------------------
-    uint16_t ext_id = read16_le(REG_28);
-    uint16_t ext_ctl = read16_le(REG_2A);
+    // EAST mirrors EAID initially
+    uint16_t east = read16_le(NAM + 0x2A);
+    EXPECT_EQ(east, eaid);
 
-    EXPECT_EQ(ext_id, 0x0003)
-        << "Extended Audio ID must report DAC + VRA";
+    // --- EAID is read-only ---
+    write16_le(NAM + 0x28, 0xAAAA);
+    EXPECT_EQ(read16_le(NAM + 0x28), eaid);
 
-    EXPECT_EQ(ext_ctl, 0x0003)
-        << "Extended Audio Status must mirror initial VRA enabled";
+    // --- EAST: only bit0 (VRA enable) is writable ---
+    write16_le(NAM + 0x2A, 0x00FF);
 
-    // ---------------------------------------------------
-    // 2) Writes to 0x28 must be ignored (read-only)
-    // ---------------------------------------------------
-    write16_le(REG_28, 0xAAAA);
-    uint16_t ext_id_after = read16_le(REG_28);
+    uint16_t east_after = read16_le(NAM + 0x2A);
 
-    EXPECT_EQ(ext_id_after, 0x0003)
-        << "0x28 must remain read-only despite writes";
+    // Upper bits must mirror EAID
+    EXPECT_EQ(east_after & 0xFFFE, eaid & 0xFFFE);
 
-    uint16_t old_0x28 = ext_id;
-    // ---------------------------------------------------
-    // 3) Writes to 0x2A must be masked
-    // ---------------------------------------------------
-    // Try to disable VRA and set random reserved bits
-    write16_le(REG_2A, 0x00FF);  // try to set VRA=0 + upper bits garbage
-
-    uint16_t ext_ctl_after = read16_le(REG_2A);
-
-    // VRA bit (bit1) must be forced ON because 0x28 says VRA supported
-    EXPECT_TRUE(ext_ctl_after & 0x0002)
-        << "VRA bit must not be allowed to clear if codec supports VRA";
-
-    // Upper bits must NOT be writable
-    EXPECT_EQ(ext_ctl_after & 0xFFF0, 0x0000)
-        << "Reserved/unimplemented bits in 0x2A must remain 0";
-
-    // Writable bits are 1–3, so masked result must be:
-    // old = 0x0003
-    // write = 0x00FF & 0x000E = 0x000E
-    EXPECT_EQ(ext_ctl_after & 0x000E, 0x000E);    // writable bits applied
-    EXPECT_EQ(ext_ctl_after & 0x0001, old_0x28 & 0x0001); // RO bit unchanged
+    // Bit0 must reflect the write
+    EXPECT_EQ(east_after & 0x0001, 0x0001);
 }
-
 
 TEST_F(AC97NAMTest, PowerControlAffectsStatusCorrectly)
 {
@@ -554,4 +528,21 @@ TEST_F(AC97NAMTest, WarmResetPreservesCapabilities)
     EXPECT_EQ(read16_le(NAM + 0x7E), 0x5348);
 }
 
+TEST_F(AC97NAMTest, EAID_EAST_Masking)
+{
+    make_device();
+    const uint32_t NAM = NAM_BASE;
 
+    // EAID should be 0x0003 in our AD1881A emulation
+    EXPECT_EQ(read16_le(NAM + 0x28), 0x0003);
+
+    // Write garbage into EAST
+    write16_le(NAM + 0x2A, 0xFFFF);
+
+    uint16_t east = read16_le(NAM + 0x2A);
+
+    // EAST must mirror EAID (except bit0)
+    EXPECT_EQ(east & 0xFFFE, 0x0002);  // only EAID bit1 preserved
+    // bit0 is VRA enable
+    EXPECT_TRUE(east & 0x0001);
+}

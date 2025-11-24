@@ -428,16 +428,15 @@ void AC97Pci::handle_0x26_power(uint16_t value) {
     }
 }
 
-void AC97Pci::handle_0x2A_ext_audio_status(uint16_t value) {
-    // writable bits: 1,2,3
-    constexpr uint16_t WRITE_MASK_2A = 0x000E;
+void AC97Pci::handle_0x2A_ext_audio_status(uint16_t value)
+{
+    uint16_t eaid = codec_regs_[0x28 >> 1];
 
-    uint16_t oldv = codec_regs_[0x2A >> 1];
-    uint16_t newv = (oldv & ~WRITE_MASK_2A) | (value & WRITE_MASK_2A);
+    // EAST mirrors EAID in upper bits
+    uint16_t newv = (eaid & 0xFFFE);
 
-    // if VRA supported (bit1 of 0x28), force VRA enabled
-    if (codec_regs_[0x28 >> 1] & 0x0002)
-        newv |= 0x0002;
+    // Only bit0 is writable (VRA enable)
+    newv |= (value & 0x0001);
 
     codec_regs_[0x2A >> 1] = newv;
 }
