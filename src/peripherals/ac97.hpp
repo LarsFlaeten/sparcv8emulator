@@ -252,6 +252,10 @@ public:
         cold_reset();
     }
 
+    void force_frames_per_tick(uint32_t val) {
+        frames_per_tick_dynamic_ = val;
+    }
+
 private:
     uint8_t dev_num_{0};
     std::array<uint8_t,256> config_{};
@@ -265,9 +269,9 @@ private:
 
     //uint32_t dma_ticks_per_buffer_ = 417; // TODO: Guess for now, Dynamic update
     //uint32_t dma_ticks_per_buffer_ = 1; // TODO: Guess for now, Dynamic update
-    uint32_t dma_ticks_per_buffer_ = 10; // TODO: Guess for now, Dynamic update
-    uint32_t frames_per_tick_dynamic_ = 1;
-    
+    //uint32_t dma_ticks_per_buffer_ = 10; // TODO: Guess for now, Dynamic update
+    uint32_t frames_per_tick_dynamic_ = 8;
+
     uint32_t bar_values_[kNumBars]{};  // store assigned base addresses
     bool probing_bar_[kNumBars]{};     // optional flags for 0xFFFFFFFF probe
     bool running_ = false;

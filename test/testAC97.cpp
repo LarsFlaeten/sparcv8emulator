@@ -460,7 +460,7 @@ TEST_F(AC97Test, POLVI_WriteMasksTo5Bits)
 // --- PICB (16-bit) ---
 //
 
-TEST_F(AC97Test, POPICB_ReadWriteLowWordOnly)
+TEST_F(AC97Test, POPICB_ReadOnly)
 {
     mctrl.attach_bank<RamBank>(0x420A0000, 0x10000);
     make_device();
@@ -468,7 +468,7 @@ TEST_F(AC97Test, POPICB_ReadWriteLowWordOnly)
     const uint32_t PICB = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::PICB;
 
     write16_le(PICB, 0xABCD);
-    EXPECT_EQ(read16_le(PICB), 0xABCD);
+    EXPECT_EQ(read16_le(PICB), 0x0000);
 }
 
 //
@@ -1106,6 +1106,7 @@ TEST_F(AC97Test, Pocm_PicbDecrementsAndCivAdvancesOnBdCompletion)
 {
     mctrl.attach_bank<RamBank>(0x42097000, 0x2000);  // BD area + sample area
     make_device();
+    dev->force_frames_per_tick(1);
 
     const uint32_t base     = NABM_BASE;
     const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
@@ -1621,7 +1622,7 @@ TEST_F(AC97Test, MultiBdRing_FullCycle_new2)
                     ASSERT_NE(sr & 0x01, 0) << "DCH must be set";
                     return;
                 } else {
-                    ASSERT_EQ(picb, 1024);
+                    ASSERT_EQ(picb, 1023);
                 }
 
                 expected_civ = civ;
@@ -1782,6 +1783,7 @@ TEST_F(AC97Test, MeasurementLoop_PICBBehavesMonotonically)
 {
     mctrl.attach_bank<RamBank>(0x420A0000, 0x40000);
     make_device();
+    dev->force_frames_per_tick(1);
 
     const uint32_t base = NABM_BASE;
     const uint32_t PO_BDBAR = base + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
@@ -1827,4 +1829,78 @@ TEST_F(AC97Test, MeasurementLoop_PICBBehavesMonotonically)
     }
 }
 
+TEST_F(AC97Test, PICB_IsReadOnlyAndMustNotAffectDMAState)
+{
+    make_device();
+    mctrl.attach_bank<RamBank>(0x42000000, 0x40000);
+    mctrl.attach_bank<RamBank>(0x43000000, 0x40000);
+    
+    //
+    // --- Setup: Program BD0 in guest memory ---
+    //
+    const uint32_t BD0_ADDR = 0x42000000;      // arbitrary, but inside RAM
+    const uint32_t BD0_PTR  = 0x43000000;      // pointer to audio samples
+    const uint16_t BD0_LEN  = 0x2000 - 1;      // AC'97 spec: length-1
+    const uint16_t BD0_CTL  = 0x8000;          // IOC + valid
+
+    // Write BD0 into guest RAM
+    write32_le(BD0_ADDR + 0, BD0_PTR);
+    write16_le(BD0_ADDR + 4, BD0_LEN);
+    write16_le(BD0_ADDR + 6, BD0_CTL);
+
+    const uint32_t PO_BDBAR    = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR;
+    const uint32_t PO_LVI   = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI;
+    const uint32_t PO_CR   = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR;
+    const uint32_t PO_PICB   = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::PICB;
+
+    //
+    // --- Program NABM registers (using public I/O interface) ---
+    //
+    // NABM base we allocated for tests:
+    
+    // Program BD BAR
+    write32_le(PO_BDBAR, BD0_ADDR);
+
+    // LVI = 0 → only BD0 active
+    write8(PO_LVI, 0x00);
+
+    //
+    // --- Start DMA (RUN=1) ---
+    //
+    // Writing BMOff::CR with bit0=1 loads BD0
+    write8(PO_CR, 0x01);
+
+    //
+    // --- Read PICB via MMIO ---
+    //
+    uint16_t picb_before = read16_le(PO_PICB);
+    ASSERT_GT(picb_before, 0)
+        << "PICB should report initial frame count after BD load";
+
+    //
+    // --- CRITICAL ACTION: Linux writes to PICB during init ---
+    // This must *not* affect internal state.
+    //
+    write16_le(PO_PICB, 0x0000);
+
+    //
+    // --- Verify PICB did not change ---
+    //
+    uint16_t picb_after_write = read16_le(PO_PICB);
+
+    EXPECT_EQ(picb_after_write, picb_before)
+        << "PICB write incorrectly modified the PICB register! "
+        << "This MUST be read-only.";
+
+    //
+    // --- Now tick() once: PICB must decrement normally ---
+    //
+    //de->frames_per_tick_dynamic_ = 8;   // small decrement to observe
+    dev->tick();
+
+    uint16_t picb_after_tick = read16_le(PO_PICB);
+
+    EXPECT_EQ(picb_after_tick, picb_before - 8)
+        << "PICB must be decremented only by DMA activity, not by writes.";
+}
 

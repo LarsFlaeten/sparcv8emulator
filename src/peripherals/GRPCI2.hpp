@@ -69,11 +69,25 @@ public:
     }
 
     void tick() {
-        if(tick_scaler == 0) {
+        
+        maybe_tick_device();
+    }
+
+    void maybe_tick_device()
+    {
+        using clock = std::chrono::steady_clock;
+        using namespace std::chrono_literals;
+
+        static auto last = clock::now();
+
+        auto now = clock::now();
+
+        // tick at ~1 kHz (every 1 ms)
+        // Accumulated, handles long cpu cycles
+        while (now - last >= 1ms) {
             device_->tick();
-            tick_scaler = TICK_SCALER_RLD;
-        } else
-            --tick_scaler;
+            last += 1ms;
+        }
     }
 
 protected:
@@ -98,7 +112,7 @@ protected:
     u32 ahbm2pci_[16] = {}; // 0x40 - 0x7C
 
     //static constexpr u32 TICK_SCALER_RLD = 0x3FFU;
-    static constexpr u32 TICK_SCALER_RLD = 0x280U;
+    static constexpr u32 TICK_SCALER_RLD = 0x0FFU;
     u32 tick_scaler = TICK_SCALER_RLD;
 
     std::unique_ptr<PciDevice> device_;

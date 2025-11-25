@@ -169,11 +169,13 @@ int main(int argc, char **argv)
             }
             case 2: {
                 u16* p = static_cast<u16*>(val);
+                //*p = mctrl.read16(pa);
                 *p = std::byteswap(mctrl.read16(pa));
                 break;
             }
             case 4: {
                 u32* p = static_cast<u32*>(val);
+                //*p = mctrl.read32(pa);
                 *p = std::byteswap(mctrl.read32(pa));
                 break;
             }

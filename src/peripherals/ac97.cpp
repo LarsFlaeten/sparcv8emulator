@@ -141,32 +141,39 @@ void AC97Pci::tick()
     //
     // 2. Consume a limited number of frames this tick
     //
+
+    /*
+    using clock = std::chrono::steady_clock;
+    static auto last_time = clock::now();
     static uint64_t tick_counter = 0;
-    static auto last_time = std::chrono::high_resolution_clock::now();
+    static double smoothed_ticks_per_sec = 1000.0; // initial guess
 
     tick_counter++;
 
-    auto now = std::chrono::high_resolution_clock::now();
-    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_time);
+    auto now = clock::now();
+    auto diff_us = std::chrono::duration_cast<std::chrono::microseconds>(now - last_time).count();
 
-    if (diff.count() >= 1000) {
-        uint64_t ticks_per_sec = tick_counter;
+    if (diff_us >= 1'000'000) {   // 1 second
+        double measured = (double)tick_counter * 1'000'000.0 / diff_us;
+
+        // exponential smoothing (10% new, 90% old)
+        smoothed_ticks_per_sec = smoothed_ticks_per_sec * 0.90 + measured * 0.10;
+
         tick_counter = 0;
-        last_time = now;
+        last_time += std::chrono::seconds(1);
 
-        printf("[AC97] ticks/sec = %llu\n", (unsigned long long)ticks_per_sec);
+        uint32_t ftp = (uint32_t)((48000.0 + smoothed_ticks_per_sec/2.0) / smoothed_ticks_per_sec);
+        frames_per_tick_dynamic_ = std::max<uint32_t>(1, ftp);
 
-        frames_per_tick_dynamic_ =
-            std::max<uint32_t>(1, 48000 / ticks_per_sec);
-        printf("[AC97] frames per tick = %llu\n", (unsigned long long)frames_per_tick_dynamic_);
+        printf("[AC97] ticks/sec=%.2f frames/tick=%u\n",
+               smoothed_ticks_per_sec, frames_per_tick_dynamic_);
+    }*/
+    frames_per_tick_dynamic_ = 48;
 
-    }
+    uint32_t todo = std::min<uint32_t>(po_picb_, frames_per_tick_dynamic_);
 
-
-    const uint32_t FRAMES_PER_TICK = dma_ticks_per_buffer_;
-
-    uint32_t todo = std::min<uint32_t>(po_picb_, FRAMES_PER_TICK);
-
+    printf("[TICK] picb=%u todo=%u offset=%u\n",
+       po_picb_, todo, po_cur_bd_frame_offset_bytes_);
     
     //
     // 3. Fetch 'todo' stereo frames from guest memory
@@ -178,6 +185,7 @@ void AC97Pci::tick()
     for (uint32_t i = 0; i < todo * 2; ++i) {
         uint16_t v;
         mem_read_(sample_ptr + i * 2, &v, 2);
+        //v = std::byteswap(v);
         samples[i] = (int16_t)v;
     }
 
@@ -230,7 +238,10 @@ void AC97Pci::tick()
 
     // Raise interrupt if enabled
     if ((po_status_ & 0x0C) && (po_control_ & 0x10)) {
-        if (raise_intx_) raise_intx_();
+        if (raise_intx_) {
+            raise_intx_();
+            printf("RAISE IRQ! STATUS=%04x\n", po_status_);
+        }
     }
 
     //
@@ -241,10 +252,10 @@ void AC97Pci::tick()
     uint32_t ptr  = mem_read32(bd_addr + 0);
     uint16_t len  = mem_read16(bd_addr + 4);
     uint16_t ctl  = mem_read16(bd_addr + 6);
-    printf("[AC97 BD LOAD from tick] %08x: ptr=%08x len=%08x ctl=%08x",
+    printf("[AC97 BD LOAD from tick] %08x: ptr=%08x len=%08x ctl=%08x\n",
         bd_addr, ptr, len, ctl);
     po_cur_ptr_ = ptr;
-    po_cur_len_ = (uint32_t)len + 1;
+    po_cur_len_ = (uint32_t)len;
     po_cur_ctl_ = ctl;
 
     po_cur_bd_frame_offset_bytes_ = 0;
@@ -258,6 +269,8 @@ void AC97Pci::tick()
     }
 
     po_picb_ = po_cur_len_ / 4; // frames
+    printf("[BD in tick()] frames=%u\n", po_picb_);
+    
 }
 
 
@@ -806,6 +819,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 uint16_t len = mem_read16(bd_addr + 4);
                 uint16_t ctl_field = mem_read16(bd_addr + 6);
                 // 🔥 INSERT THIS HERE — BD is valid, Linux requested RUN=1
+                printf("BD0 RAW len read = %04x\n", len);
                 printf("[BD_LOAD from PO CR] civ=%u ptr=%08x len=%u ctl=%04x\n",
                     po_civ_,
                     ptr,
@@ -847,6 +861,8 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                 // Calculate frame count (stereo 16-bit = 4 bytes)
                 po_picb_ = po_cur_len_ / 4;
+                printf("[BD_INIT PO CR] frames=%u len=%u ptr=%08x\n",
+                    po_picb_, po_cur_len_, po_cur_ptr_);
 
                 return;
             }       
@@ -887,7 +903,8 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
         switch (offset) {
             // ----- PICB (playback PICB at least is used) -----
             case BMOff::PO_BASE + BMOff::PICB: { // 0x18
-                po_picb_ = static_cast<uint16_t>(value);
+                // PICB is read only!!!! Ignore
+                //po_picb_ = static_cast<uint16_t>(value);
                 break;
             }
             
