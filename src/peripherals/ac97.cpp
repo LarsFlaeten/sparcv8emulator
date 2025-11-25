@@ -1,6 +1,7 @@
 #include "ac97.hpp"
 
 #include <bit>
+#include <chrono>
 
 void AC97Pci::init_pci_config(){
     write16(0x00,kVendorId); 
@@ -140,11 +141,33 @@ void AC97Pci::tick()
     //
     // 2. Consume a limited number of frames this tick
     //
-    // Tune this value to get smooth audio. 32 or 48 is usually good.
-    const uint32_t FRAMES_PER_TICK = 1;
+    static uint64_t tick_counter = 0;
+    static auto last_time = std::chrono::high_resolution_clock::now();
+
+    tick_counter++;
+
+    auto now = std::chrono::high_resolution_clock::now();
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_time);
+
+    if (diff.count() >= 1000) {
+        uint64_t ticks_per_sec = tick_counter;
+        tick_counter = 0;
+        last_time = now;
+
+        printf("[AC97] ticks/sec = %llu\n", (unsigned long long)ticks_per_sec);
+
+        frames_per_tick_dynamic_ =
+            std::max<uint32_t>(1, 48000 / ticks_per_sec);
+        printf("[AC97] frames per tick = %llu\n", (unsigned long long)frames_per_tick_dynamic_);
+
+    }
+
+
+    const uint32_t FRAMES_PER_TICK = dma_ticks_per_buffer_;
 
     uint32_t todo = std::min<uint32_t>(po_picb_, FRAMES_PER_TICK);
 
+    
     //
     // 3. Fetch 'todo' stereo frames from guest memory
     //
@@ -398,7 +421,7 @@ uint16_t AC97Pci::read_nam(uint32_t offset)
 
     
     if (!nam_valid(offset)) {
-        printf("[AC97 NAM]  read INVALID @%02x -> FFFF\n", offset);
+        //printf("[AC97 NAM]  read INVALID @%02x -> FFFF\n", offset);
         codec_command_complete();
         return 0xFFFF;
     }
@@ -419,7 +442,7 @@ uint16_t AC97Pci::read_nam(uint32_t offset)
     }
     
 
-    printf("[AC97 NAM]  read  @%02x -> %04x\n", offset, val);
+    //printf("[AC97 NAM]  read  @%02x -> %04x\n", offset, val);
     
     codec_command_complete();
     return val;
@@ -472,13 +495,13 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
     codec_command_begin();
 
     if (!nam_valid(offset)) {
-        printf("[AC97 NAM]  write INVALID @%02x <- %04x (ignored)\n",
-               offset, value);
+        //printf("[AC97 NAM]  write INVALID @%02x <- %04x (ignored)\n",
+        //       offset, value);
         codec_command_complete();
         return;
     }
     
-    printf("[AC97 NAM]  write @%02x <- %04x\n", offset, value);
+    //printf("[AC97 NAM]  write @%02x <- %04x\n", offset, value);
 
     // Typical reactions
     switch (offset) {
@@ -613,7 +636,7 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
                 break;
             case BMOff::PO_BASE + BMOff::LVI:
                 val = po_lvi_;
-                printf("[AC97] READ LVI -> %02x\n", po_lvi_);
+                //printf("[AC97] READ LVI -> %02x\n", po_lvi_);
                 break;
             case BMOff::MC_BASE + BMOff::LVI:
                 val = mc_lvi_;
@@ -624,7 +647,7 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
             default:
                 throw std::runtime_error("[AC97 NABM] read8 not valid for register " + to_hex(offset));
         }
-        printf("[AC97 NABM] read8  @%02x -> %02x\n", offset, val);
+        //printf("[AC97 NABM] read8  @%02x -> %02x\n", offset, val);
     
         return val;
     } else if(width==2) {
@@ -636,7 +659,7 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
                 throw std::runtime_error("[AC97 NABM] read16 not valid for register " + to_hex(offset));
             
         }
-        printf("[AC97 NABM] read16  @%02x -> %02x\n", offset, val);
+        //printf("[AC97 NABM] read16  @%02x -> %02x\n", offset, val);
     
         return val;
     } else { // width = 4
@@ -662,7 +685,7 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
         
         }
         
-        printf("[AC97 NABM] read32  @%02x -> %08x\n", offset, val);
+        //printf("[AC97 NABM] read32  @%02x -> %08x\n", offset, val);
         return val;
     }
 
@@ -673,7 +696,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 {
     
     if(width == 1) {
-        printf("[AC97 NABM] write8 @%02x <- %02x\n", offset, value);
+        //printf("[AC97 NABM] write8 @%02x <- %02x\n", offset, value);
         value = value & 0xFFU;
         switch (offset) {
             
@@ -859,7 +882,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
         return;
     } else if(width == 2) {
         value = value & 0xFFFFu;
-        printf("[AC97 NABM] write16 @%02x <- %08x\n", offset, value);
+        //printf("[AC97 NABM] write16 @%02x <- %08x\n", offset, value);
 
         switch (offset) {
             // ----- PICB (playback PICB at least is used) -----
@@ -876,7 +899,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
     } else {
 
-        printf("[AC97 NABM] write32 @%02x <- %08x\n", offset, value);
+        //printf("[AC97 NABM] write32 @%02x <- %08x\n", offset, value);
 
         switch (offset) {
             case BMOff::PO_BASE + BMOff::BD_BAR:
