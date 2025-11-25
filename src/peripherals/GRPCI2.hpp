@@ -97,7 +97,8 @@ protected:
     u32 io_map_ = {0}; // 0x0C
     u32 ahbm2pci_[16] = {}; // 0x40 - 0x7C
 
-    static constexpr u32 TICK_SCALER_RLD = 0x3FFU;
+    //static constexpr u32 TICK_SCALER_RLD = 0x3FFU;
+    static constexpr u32 TICK_SCALER_RLD = 0x280U;
     u32 tick_scaler = TICK_SCALER_RLD;
 
     std::unique_ptr<PciDevice> device_;

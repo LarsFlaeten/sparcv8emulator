@@ -205,7 +205,9 @@ int main(int argc, char **argv)
     // PCI MMIO BARS
     mctrl.attach_bank<PCIMMIOBank>(*ac97pci, 0x24000800, 0x100);
     mctrl.attach_bank<PCIMMIOBank>(*ac97pci, 0x24000900, 0x100);
-    
+    // PCI RAM bank
+    mctrl.attach_bank<RamBank>(0x24000000, 0x800);
+ 
      
 
     
