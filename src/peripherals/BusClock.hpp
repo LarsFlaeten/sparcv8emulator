@@ -53,7 +53,7 @@ private:
     //mutable std::mutex mtx_;
     mutable cvlog::Mutex mtx_{"busclock mtx"};
     std::vector<std::shared_ptr<Tickable>> devices_;
-    double clock_freq_hz_ = 50'000'000.0;
+    double clock_freq_hz_ = 10'000'000.0;
 
     std::atomic<bool> running_{false};
     std::thread thread_;

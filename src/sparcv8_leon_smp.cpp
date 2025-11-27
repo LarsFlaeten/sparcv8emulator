@@ -184,7 +184,7 @@ void cpu_thread(CPU& cpu, SyncState& state, APBCTRL& apbctrl) {
 }
 
 
-void main_loop(BusClock& clock, std::vector<CPU>& cpus, SyncState& state, APBCTRL& apbctrl) {
+void main_loop(BusClock& clock, std::vector<std::unique_ptr<CPU>>& cpus, SyncState& state, APBCTRL& apbctrl) {
     //auto& intc = apbctrl.GetIntc();
     //auto& uart = apbctrl.GetUART();
     uint64_t local_tick = 0;
@@ -299,18 +299,18 @@ int main(int argc, char **argv) {
     // Create the cpus
     config.num_cpus = 1;
     intc.SetNumCpus(config.num_cpus);
-    std::vector<CPU> cpus{};
+    std::vector<std::unique_ptr<CPU>> cpus{};
     for(unsigned int i = 0; i < config.num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
-        auto& cpu = cpus.emplace_back(CPU{mmu, intc, std::cout});
-        cpu.set_cpu_id(i);
+        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mmu, intc, std::cout));
+        cpu->set_cpu_id(i);
 
-        cpu.set_break_on_timer_interrupt(true);
-        cpu.enable_power_down(true);
+        cpu->set_break_on_timer_interrupt(true);
+        //cpu.enable_power_down(true);
         
         // OS boot process step 1: Set stack pointer to end of ram
-        cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
-        cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
+        cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
+        cpu->write_reg(end_of_ram, INREG6); // Write frame pointer
         
     }
     
@@ -334,7 +334,7 @@ int main(int argc, char **argv) {
     global_syncstate = &state;
     std::vector<std::thread> threads;
     for (unsigned int i = 0; i < config.num_cpus; ++i) {
-        threads.emplace_back(cpu_thread, std::ref(cpus[i]), std::ref(state), std::ref(apbctrl));
+        threads.emplace_back(cpu_thread, std::ref(*cpus[i]), std::ref(state), std::ref(apbctrl));
     }
 
     // Read the ELF and get the entry point, then reset all cpus.
@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
     u32 word_count = ReadElf(fname, mmu, entry_va, false, std::cout); 
     std::cout << "** Read " << word_count << " bytes of image, entry point 0x" << std::hex << entry_va << std::dec << ". Resetting CPU(s).\n";
     for(auto& cpu : cpus)
-        cpu.reset(entry_va);
+        cpu->reset(entry_va);
 
     // Ok, start it up...
     std::cout << "** Starting the machine..\n";

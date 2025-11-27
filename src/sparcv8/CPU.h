@@ -25,9 +25,6 @@
 
 
 
-constexpr u32 NO_USER_BREAK =     0xffffffff;
-constexpr u32 BREAK_SINGLE_STEP = 0xfffffffe;
-
 
 // Define this to use LEON specific ASI Assignments
 #define CONFIG_SPARC_LEON
@@ -159,8 +156,15 @@ class CPU
         bool running = false;
         bool verbose = false;
         bool break_on_timer_interrupt = false; 
-        bool power_down = false;    
         bool power_down_enabled = false; 
+        std::atomic<bool> powerdown_flag{false};
+        std::atomic<bool> wakeup_flag{false};
+
+        std::mutex power_mtx;
+        std::condition_variable power_cv;
+
+        void enter_powerdown();    // handles sleeping
+        
         RunSummary rs;
         GdbStub*    gdb_stub = nullptr;
         
@@ -178,7 +182,8 @@ class CPU
         }
 
         CPU() = delete;
-
+        CPU(const CPU&) = delete;
+        CPU& operator=(const CPU&) = delete;
         
         // Main execution flow methods
  
@@ -254,6 +259,9 @@ class CPU
         void    register_bus_tick_function(std::function<void()> f) {
             bus_tick_func = f;
         }
+
+        void wakeup();             // called by IRQMP
+
 
         void    set_break_on_timer_interrupt(bool val) {
             break_on_timer_interrupt = val;

@@ -189,7 +189,7 @@ protected:
     MCtrl mctrl;
     MMU mmu;
     IRQMP intc;
-    std::vector<CPU> cpus{};
+    std::vector<std::unique_ptr<CPU>> cpus{};
     GdbStub* pstub = nullptr;
     
     int debug_port;
@@ -220,7 +220,7 @@ void gdb_server(int server_fd, CPU& cpu) {
 GDBStubTest::GDBStubTest()
     : mmu(mctrl), debug_port(1234)
 {
-    cpus.emplace_back(CPU{mmu, intc});
+    cpus.emplace_back(std::make_unique<CPU>(mmu, intc));
 	
 
 
@@ -239,11 +239,11 @@ void GDBStubTest::SetUp()
    
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x60000000; 
-    cpus[0].reset(entry_va);
+    cpus[0]->reset(entry_va);
  
     // Start GDB stub:
     pstub = new GdbStub(cpus, mmu);
-    cpus[0].set_gdb_stub(pstub);
+    cpus[0]->set_gdb_stub(pstub);
 
     std::cout << "[GTEST] GDBStub starting.\n";
     
@@ -376,7 +376,7 @@ TEST_F(GDBStubTest, GDB_read_registers)
     // GPRs (32 × 4 bytes = 128 bytes = 256 hex digits)
     for (int i = 0; i < 32; ++i) {
         u32 val = 0;
-        cpus[0].read_reg(i, &val);
+        cpus[0]->read_reg(i, &val);
         expected << std::setw(8) << val;
     }
     // FPRs (32 × 8 bytes = 256 bytes = 512 hex digits)
@@ -384,13 +384,13 @@ TEST_F(GDBStubTest, GDB_read_registers)
         expected << std::setw(8) << 0;
 
     // Specials (each 4 bytes)
-    expected << std::setw(8) << cpus[0].get_y_reg();
-    expected << std::setw(8) << cpus[0].get_psr();
-    expected << std::setw(8) << cpus[0].get_wim();
-    expected << std::setw(8) << cpus[0].get_tbr();
-    expected << std::setw(8) << cpus[0].get_pc();
-    expected << std::setw(8) << cpus[0].get_npc();
-    expected << std::setw(8) << cpus[0].get_fsr();
+    expected << std::setw(8) << cpus[0]->get_y_reg();
+    expected << std::setw(8) << cpus[0]->get_psr();
+    expected << std::setw(8) << cpus[0]->get_wim();
+    expected << std::setw(8) << cpus[0]->get_tbr();
+    expected << std::setw(8) << cpus[0]->get_pc();
+    expected << std::setw(8) << cpus[0]->get_npc();
+    expected << std::setw(8) << cpus[0]->get_fsr();
     expected << std::setw(8) << 0;
 
     std::string expected_str = expected.str();
@@ -400,11 +400,11 @@ TEST_F(GDBStubTest, GDB_read_registers)
 
 
     // Set some other reg values:
-    cpus[0].set_psr(0x270f);
-    cpus[0].set_fsr(0xfff);
+    cpus[0]->set_psr(0x270f);
+    cpus[0]->set_fsr(0xfff);
     // Only ones exposed....
     for(int i = 0; i < 32; ++i) {
-        cpus[0].write_reg(i*1000 -i*137 + i*3 + 7, i);
+        cpus[0]->write_reg(i*1000 -i*137 + i*3 + 7, i);
     }
     
 
@@ -426,7 +426,7 @@ TEST_F(GDBStubTest, GDB_read_registers)
     // GPRs (32 × 4 bytes = 128 bytes = 256 hex digits)
     for (int i = 0; i < 32; ++i) {
         u32 val = 0;
-        cpus[0].read_reg(i, &val);
+        cpus[0]->read_reg(i, &val);
         if(i == 0)
             ASSERT_EQ(val, 0); // G0 is allways zero
         else
@@ -438,15 +438,15 @@ TEST_F(GDBStubTest, GDB_read_registers)
         expected << std::setw(8) << 0;
 
     // Specials (each 4 bytes)
-    expected << std::setw(8) << cpus[0].get_y_reg();
-    expected << std::setw(8) << cpus[0].get_psr();
-    ASSERT_EQ(cpus[0].get_psr(), 0x270f);
-    expected << std::setw(8) << cpus[0].get_wim();
-    expected << std::setw(8) << cpus[0].get_tbr();
-    expected << std::setw(8) << cpus[0].get_pc();
-    expected << std::setw(8) << cpus[0].get_npc();
-    expected << std::setw(8) << cpus[0].get_fsr();
-    ASSERT_EQ(cpus[0].get_fsr(), 0xfff);
+    expected << std::setw(8) << cpus[0]->get_y_reg();
+    expected << std::setw(8) << cpus[0]->get_psr();
+    ASSERT_EQ(cpus[0]->get_psr(), 0x270f);
+    expected << std::setw(8) << cpus[0]->get_wim();
+    expected << std::setw(8) << cpus[0]->get_tbr();
+    expected << std::setw(8) << cpus[0]->get_pc();
+    expected << std::setw(8) << cpus[0]->get_npc();
+    expected << std::setw(8) << cpus[0]->get_fsr();
+    ASSERT_EQ(cpus[0]->get_fsr(), 0xfff);
     expected << std::setw(8) << 0;
 
     expected_str = expected.str();

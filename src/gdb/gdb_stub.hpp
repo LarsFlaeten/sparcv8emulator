@@ -16,7 +16,7 @@ class MMU;
 
 class GdbStub {
 public:
-    GdbStub(std::vector<CPU>& cpus, MMU& mmu);
+    GdbStub(std::vector<std::unique_ptr<CPU>>& cpus, MMU& mmu);
     ~GdbStub();
 
     GdbStub(const GdbStub&) = delete;
@@ -61,7 +61,7 @@ private:
     void write_mem32(uint32_t vaddr, uint32_t value);
     
 
-    std::vector<CPU>& cpus;
+    std::vector<std::unique_ptr<CPU>>& cpus;
     MMU& mmu;
  public:
     std::mutex mtx;

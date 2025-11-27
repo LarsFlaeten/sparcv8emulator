@@ -34,7 +34,7 @@ class APBCTRL : public IMemoryBank {
         
         MCtrl&  mctrl_;
         
-        SVGA    svga;
+        //SVGA    svga;
 
         bool contains(u32 addr) const override {
             return addr >= base && addr < base + size;
@@ -51,8 +51,8 @@ class APBCTRL : public IMemoryBank {
             timer(8, 31),
             apbuart9(c),
             pci(irq),
-            mctrl_(mctrl),
-            svga(mctrl)
+            mctrl_(mctrl)
+            //svga(mctrl)
         
         {
 
@@ -111,10 +111,10 @@ class APBCTRL : public IMemoryBank {
                 // Return data from slv 9 (APB UART)
                 //std::cout << "Read APBCTRL(APB UART), va = " << std::hex << va << std::dec << "\n";
                 return apbuart9.read(va & 0x0ff);        
-            } else if ( (va & 0xfff00) >> 8 == 0x005) {
+            //} else if ( (va & 0xfff00) >> 8 == 0x005) {
                 // Return data from slv 4 (SVGA)
-                std::cout << "Read APBCTRL(SVGA), va = " << std::hex << va << std::dec << "\n";
-                return svga.read(va & 0x0ff);       
+            //    std::cout << "Read APBCTRL(SVGA), va = " << std::hex << va << std::dec << "\n";
+            //    return svga.read(va & 0x0ff);       
             } else {
                 std::cerr << "APB Master was adressed ouside any registered peripheral.\n";
                 return 0;
@@ -149,10 +149,10 @@ class APBCTRL : public IMemoryBank {
                 //std::cout << "Write APBCTRL, va = 0x" << std::hex << va << " -> " << value << std::dec << "\n";
                 // Return data from slv 9 (APB UART)
                 apbuart9.write(va & 0x0ff, value);        
-             } else if ( (va & 0xfff00) >> 8 == 0x005) {
-                std::cout << "Write APBCTRL(SVGA), va = " << std::hex << va << std::dec << "\n";
+            // } else if ( (va & 0xfff00) >> 8 == 0x005) {
+            //    std::cout << "Write APBCTRL(SVGA), va = " << std::hex << va << std::dec << "\n";
                 // Return data from slv 4 (SVGA)
-                svga.write(va & 0x0ff, value);        
+            //    svga.write(va & 0x0ff, value);        
             } else {
                 std::cerr << "APB Master was adressed ouside any registered peripheral.\n";
                 return;

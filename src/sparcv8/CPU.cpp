@@ -207,13 +207,14 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
             break;
         }
 
+        /*
         // Request to power down (for this tick)
         if(power_down) {
             power_down = false;
             rs.reason = TerminateReason::POWER_DOWN;
             //CVLOG_UNMUTE();
             break;
-        }
+        }*/
 
         // Check if any instructions tell us to exit
         if(rs.reason == TerminateReason::NORMAL || rs.reason == TerminateReason::UNIMPLEMENTED) {
@@ -417,6 +418,20 @@ void CPU::trap(pDecode_t d, u32 trap_no)
     PSR = PSR | (s << 6); // Set SP from S
 */
     trap_type = (trap_type & ~(LOBITS8)) | tn;
+}
+
+void CPU::enter_powerdown()
+{
+    std::unique_lock<std::mutex> lock(power_mtx);
+
+    powerdown_flag.store(true);
+
+    power_cv.wait(lock, [&]{
+        return wakeup_flag.load();
+    });
+
+    powerdown_flag.store(false);
+    wakeup_flag.store(false);
 }
 
 // ------------------------------------------------

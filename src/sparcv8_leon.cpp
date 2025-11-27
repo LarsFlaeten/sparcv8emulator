@@ -256,15 +256,15 @@ int main(int argc, char **argv)
     u32 end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
 
     // Build the vector of CPUs
-    std::vector<CPU> cpus{};
+    std::vector<std::unique_ptr<CPU>> cpus{};
     int num_cpus = 1;
     IRQMP& intc = apbctrl.GetIntc();
     for(int i = 0; i < num_cpus; ++i) {
-        auto& cpu = cpus.emplace_back(CPU{mmu, intc, write_to_file ? os : std::cout}); 
-        cpu.set_verbose(verbose);
-        cpu.set_cpu_id(i);
+        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mmu, intc, write_to_file ? os : std::cout)); 
+        cpu->set_verbose(verbose);
+        cpu->set_cpu_id(i);
 
-        cpu.register_bus_tick_function( [&apbctrl]() 
+        cpu->register_bus_tick_function( [&apbctrl]() 
             {
                 GPTIMER& timer = apbctrl.GetTimer();
                 IRQMP& intc = apbctrl.GetIntc();
@@ -286,14 +286,14 @@ int main(int argc, char **argv)
             }
         );
 
-        cpu.reset(entry_va);
+        cpu->reset(entry_va);
 
-        cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
-        cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
+        cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
+        cpu->write_reg(end_of_ram, INREG6); // Write frame pointer
     }
     
     
-    _cpu_ptr = cpus.data();
+    _cpu_ptr = cpus[0].get();
     
     
     
@@ -328,19 +328,19 @@ int main(int argc, char **argv)
 
         
         if(debug_server) {
-            cpus[0].set_gdb_stub(gdb_stub.get());
+            cpus[0]->set_gdb_stub(gdb_stub.get());
             gdb_stub->start(debug_port);
         }
 
         // Run the machine in the main thread
         // Only run CPU 0 in this sim
         int    NumRunInst       = 0;
-        cpus[0].run(NumRunInst, &rs);
+        cpus[0]->run(NumRunInst, &rs);
     }
 
     if(rs.reason == TerminateReason::UNIMPLEMENTED) {
-        debug_registerdump(cpus[0]); 
-        disDecodePrint(cpus[0].get_pc(), rs.last_opcode);
+        debug_registerdump(*cpus[0]); 
+        disDecodePrint(cpus[0]->get_pc(), rs.last_opcode);
     } 
     
     

@@ -29,7 +29,7 @@ static std::vector<uint8_t> from_hex(const std::string& hex) {
     return res;
 }
 
-GdbStub::GdbStub(std::vector<CPU>& cpu_refs, MMU& mmu) : cpus(cpu_refs), mmu(mmu) {
+GdbStub::GdbStub(std::vector<std::unique_ptr<CPU>>& cpu_refs, MMU& mmu) : cpus(cpu_refs), mmu(mmu) {
     //std::cout << "[GDBStub] constructed, this=" << this
     //      << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
 }
@@ -118,7 +118,7 @@ void GdbStub::handle_packet(const std::string& pkt) {
             send_packet("E01"); // Error
             return;
         } 
-        auto reg_data = read_registers(cpus[current_cpu]);
+        auto reg_data = read_registers(*cpus[current_cpu]);
         assert(reg_data.size() == 576);
         send_packet(reg_data);
         
@@ -130,7 +130,7 @@ void GdbStub::handle_packet(const std::string& pkt) {
             return;
         } 
         auto data = from_hex(pkt.substr(1));
-        write_registers(cpus[current_cpu], data);
+        write_registers(*cpus[current_cpu], data);
         send_packet("OK");
     }
     else if (pkt[0] == 'c') {

@@ -122,8 +122,10 @@ void BusClock::run() {
         timer_.unlock();
         
         // 50,000,000 Hz / 5000 = 10,000 Hz  (10 kHz UART tick)
+        uint32_t div = freq/10'000;
+        
         static uint32_t uart_div = 0;
-        if (++uart_div >= 5000) {  // every 5000 bus-clock ticks
+        if (++uart_div >= div) {  // every div bus-clock ticks
             uart_div = 0;
 
             uart_.tick_scheduled();   // RX polling + TX retrigger

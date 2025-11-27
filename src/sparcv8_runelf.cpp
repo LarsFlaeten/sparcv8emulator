@@ -129,18 +129,18 @@ int main(int argc, char **argv)
 
     
 
-    std::vector<CPU> cpus{};
+    std::vector<std::unique_ptr<CPU>> cpus{};
     int num_cpus = 1;
 
     for(int i = 0; i < num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
-        auto& cpu = cpus.emplace_back(CPU{mmu, intc, write_to_file ? os : std::cout});
-        cpu.set_cpu_id(i);
-        cpu.set_verbose(verbose);
-        cpu.reset(entry_va);
+        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mmu, intc, write_to_file ? os : std::cout));
+        cpu->set_cpu_id(i);
+        cpu->set_verbose(verbose);
+        cpu->reset(entry_va);
         // OS boot process step 1: Set stack pointer to end of ram
-        cpu.write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
-        cpu.write_reg(end_of_ram, INREG6); // Write frame pointer
+        cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
+        cpu->write_reg(end_of_ram, INREG6); // Write frame pointer
     
     }    
     
@@ -154,12 +154,12 @@ int main(int argc, char **argv)
         GdbStub gdb_stub{cpus, mmu};
         
         if(debug_server) {
-            cpus[0].set_gdb_stub(&gdb_stub);
+            cpus[0]->set_gdb_stub(&gdb_stub);
             //gdb_stub.insert_breakpoint(entry_va);
             gdb_stub.start(debug_port);
         }
         // Run the machine, only first cpu in this emulator
-        cpus[0].run(NumRunInst, &rs);
+        cpus[0]->run(NumRunInst, &rs);
     } else 
     {
         u32 PC = entry_va;
@@ -167,7 +167,7 @@ int main(int argc, char **argv)
         struct DecodeStruct Dec, *d=&Dec;
  
         while(count > 0) {
-            cpus[0].instr_fetch(PC, d);
+            cpus[0]->instr_fetch(PC, d);
 
             disDecodePrint(PC, d->opcode);
             PC += 4;
@@ -178,8 +178,8 @@ int main(int argc, char **argv)
 
     
     if(rs.reason == TerminateReason::UNIMPLEMENTED) {
-        debug_registerdump(cpus[0]); 
-        disDecodePrint(cpus[0].get_pc(), rs.last_opcode);
+        debug_registerdump(*cpus[0]); 
+        disDecodePrint(cpus[0]->get_pc(), rs.last_opcode);
     } 
     
 

@@ -233,31 +233,9 @@ void CPU::WRY (pDecode_t d)
         // This is wr %asr!
         if(d->rd == 19) {
             if(power_down_enabled)
-                power_down = true;
+                enter_powerdown(); // Will hang here until wakeup
             else
                 nop();
-            // writes to ASR19 is a nop in this simulator
-            // As we have not implemnted power down...
-            // TODO: Implement busyloop with short sleep, while checking for interrupt
-            // The main clock then have to keep ticks going on a separate thread...
-            
-            
-            
-            // We enter a busy loop here, only breaking for interrupts:
-            // For single processor we run the tick function from here. 
-            // TODO: For PMC, maybe just don't attach bus_tick_func?
-            // Anyway, this didnt work as expected....
-            // TODO - revisit this when we run the CPU on a different thread than
-            // the bus clock
-            /*
-            struct timespec req = {0, 10000000}; //10 ms
-            while(irl <= ((psr >> 8)& 0xf)) {
-                nanosleep(&req,NULL);
-                
-                if(bus_tick_func)
-                    bus_tick_func();
-            }
-            */
         } else {
             UNIMP(d);
         }
