@@ -11,51 +11,7 @@
 
 #include "../sparcv8/CPU.h"
 #include "console.h"
-/*
-class Console
-{
-    struct termio back;
-    int pending;
-    bool DEBUG_FORCED;
-    public:
-    Console() : pending(0), DEBUG_FORCED(false)
-    {
-        ioctl(0, TCGETA, &back);
-        struct termio term = back;
-        // Disable linebuffer and echoing
-        term.c_lflag &= ~(ICANON|ECHO);
-        term.c_cc[VMIN] = 0; // 0=no block, 1=do block
-        if(ioctl(0, TCSETA, &term) < 0)
-            fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);
-    }
-    ~Console()
-    {
-      if(ioctl(0, TCSETA, &back) < 0)
-            fcntl(0, F_SETFL, fcntl(0, F_GETFL) &~ O_NONBLOCK);
-    }
-    bool Hit()
-    {
-        if(pending) return true;
-        char c;
-        int r = read(0, &c, 1);
-        if(r > 0) { 
-			pending = c; 
-			return true; 
-        }
-        return false;
-    }
-    unsigned Getc() { int r = pending;
-      if(r=='%')
-      {
-        DEBUG_FORCED = !DEBUG_FORCED;
-        fprintf(stdout, "DEBUG SET TO %d\n", DEBUG_FORCED);
-        fprintf(stderr, "DEBUG SET TO %d\n", DEBUG_FORCED);
-      }
-      pending = 0; return r; }
-    //void Putc(unsigned c) { if(DEBUG_FORCED) putchar(':'); putchar(c); fflush(stdout); }
-    void Putc(unsigned c) {putchar(c);}
-};
-*/
+
 
 // UART lite, lite version
 class APBUART
@@ -71,9 +27,9 @@ class APBUART
     u32 control;
     u32 scaler; // Use gaisler default of 12 bits
 
-    Console console;
+    Console& console_;
 public:
-    APBUART(): r_ints_enabled(false), t_ints_enabled(false), overrun(false), in{0,0,{0}}, scaler(0xfff) { }
+    APBUART(Console& console): r_ints_enabled(false), t_ints_enabled(false), overrun(false), in{0,0,{0}}, scaler(0xfff), console_(console) { }
     u32 read(u32 offset) const
     {
         // Read data reg
@@ -108,7 +64,7 @@ public:
     {
         switch(offset) {
             case(0x0):
-                console.Putc(value);
+                console_.Putc(value);
                 tx_emptied_int_pending = true; 
                 break;
             case(0x4):
@@ -154,7 +110,7 @@ public:
             return; 
         }
         
-        if(!console.Hit()) 
+        if(!console_.Hit()) 
             return;
         
         if(in.len >= 8) 
@@ -163,14 +119,26 @@ public:
             return;
         }
         
-        in.fifo[ in.pos++ % 8 ] = console.Getc();
+        in.fifo[ in.pos++ % 8 ] = console_.Getc();
         ++in.len;
+    }
+
+    void tick_scheduled()
+    {
+        // APBUART has no TX FIFO; TX is always empty after a Putc().
+        if (t_ints_enabled) {
+            // Retrigger TX interrupt
+            tx_emptied_int_pending = true;
+        }
+
+        // RX handling remains unchanged
+        input_scheduled();
     }
 
     // To be used when the bus schedules IO polls.
     void input_scheduled()
     {
-        if(!console.Hit()) 
+        if(!console_.Hit()) 
             return;
         
         if(in.len >= 8) 
@@ -179,7 +147,7 @@ public:
             return;
         }
         
-        in.fifo[ in.pos++ % 8 ] = console.Getc();
+        in.fifo[ in.pos++ % 8 ] = console_.Getc();
         ++in.len;
     }
 };

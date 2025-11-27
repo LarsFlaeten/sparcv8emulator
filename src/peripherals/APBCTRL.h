@@ -17,7 +17,8 @@
 // The slaves of the APB are instanciated as members
 //
 class APBCTRL : public IMemoryBank {
-    private:    
+    private:   
+        Console c; 
         size_t size;
         u32 base;
 
@@ -45,10 +46,10 @@ class APBCTRL : public IMemoryBank {
             size(1 * 1024 * 1024 - /*4096*/ 0x2000), // Allways 1 MB - 2*4096 high bytes
             base(base),
             mem(std::make_unique<RamBank>(0x0, 0x100)), 
-            apbuart(),
+            apbuart(c),
             irq(),
             timer(8, 31),
-            apbuart9(),
+            apbuart9(c),
             pci(irq),
             mctrl_(mctrl),
             svga(mctrl)
