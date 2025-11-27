@@ -94,7 +94,7 @@ void BusClock::run() {
         freq = clock_freq_hz_;
     }
 
-    const double tick_period_ns = scaler_ * 1e9 / freq;
+    const double tick_period_ns = 1e9 / freq;
 
     // performance tracking
     uint64_t loop_count = 0;
@@ -108,55 +108,43 @@ void BusClock::run() {
     while (running_) {
         auto start = clock::now();
         
-        /*
-        {
-            std::lock_guard<std::mutex> lock(mtx_);
-            tick_count_.fetch_add(1, std::memory_order_relaxed);
-        }
-        */
-        // tick all devices
-        /*{
-            std::lock_guard<std::mutex> lock(mtx_);
-            for (auto& dev : devices_) {
-                dev->tick();
-            }
-        }*/
-
+        
         // Handle tick and check timer interrupt in one go    
         timer_.lock();
-        for(unsigned int i = 0; i < scaler_; ++i) {    
-            if(timer_.tick_and_check_interrupt_unlocked(true)) {
-                irqmp_.TriggerIRQ(8);
-                {
-                    std::lock_guard lock(mtx_);
-                    tick_count_.fetch_add(1, std::memory_order_relaxed);
-                }
-                cv_.notify_all();
+        if(timer_.tick_and_check_interrupt_unlocked(true)) {
+            irqmp_.TriggerIRQ(8);
+            {
+                std::lock_guard lock(mtx_);
+                tick_count_.fetch_add(1, std::memory_order_relaxed);
             }
+            cv_.notify_all();
         }
         timer_.unlock();
         
-        for(unsigned int i = 0; i < scaler_; ++i) {    
-            uart_.Input();
-            if(uart_.CheckIRQ()) 
-                irqmp_.TriggerIRQ(2);
+        // 50,000,000 Hz / 5000 = 10,000 Hz  (10 kHz UART tick)
+        static uint32_t uart_div = 0;
+        if (++uart_div >= 5000) {  // every 5000 bus-clock ticks
+            uart_div = 0;
 
+            uart_.tick_scheduled();   // RX polling + TX retrigger
+            if (uart_.CheckIRQ())
+                irqmp_.TriggerIRQ(4);
         }
 
         auto end = clock::now();
-        double loop_time_ns = duration_cast<nanoseconds>(end - start).count() / scaler_;
+        double loop_time_ns = duration_cast<nanoseconds>(end - start).count();
 
         // stats collection
         sum_ns += loop_time_ns;
         if (loop_time_ns < min_ns) min_ns = loop_time_ns;
         if (loop_time_ns > max_ns) max_ns = loop_time_ns;
-        loop_count += scaler_;
+        loop_count += 1;
 
         auto elapsed = duration_cast<nanoseconds>(end - last_measure).count();
         if (elapsed >= 100'000'000) { // 100 ms window
-            double avg_ns = sum_ns / (loop_count / scaler_);
+            double avg_ns = sum_ns / (loop_count);
             double rate_hz = loop_count * 1e9 / elapsed;
-            double avg_wait_ns = sum_wait_ns / (loop_count / scaler_);
+            double avg_wait_ns = sum_wait_ns / (loop_count);
 
             {
                 cvlog::LockGuard lock(stats_mtx_);

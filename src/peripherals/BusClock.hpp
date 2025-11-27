@@ -71,5 +71,4 @@ private:
     GPTIMER& timer_;
     APBUART& uart_;
 
-    unsigned int scaler_ = 1;
 };
