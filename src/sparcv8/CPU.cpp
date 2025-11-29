@@ -434,6 +434,12 @@ void CPU::enter_powerdown()
     wakeup_flag.store(false);
 }
 
+void CPU::wakeup()
+{
+    wakeup_flag.store(true, std::memory_order_release);
+    power_cv.notify_one();
+}
+
 // ------------------------------------------------
 // DispRegStr()
 //

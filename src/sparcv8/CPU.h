@@ -67,6 +67,7 @@ enum TerminateReason {
 
 // Defer structure definition
 class CPU;
+class IRQMP;
 #include "MMU.h"
 #include "../peripherals/IRQMP.h"
 
