@@ -306,7 +306,9 @@ int main(int argc, char **argv) {
         cpu->set_cpu_id(i);
 
         cpu->set_break_on_timer_interrupt(true);
-        //cpu.enable_power_down(true);
+        cpu->enable_power_down(true);
+        // hack:
+        intc.set_cpu_ptr(cpu.get());
         
         // OS boot process step 1: Set stack pointer to end of ram
         cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
