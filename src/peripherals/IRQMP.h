@@ -3,9 +3,14 @@
 
 #include "../common.h"
 
+#include "../sparcv8/CPU.h"
+
 // std
 #include <mutex>
 #include <shared_mutex>
+#include <vector>
+#include <iostream>
+#include <memory>
 
 #define IRQMP_ILEVEL_OS 0x00
 #define IRQMP_IPEND_OS 0x04
@@ -35,6 +40,8 @@ class IRQMP {
 
         mutable std::shared_mutex mtx;
 
+        CPU* cpu_ptr_ = nullptr;
+
     public:
         IRQMP():
             ILEVEL(0),
@@ -56,36 +63,13 @@ class IRQMP {
             num_cpus = num_cpus;
         }
 
-        void TriggerIRQ(u32 IRL) {
-            std::unique_lock lock(mtx);
-            IRL = IRL & 0xf;
-        
-            for(unsigned int i = 0; i < num_cpus; ++i)
-            {
-                if((0x1 << IRL) & PIMASK[i]) {
-                    IPEND = IPEND | (0x1 << IRL);
-                    return;
-                }
-            }
-        }
+        void set_cpu_ptr(CPU* cpu) {cpu_ptr_ = cpu;}
 
-        unsigned int GetNextIRQPending() const {
-            std::shared_lock lock(mtx);
-            for(unsigned int i = 15; i >= 1; --i)
-                if(IPEND & (0x1 << i)) 
-                    return i;
-            return 0;
-        }
+        void TriggerIRQ(u32 IRL);
 
-        void ClearIRQ(u32 IRL) {
-            std::unique_lock lock(mtx);
-            IRL = IRL & 0xf;
-            IPEND = IPEND & ~(0x1 << IRL);
-        }
+        unsigned int GetNextIRQPending() const;
 
-
-
-
+        void ClearIRQ(u32 IRL);
 
         u32 Read(u32 offset) const {
             std::shared_lock lock(mtx);
