@@ -22,15 +22,15 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    IRQMP intc;
     MCtrl mctrl;
     MMU mmu;
-    IRQMP intc;
     CPU cpu;
 };
 
 
 
-CPUEmuTest::CPUEmuTest() : mmu(mctrl), cpu(mmu, intc)
+CPUEmuTest::CPUEmuTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
 {  
    	
 

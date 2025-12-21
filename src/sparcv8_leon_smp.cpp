@@ -241,23 +241,34 @@ int main(int argc, char **argv) {
     EmulatorConfig config{};
 
     int    option;
+    int    num_cpus_requested = 0;
     std::string fname = "/home/lars//workspace/gaisler-buildroot-2024.02-1.1/output/images/image.ram";
     
-    while ((option = getopt(argc, argv, "i:")) != EOF) {
+    while ((option = getopt(argc, argv, "i:n:")) != EOF) {
         switch(option) {
             case 'i':
                 fname = optarg;
                 break;
+            case 'n':
+                num_cpus_requested = (u32)strtol(optarg, NULL, 0);
             default:
             std::cerr << 
                     "Usage: " << argv[0] << "[-i <filename>] \n"
                     "\n"
                      "    -i path/file: Path to the linux buildroot image\n"
+                     "    -n [num]: Number of CPUs to emulate\n" 
                     "\n";
             exit(EXIT_SUCCESS);
             break;
         }
     }
+
+    if(num_cpus_requested < 1 || num_cpus_requested > 32) {
+        std::cerr << "Requested number of cpus: " << num_cpus_requested << " (invalid), reverting to 1.\n";
+        num_cpus_requested = 1;
+    }
+
+
 
     
     // Set up machine
@@ -280,7 +291,8 @@ int main(int argc, char **argv) {
     amba_ahb_pnp_setup(mctrl);
     amba_apb_pnp_setup(mctrl);
 
-    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
+    IRQMP intc(num_cpus_requested);
+    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl ,intc);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
     
     mctrl.debug_list_banks();
@@ -289,16 +301,20 @@ int main(int argc, char **argv) {
     auto end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
 
     // Get the devices we need to interact with
-    auto& intc = apbctrl.GetIntc();
     auto& uart = apbctrl.GetUART();
     
     // Set up timer
     auto& timer = apbctrl.GetTimer();
     timer.set_LEON_smp_state();
 
+    // Read the ELF and get the entry point, then reset all cpus.
+    u32 entry_va = 0x0;
+    std::cout << "** Reading ELF..\n"; 
+    u32 word_count = ReadElf(fname, mctrl, entry_va, false, std::cout); 
+    std::cout << "** Read " << word_count << " bytes of image, entry point 0x" << std::hex << entry_va << std::dec << ". Resetting CPU(s).\n";
+        
     // Create the cpus
-    config.num_cpus = 1;
-    intc.SetNumCpus(config.num_cpus);
+    config.num_cpus = num_cpus_requested;
     std::vector<std::unique_ptr<CPU>> cpus{};
     for(unsigned int i = 0; i < config.num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
@@ -309,7 +325,9 @@ int main(int argc, char **argv) {
         cpu->enable_power_down(true);
         // hack:
         intc.set_cpu_ptr(cpu.get());
-        
+
+        cpu->reset(entry_va);
+
         // OS boot process step 1: Set stack pointer to end of ram
         cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
         cpu->write_reg(end_of_ram, INREG6); // Write frame pointer
@@ -339,13 +357,7 @@ int main(int argc, char **argv) {
         threads.emplace_back(cpu_thread, std::ref(*cpus[i]), std::ref(state), std::ref(apbctrl));
     }
 
-    // Read the ELF and get the entry point, then reset all cpus.
-    u32 entry_va = 0x0;
-    std::cout << "** Reading ELF..\n"; 
-    u32 word_count = ReadElf(fname, mmu, entry_va, false, std::cout); 
-    std::cout << "** Read " << word_count << " bytes of image, entry point 0x" << std::hex << entry_va << std::dec << ". Resetting CPU(s).\n";
-    for(auto& cpu : cpus)
-        cpu->reset(entry_va);
+    
 
     // Ok, start it up...
     std::cout << "** Starting the machine..\n";

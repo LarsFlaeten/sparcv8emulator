@@ -24,17 +24,17 @@ protected:
     // Code here will be called immediately after each test (right
     // before the destructor).
     virtual void TearDown();
-        
+
+    IRQMP intc;    
     MCtrl mctrl;
     MMU mmu; 
-    IRQMP intc;
     CPU cpu;
 };
 
 
 
 LEON3Test::LEON3Test()
-    : mmu(mctrl), cpu(mmu, intc)
+    : intc(1), mmu(mctrl), cpu(mmu, intc)
 
 {  
     cpu.set_verbose(true);

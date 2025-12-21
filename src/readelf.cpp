@@ -6,7 +6,6 @@
 #include <elf.h>
 
 
-#include "sparcv8/MMU.h"
 #include "dis.h"
 
 typedef Elf32_Ehdr* pElf32_Ehdr;
@@ -24,7 +23,7 @@ static unsigned SwapBytes(unsigned value, unsigned size)
                 return value;
 }
 
-u32 ReadElf(const std::string& filename, MMU& mmu, u32& entry_va, bool verbose, std::ostream& os) {
+u32 ReadElf(const std::string& filename, MCtrl& mctrl, u32& entry_va, bool verbose, std::ostream& os) {
 
     unsigned int i;
     int  c;
@@ -149,7 +148,7 @@ u32 ReadElf(const std::string& filename, MMU& mmu, u32& entry_va, bool verbose, 
 
             word |= (c << ((3-(bytecount&3)) * 8));
             if ((bytecount&3) == 3) {
-                mmu.MemAccessBypassWrite4(pa + i, word);
+                mctrl.write32(pa + i, word);
                 i+=4;
                 word = 0;
                 
@@ -163,7 +162,7 @@ u32 ReadElf(const std::string& filename, MMU& mmu, u32& entry_va, bool verbose, 
            u32 zero = 0;
            for(u32 j = 0; j < wsize; j = j+4)
                  try {
-                     mmu.MemAccessBypassWrite4(pa + i + j, zero);
+                    mctrl.write32(pa + i + j, zero);
                  } catch (...) {
                      
                      /*

@@ -18,7 +18,7 @@
 //
 class APBCTRL : public IMemoryBank {
     private:   
-        Console c; 
+        Console c{}; 
         size_t size;
         u32 base;
 
@@ -27,7 +27,7 @@ class APBCTRL : public IMemoryBank {
         std::vector<apb_slave*> apb_slaves;
 
         APBUART apbuart;
-        IRQMP   irq;
+        IRQMP&   irq;
         GPTIMER timer;
         APBUART apbuart9;
         GRPCI2 pci;
@@ -42,12 +42,12 @@ class APBCTRL : public IMemoryBank {
     
         u32* get_ptr() override {return nullptr;}
     public:
-        APBCTRL(u32 base, MCtrl& mctrl, Endian endian = Endian::Big) : IMemoryBank(endian),
+        APBCTRL(u32 base, MCtrl& mctrl, IRQMP& intc, Endian endian = Endian::Big) : IMemoryBank(endian),
             size(1 * 1024 * 1024 - /*4096*/ 0x2000), // Allways 1 MB - 2*4096 high bytes
             base(base),
             mem(std::make_unique<RamBank>(0x0, 0x100)), 
             apbuart(c),
-            irq(),
+            irq(intc),
             timer(8, 31),
             apbuart9(c),
             pci(irq),

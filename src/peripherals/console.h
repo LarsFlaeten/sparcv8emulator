@@ -76,7 +76,8 @@ public:
     virtual void Putc(unsigned c)
     {
         uint8_t ch = c & 0xFF;
-        ::write(STDOUT_FILENO, &ch, 1); // never blocks
+        auto t = ::write(STDOUT_FILENO, &ch, 1); // never blocks
+        (void)t;
     }
 };
 

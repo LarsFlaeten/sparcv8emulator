@@ -171,7 +171,7 @@ class CPU
         
         std::string DispRegStr (u32 regnum);
 
-        std::function<void()> bus_tick_func;
+        std::function<void()> bus_tick_func{};
         
         bool _interrupt; 
         MMU& mmu;  
@@ -258,7 +258,7 @@ class CPU
         void    dump_regs (bool transpose = false); 
         //void    disp_read_reg (const u32 reg_no, u32 *value); 
         void    register_bus_tick_function(std::function<void()> f) {
-            bus_tick_func = f;
+            bus_tick_func = std::move(f);
         }
 
         void wakeup();             // called by IRQMP

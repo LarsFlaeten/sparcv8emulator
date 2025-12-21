@@ -34,17 +34,17 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    IRQMP irqmp;
     MCtrl mctrl;
     MMU mmu;
-    IRQMP irqmp{};
-
+    
     GRPCI2Testable testable_;
     GRPCI2& grpci2;
 };
 
 
 
-GRPCI2Test::GRPCI2Test() : mmu(mctrl), testable_(irqmp), grpci2(testable_) {
+GRPCI2Test::GRPCI2Test() : irqmp(1), mmu(mctrl), testable_(irqmp), grpci2(testable_) {
 
 }
 
@@ -388,7 +388,7 @@ TEST_F(GRPCI2Test, ac97_init)
     
 
     // Set up what we need of memory and peripherals to test all this:
-    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
+    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl, irqmp);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
     GRPCI2& grpci2 = apbctrl.GetGRPCI2();
     grpci2.attach_device(std::move(ac97pci));

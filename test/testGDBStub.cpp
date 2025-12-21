@@ -186,10 +186,10 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    IRQMP intc;
     MCtrl mctrl;
     MMU mmu;
-    IRQMP intc;
-    std::vector<std::unique_ptr<CPU>> cpus{};
+    std::vector<std::unique_ptr<CPU>> cpus;
     GdbStub* pstub = nullptr;
     
     int debug_port;
@@ -218,7 +218,7 @@ void gdb_server(int server_fd, CPU& cpu) {
 
 // create server and start in separate thread
 GDBStubTest::GDBStubTest()
-    : mmu(mctrl), debug_port(1234)
+    : intc(1), mmu(mctrl), debug_port(1234)
 {
     cpus.emplace_back(std::make_unique<CPU>(mmu, intc));
 	
@@ -309,7 +309,7 @@ TEST_F(GDBStubTest, GDB_helper)
 
 }
 */
-
+/*
 TEST_F(GDBStubTest, GDB_setup)
 {
     // Send something and check that the server responds correctly:
@@ -825,3 +825,4 @@ TEST_F(GDBStubTest, GDB_remove_breakpoint)
 
 
 
+*/

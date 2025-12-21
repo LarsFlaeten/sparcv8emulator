@@ -26,16 +26,16 @@ protected:
     // before the destructor).
     virtual void TearDown();
         
+    IRQMP intc;
     MCtrl mctrl;
     MMU mmu; 
-    IRQMP intc;
     CPU cpu;
     
     
     void do_test_assertg7(const std::string& test) {
         // Read the ELF and get the entry point, then reset
         u32 entry_va = 0x0; 
-        u32 word_count = ReadElf(path + test, mmu, entry_va); 
+        u32 word_count = ReadElf(path + test, mctrl, entry_va); 
         ASSERT_GT(word_count, 0);
         cpu.reset(entry_va);
         
@@ -56,7 +56,7 @@ protected:
 
 
 INSTRTest::INSTRTest()
-    : mmu(mctrl), cpu(mmu, intc)
+    : intc(1), mmu(mctrl), cpu(mmu, intc)
 
 {  
     //cpu.SetVerbose(true);

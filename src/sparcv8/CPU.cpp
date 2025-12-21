@@ -1,6 +1,7 @@
 #include "CPU.h"
 #include <sstream>
 #include <iomanip>
+#include <cstring>
 #include "MMU.h"
 
 #include "../debug.h"
@@ -19,6 +20,7 @@
 #ifdef PROFILE_INSTRUCTIONS
 #include <array>
 #include "../dis.h"
+#include <cstring>
 // Counters for different format instructions
 u32 format1_counter = 0;
 std::array<u32, 8> format2_counter{};
@@ -67,6 +69,27 @@ void CPU::reset(u32 entry_va = 0x0)
     trap_type = 0;
     tbr = 0;
     wim = 2;
+
+    y_reg = 0;
+
+    // Clear regs:
+    // Clear register windows
+    memset(globals, 0, sizeof(globals));
+    memset(locals,  0, sizeof(locals));
+    memset(outs,    0, sizeof(outs));
+#ifdef FPU_IMPLEMENTED
+    memset(freg,    0, sizeof(freg));
+#endif
+
+    mmu.reset();
+
+    // Emulator control:
+    _interrupt = false;
+    powerdown_flag = false;
+    wakeup_flag = false;
+    running = false;
+    gdb_stub = nullptr;
+    
 }
 
 bool CPU::instr_fetch(u32 virt_addr, pDecode_t d){
@@ -109,7 +132,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 	LoopTimer lt;
 #endif
 	   
-    DecodeStruct Dec;
+    DecodeStruct Dec{};
     pDecode_t d;
     pPSR_t p;
 
@@ -183,9 +206,10 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         if(bus_tick_func)
             bus_tick_func();
         
-        // Check interrupt controller for pending interrupts and take any:
-        u32 _incoming_irl = intc.GetNextIRQPending();
-        if(_incoming_irl>0) {
+        // Check interrupt controller for pending interrupts and take any,
+        // as long as there are not ongoing trap handling
+        u32 _incoming_irl = intc.GetNextIRQPending(this->cpu_id);
+        if(_incoming_irl>0 && trap_type == 0) {
             set_irl(_incoming_irl); // We take this interrupt
             intc.ClearIRQ(_incoming_irl);
 
@@ -272,6 +296,9 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 //
 void CPU::decode(pDecode_t d)
 {
+    // Map the PSR structure to the decode PSR
+    d->p = (pPSR_t)&(d->psr);
+
     u32 fmt_bits = (d->opcode >> FMTSTARTBIT) & LOBITS2;
     u32 op2      = (d->opcode >> OP2STARTBIT) & LOBITS3;
     u32 op3      = (d->opcode >> OP3STARTBIT) & LOBITS6;

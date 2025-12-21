@@ -1,7 +1,6 @@
 TODO before we start RISC-V:
 X Profiler for performance
 X Fix so we can run tests with c-code
-- Investigate busyloop
 - Inline all instructions?
 X Code cleanliness, naming convention
 X Fix warnings
@@ -12,4 +11,12 @@ X FPU implemented and tested
 X SVGA controller
 - Multiple CPUS
 - Save and restore state
+- CTRL+C behviour when debugging
+- Busclock and powerdown
+- Ac97 playback
+- VGA pci
+- Doom
+- gdb for SMP
+- CPU mem cache & profile mem access
+
 

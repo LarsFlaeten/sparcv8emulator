@@ -24,9 +24,9 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    IRQMP intc;
     MCtrl mctrl;
     MMU mmu;
-    IRQMP intc;
     CPU cpu;
    
     void _STFSR(u32 rs1, u32 rs2, u32 rd) {
@@ -69,7 +69,7 @@ protected:
     }
  
     void do_op3_instr(u32 op, u32 op3, u32 rs1, u32 rs2, u32 rd) {
-        DecodeStruct d;
+        DecodeStruct d = {};
         d.opcode = ((op & LOBITS2) << FMTSTARTBIT) 
             | ((rd & LOBITS5) << RDSTARTBIT)
             | ((op3 & LOBITS6) << OP3STARTBIT)
@@ -88,7 +88,7 @@ protected:
     }
 
     void do_fop1_instr(u32 opf, u32 rs1, u32 rs2, u32 rd) {
-        DecodeStruct d;
+        DecodeStruct d = {};
         d.opcode = ((2 & LOBITS2) << FMTSTARTBIT) 
             | ((rd & LOBITS5) << RDSTARTBIT)
             | ((0b110100 & LOBITS6) << OP3STARTBIT)
@@ -107,7 +107,7 @@ protected:
     }
 
     void do_fop2_instr(u32 opf, u32 rs1, u32 rs2) {
-        DecodeStruct d;
+        DecodeStruct d = {};
         d.opcode = ((2 & LOBITS2) << FMTSTARTBIT) 
             | ((0 & LOBITS5) << RDSTARTBIT)
             | ((0b110101 & LOBITS6) << OP3STARTBIT)
@@ -154,7 +154,7 @@ protected:
 
 
 
-FPUTest::FPUTest() : mmu(mctrl), cpu(mmu, intc)
+FPUTest::FPUTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
 {  
    	
 

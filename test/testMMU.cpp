@@ -44,9 +44,9 @@ protected:
     // Code here will be called immediately after each test (right
     // before the destructor).
     virtual void TearDown();
+    IRQMP intc;
     MCtrl mctrl;
     MMU mmu;
-    IRQMP intc;
     CPU cpu;
     
     void do_LDA_instr(u32 rs1, u32 rs2, u32 rd, u32 asi) {
@@ -93,7 +93,7 @@ protected:
 
 
 
-MMUTest::MMUTest() : mmu(mctrl), cpu(mmu, intc)
+MMUTest::MMUTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
 {  
    	
 

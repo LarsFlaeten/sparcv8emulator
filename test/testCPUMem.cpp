@@ -22,16 +22,16 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    IRQMP intc;
     MCtrl mctrl;
     MMU mmu;
-    IRQMP intc;
     CPU cpu;
     
 };
 
 
 
-CPUMemTest::CPUMemTest() : mmu(mctrl), cpu(mmu, intc)
+CPUMemTest::CPUMemTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
 {  
    	
 
@@ -45,6 +45,10 @@ CPUMemTest::~CPUMemTest()
 
 void CPUMemTest::SetUp()
 {
+    new (&intc)  IRQMP(1);
+    new (&mctrl) MCtrl();     // fully reconstruct
+    new (&mmu)   MMU(mctrl); // MMU now sees fresh MCtrl
+    new (&cpu)   CPU(mmu, intc);
 
     mctrl.attach_bank<RamBank>(0x0, 1*1024*1024); // 1 MB @ 0x0
 
@@ -139,7 +143,7 @@ TEST_F(CPUMemTest, Loads_LD) {
     cpu.write_reg(0x300, LOCALREG4);
     
     // Construct LD opcode
-    DecodeStruct d;
+    DecodeStruct d = {};
     u32 op = 0x000000; // LD
     d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
         ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
@@ -198,7 +202,7 @@ TEST_F(CPUMemTest, Loads_LDD) {
     cpu.write_reg(0x300, LOCALREG4);
     
     // Construct LD opcode
-    DecodeStruct d;
+    DecodeStruct d = {};
     u32 op = 0b000011; // LDD
     d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
         ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
@@ -280,7 +284,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x300, LOCALREG4);
     
     // Construct LD opcode
-    DecodeStruct d;
+    DecodeStruct d = {};
     u32 op = 0b000001; // LDUB
     d.opcode = ((3 & LOBITS2) << FMTSTARTBIT) 
         ^ ((LOCALREG0 & LOBITS5) << RDSTARTBIT)
@@ -467,7 +471,7 @@ TEST_F(CPUMemTest, Loads_bytes) {
 
 TEST_F(CPUMemTest, RD_ASR17) {
     u32 op = 0x89444000;
-    DecodeStruct d;
+    DecodeStruct d = {};
     d.opcode = op;
     cpu.decode(&d);
     

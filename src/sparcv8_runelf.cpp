@@ -118,12 +118,12 @@ int main(int argc, char **argv)
 
     // We only instanciate a lone interruptc controller, since the CPU needs a reference
     // to it. It is likely not used by any bare bone ELFs.
-    IRQMP intc;
+    IRQMP intc(1);
 
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
-    u32 word_count = ReadElf(fname, mmu, entry_va, false, std::cout); 
+    u32 word_count = ReadElf(fname, mctrl, entry_va, false, std::cout); 
     
     u32 end_of_ram = mctrl.find_bank(0x00000000)->get_limit();
 

@@ -79,7 +79,7 @@ class MMU {
         fault_status_reg = 0x0;
         fault_address_reg = 0x0;
     
-        
+        reset();
     }	
 	
 

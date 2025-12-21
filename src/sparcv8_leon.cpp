@@ -147,8 +147,11 @@ int main(int argc, char **argv)
         }
 
     // Set up CPU
+    int num_cpus = 1;
     MCtrl mctrl;
     MMU mmu(mctrl);
+    IRQMP intc(num_cpus);
+
     debug_set_active_mmu(&mmu);
     
     // Set Cache control regs as TSIM does
@@ -200,7 +203,7 @@ int main(int argc, char **argv)
     //mctrl.attach_bank<RamBank>(0x20000000, 8 * 1024 * 1024); // 8MB video memory
  
     // APB CTRL area
-    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl);
+    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl, intc);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
     
 
@@ -247,44 +250,46 @@ int main(int argc, char **argv)
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
-    if(ReadElf(fname, mmu, entry_va, false, std::cout) == 0) {
+    if(ReadElf(fname, mctrl, entry_va, false, std::cout) == 0) {
         std::cerr << "No bytes returned from ELF read.\n";
         return EXIT_FAILURE; 
     }
 
     // OS boot process step 1: Set stack pointer to end of ram
     u32 end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
+    
+    // Call back for bus tick:
+    static std::function<void()> tick_lambda =
+    [&apbctrl]() 
+    {
+        GPTIMER& timer = apbctrl.GetTimer();
+        IRQMP& intc = apbctrl.GetIntc();
+        APBUART& uart1 = apbctrl.GetUART();
+        APBUART& uart9 = apbctrl.GetUART9();
+        GRPCI2& grpci = apbctrl.GetGRPCI2();
+
+        timer.Tick();
+        uart1.Input();
+        grpci.tick();
+
+        if (timer.check_interrupt(false))
+            intc.TriggerIRQ(8);
+
+        if (uart1.CheckIRQ()) 
+            intc.TriggerIRQ(4);
+
+        if (uart9.CheckIRQ()) 
+            intc.TriggerIRQ(3);
+    };
 
     // Build the vector of CPUs
     std::vector<std::unique_ptr<CPU>> cpus{};
-    int num_cpus = 1;
-    IRQMP& intc = apbctrl.GetIntc();
     for(int i = 0; i < num_cpus; ++i) {
         auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mmu, intc, write_to_file ? os : std::cout)); 
         cpu->set_verbose(verbose);
         cpu->set_cpu_id(i);
 
-        cpu->register_bus_tick_function( [&apbctrl]() 
-            {
-                GPTIMER& timer = apbctrl.GetTimer();
-                IRQMP& intc = apbctrl.GetIntc();
-                APBUART& uart1 = apbctrl.GetUART();
-                APBUART& uart9 = apbctrl.GetUART9();
-                GRPCI2& grpci = apbctrl.GetGRPCI2();
-
-                timer.Tick();
-                uart1.Input();
-                grpci.tick();
-
-                if(timer.check_interrupt(false))
-                    intc.TriggerIRQ(8);
-                
-                if(uart1.CheckIRQ()) 
-                    intc.TriggerIRQ(4);
-                if(uart9.CheckIRQ()) 
-                    intc.TriggerIRQ(3);  
-            }
-        );
+        cpu->register_bus_tick_function( tick_lambda );
 
         cpu->reset(entry_va);
 

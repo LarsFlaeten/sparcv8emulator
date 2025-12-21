@@ -21,7 +21,9 @@
 #define IRQMP_ERRSTAT_OS 0x18
 #define IRQMP_AMPCTRL_OS 0x20
 
-
+#define LEON3_IRQMPSTATUS_CPUNR     28
+#define LEON3_IRQMPSTATUS_BROADCAST 27
+#define LEON3_IRQMPAMPCTRL_NCTRL 28
 
 class IRQMP {
     private:
@@ -36,14 +38,14 @@ class IRQMP {
         u32 AMPCTRL;
         u32 PIMASK[32]; // Processor n interrupt mask registers
 
-        u32 num_cpus;
+        u32 num_cpus_;
 
         mutable std::shared_mutex mtx;
 
         CPU* cpu_ptr_ = nullptr;
 
     public:
-        IRQMP():
+        IRQMP(u8 num_cpus):
             ILEVEL(0),
             IPEND(0),
             IFORCE(0),
@@ -52,22 +54,25 @@ class IRQMP {
             BRDCST(0),
             ERRSTAT(0),
             AMPCTRL(0),
-            num_cpus(32)
+            num_cpus_(num_cpus)
         {
             for(int i = 0; i < 32; ++i)
                 PIMASK[i] = 0;
-        }
 
-        void SetNumCpus(unsigned int num_cpus) {
-            std::unique_lock lock(mtx);
-            num_cpus = num_cpus;
+            if(num_cpus > 1) {
+                // Set MPSTAT
+                // num cpus -1 and enable broadcast
+                MPSTAT = (num_cpus - 1) << LEON3_IRQMPSTATUS_CPUNR | 0x1 << LEON3_IRQMPSTATUS_BROADCAST;
+                
+
+            }
         }
 
         void set_cpu_ptr(CPU* cpu) {cpu_ptr_ = cpu;}
 
         void TriggerIRQ(u32 IRL);
 
-        unsigned int GetNextIRQPending() const;
+        unsigned int GetNextIRQPending(u8 cpu_id) const;
 
         void ClearIRQ(u32 IRL);
 
@@ -109,46 +114,7 @@ class IRQMP {
             }
             return 0; 
         }
-        void Write(u32 offset, u32 value) {
-            std::unique_lock lock(mtx);
-            std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << "\n";
-            
-            if(offset >= 0x40 && offset < 0x60) {
-                u32 n = offset - 0x40;
-                //std::cout << "Write IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << value << std::dec << "\n";
-                PIMASK[n] = value;
-                return;
-            }     
-            
-            switch(offset) {
-                case(IRQMP_ILEVEL_OS):
-                    ILEVEL = value;
-                    break;
-                case(IRQMP_IPEND_OS):
-                    IPEND = value;
-                    break;
-                case(IRQMP_IFORCE_OS):
-                    IFORCE = value;
-                    break;
-                case(IRQMP_ICLEAR_OS):
-                    ICLEAR = value;
-                    break;
-                case(IRQMP_MPSTAT_OS):
-                    MPSTAT = value;
-                    break;
-                case(IRQMP_BRDCST_OS):
-                    BRDCST = value;
-                    break;
-                case(IRQMP_ERRSTAT_OS):
-                    ERRSTAT = value;
-                    break;
-                default:
- 					throw not_implemented_exception();  
-                    return ;
-            }
-            return; 
-        }
-
+        void Write(u32 offset, u32 value);
 
 
 };

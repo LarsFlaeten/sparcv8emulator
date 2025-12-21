@@ -27,16 +27,16 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    IRQMP intc;
     MCtrl mctrl;
     MMU mmu;
-    IRQMP intc;
     CPU cpu;
 
 };
 
 
 
-SVGATest::SVGATest() : mmu(mctrl), cpu(mmu, intc)
+SVGATest::SVGATest() : intc(1), mmu(mctrl), cpu(mmu, intc)
 {  
    	
 

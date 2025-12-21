@@ -22,9 +22,9 @@ protected:
     // before the destructor).
     virtual void TearDown();
 
+    IRQMP intc;
     MCtrl mctrl;
     MMU mmu;
-    IRQMP intc;
     CPU cpu;
    
     void do_STFSR_instr(u32 rs1, u32 rs2, u32 rd) {
@@ -61,7 +61,7 @@ protected:
 
 
 
-LDSTFSRTest::LDSTFSRTest() : mmu(mctrl), cpu(mmu, intc)
+LDSTFSRTest::LDSTFSRTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
 {  
    	
 
