@@ -110,8 +110,7 @@ int main(int argc, char **argv)
 
     // Set up CPU
     MCtrl mctrl;
-    MMU mmu(mctrl); 
-
+    
     // Setup RAM
     mctrl.attach_bank<RamBank>(0x00000000, 1 * 1024 * 1024);
     mctrl.debug_list_banks();
@@ -134,7 +133,7 @@ int main(int argc, char **argv)
 
     for(int i = 0; i < num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
-        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mmu, intc, write_to_file ? os : std::cout));
+        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, write_to_file ? os : std::cout));
         cpu->set_cpu_id(i);
         cpu->set_verbose(verbose);
         cpu->reset(entry_va);
@@ -151,7 +150,7 @@ int main(int argc, char **argv)
     RunSummary rs;
     if(!Disassemble) {
         
-        GdbStub gdb_stub{cpus, mmu};
+        GdbStub gdb_stub{cpus};
         
         if(debug_server) {
             cpus[0]->set_gdb_stub(&gdb_stub);

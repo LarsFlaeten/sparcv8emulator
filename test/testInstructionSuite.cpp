@@ -28,7 +28,6 @@ protected:
         
     IRQMP intc;
     MCtrl mctrl;
-    MMU mmu; 
     CPU cpu;
     
     
@@ -56,7 +55,7 @@ protected:
 
 
 INSTRTest::INSTRTest()
-    : intc(1), mmu(mctrl), cpu(mmu, intc)
+    : intc(1), cpu(mctrl, intc)
 
 {  
     //cpu.SetVerbose(true);

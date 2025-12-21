@@ -149,15 +149,10 @@ int main(int argc, char **argv)
     // Set up CPU
     int num_cpus = 1;
     MCtrl mctrl;
-    MMU mmu(mctrl);
     IRQMP intc(num_cpus);
 
-    debug_set_active_mmu(&mmu);
     
-    // Set Cache control regs as TSIM does
-    mmu.SetCCR(0x00020000);
-    mmu.SetICCR(0x10220008);
-    mmu.SetDCCR(0x18220008);
+    
 
     // Create the AC'97 PCI peripheral
     // Instead of handing over mctrl, we give it read/write lambdas
@@ -188,7 +183,7 @@ int main(int argc, char **argv)
         }
         return true;
     };
-    auto mem_write = [&mmu](uint32_t va, const void* val, size_t sz) -> bool {
+    auto mem_write = [&mctrl](uint32_t va, const void* val, size_t sz) -> bool {
         throw std::runtime_error("memwrite lambda");
         return true;
     };
@@ -285,7 +280,7 @@ int main(int argc, char **argv)
     // Build the vector of CPUs
     std::vector<std::unique_ptr<CPU>> cpus{};
     for(int i = 0; i < num_cpus; ++i) {
-        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mmu, intc, write_to_file ? os : std::cout)); 
+        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, write_to_file ? os : std::cout)); 
         cpu->set_verbose(verbose);
         cpu->set_cpu_id(i);
 
@@ -299,6 +294,8 @@ int main(int argc, char **argv)
     
     
     _cpu_ptr = cpus[0].get();
+    debug_set_active_mmu(&(cpus[0].get()->get_mmu()));
+    
     
     
     
@@ -326,7 +323,7 @@ int main(int argc, char **argv)
 
     // Set up gdb stub
     //GdbStub gdb_stub{cpus, mmu};
-    auto gdb_stub = std::make_unique<GdbStub>(cpus, mmu);  
+    auto gdb_stub = std::make_unique<GdbStub>(cpus);  
 
     RunSummary rs;
     if(!Disassemble) {

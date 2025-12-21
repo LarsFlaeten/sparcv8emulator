@@ -27,7 +27,6 @@ protected:
     virtual void TearDown();
     IRQMP intc;    
     MCtrl mctrl;
-    MMU mmu; 
     CPU cpu;
     
     
@@ -55,7 +54,7 @@ protected:
 
 
 INSTRFPUTest::INSTRFPUTest()
-    : intc(1), mmu(mctrl), cpu(mmu, intc)
+    : intc(1), cpu(mctrl, intc)
 
 {  
     //cpu.SetVerbose(true);

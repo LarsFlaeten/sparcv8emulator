@@ -68,6 +68,7 @@ enum TerminateReason {
 // Defer structure definition
 class CPU;
 class IRQMP;
+class MMU;
 #include "MMU.h"
 #include "../peripherals/IRQMP.h"
 
@@ -174,11 +175,15 @@ class CPU
         std::function<void()> bus_tick_func{};
         
         bool _interrupt; 
-        MMU& mmu;  
+        MMU mmu;  
         IRQMP& intc;      
    public:
-        CPU(MMU& mmu, IRQMP& intc, std::ostream& out = std::cout) : cpu_id(0), os(out), _interrupt(false), mmu(mmu), intc(intc)
+        CPU(MCtrl& mctrl, IRQMP& intc, std::ostream& out = std::cout) : cpu_id(0), os(out), _interrupt(false), mmu(mctrl), intc(intc)
         { 
+            // Set Cache control regs as TSIM does
+            mmu.SetCCR(0x00020000);
+            mmu.SetICCR(0x10220008);
+            mmu.SetDCCR(0x18220008);
             
         }
 
@@ -260,6 +265,7 @@ class CPU
         void    register_bus_tick_function(std::function<void()> f) {
             bus_tick_func = std::move(f);
         }
+
 
         void wakeup();             // called by IRQMP
 

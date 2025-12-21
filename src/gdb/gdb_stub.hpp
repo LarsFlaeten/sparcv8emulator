@@ -16,7 +16,7 @@ class MMU;
 
 class GdbStub {
 public:
-    GdbStub(std::vector<std::unique_ptr<CPU>>& cpus, MMU& mmu);
+    GdbStub(std::vector<std::unique_ptr<CPU>>& cpus);
     ~GdbStub();
 
     GdbStub(const GdbStub&) = delete;
@@ -62,7 +62,7 @@ private:
     
 
     std::vector<std::unique_ptr<CPU>>& cpus;
-    MMU& mmu;
+    
  public:
     std::mutex mtx;
     std::condition_variable cv;

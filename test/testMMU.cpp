@@ -46,7 +46,6 @@ protected:
     virtual void TearDown();
     IRQMP intc;
     MCtrl mctrl;
-    MMU mmu;
     CPU cpu;
     
     void do_LDA_instr(u32 rs1, u32 rs2, u32 rd, u32 asi) {
@@ -93,7 +92,7 @@ protected:
 
 
 
-MMUTest::MMUTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
+MMUTest::MMUTest() : intc(1), cpu(mctrl, intc)
 {  
    	
 
@@ -114,7 +113,7 @@ void MMUTest::SetUp()
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     cpu.reset(entry_va);
-    mmu.reset(); 
+     
 }
 
 void MMUTest::TearDown()
@@ -178,6 +177,7 @@ TEST_F(MMUTest, TestTLBAddressMasks)
 
 TEST_F(MMUTest, MMUInitAndChangeReg)
 {   
+    auto& mmu = cpu.get_mmu();
 /*    SDRAM2 RAM(0x001000000);  // IO: 0x0, 16 MB of RAM
 
 
@@ -211,6 +211,8 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
 
 TEST_F(MMUTest, MMUEnableDisable)
 {     
+    auto& mmu = cpu.get_mmu();
+
     EXPECT_FALSE(mmu.GetEnabled());
  
     // adress to indicate MMU op is taken from LOCALREG4
@@ -235,6 +237,8 @@ TEST_F(MMUTest, MMUEnableDisable)
 
 TEST_F(MMUTest, MMUInitCtxTblPtr)
 {
+    auto& mmu = cpu.get_mmu();
+
     mmu.reset();
 
     // MMU shuld now have set new register value:
@@ -254,6 +258,8 @@ TEST_F(MMUTest, MMUInitCtxTblPtr)
 
 TEST_F(MMUTest, MMUInitSetContext)
 {  
+    auto& mmu = cpu.get_mmu();
+
     mmu.reset();
     EXPECT_EQ(mmu.GetCtxNumber(), 0x0);
  
@@ -286,7 +292,8 @@ TEST_F(MMUTest, MMUAMBAMock)
 } 
 TEST_F(MMUTest, MMUBypassRAMReadWrite)
 {   
-   
+    auto& mmu = cpu.get_mmu();
+
     mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
     
     mctrl.write32(0xfffffff0, 0x07401039);
@@ -311,6 +318,8 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite)
 
 TEST_F(MMUTest, MMUBypassRAMReadWrite2)
 {   
+    auto& mmu = cpu.get_mmu();
+
     mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
     
     // MMU shuld be off for this test, as we mix bypass
@@ -341,6 +350,8 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite2)
 
 TEST_F(MMUTest, CacheControlregs)
 {
+    auto& mmu = cpu.get_mmu();
+
     u32 ccr = mmu.GetCCR();
     u32 iccr = mmu.GetICCR();
     u32 dccr = mmu.GetDCCR();
@@ -379,6 +390,8 @@ TEST_F(MMUTest, CacheControlregs)
 // Check TLB on 4Kb page sizes (lvl 3) with different intents, one context
 TEST_F(MMUTest, MMUTLBCacheLvl3)
 {
+    auto& mmu = cpu.get_mmu();
+
     auto ctx = mmu.GetCtxNumber();
     ASSERT_EQ(ctx, 0);
 	u32 pte = 0;
@@ -529,6 +542,8 @@ TEST_F(MMUTest, MMUTLBCacheLvl3)
 // Check TLB on all lvls, without direct mapping va to phys 
 TEST_F(MMUTest, MMUTLBCacheAllLvls)
 {
+    auto& mmu = cpu.get_mmu();
+
     ASSERT_EQ(mmu.GetCtxNumber(), 0);
 	
 	u32 va = 0x60000d90;
@@ -595,6 +610,8 @@ TEST_F(MMUTest, MMUTLBCacheAllLvls)
 // Check TLB on lvls 1-2 with context switch
 TEST_F(MMUTest, MMUTLBCacheLvl12_ctx_switch)
 {
+    auto& mmu = cpu.get_mmu();
+
     ASSERT_EQ(mmu.GetCtxNumber(), 0);
 	
 	u32 va = 0x60000d90;
@@ -673,6 +690,8 @@ TEST_F(MMUTest, MMUTLBCacheLvl12_ctx_switch)
 // Check that two contexts can use same va, but point to different pa
 TEST_F(MMUTest, MMUTLBCacheLvl3_ctx_switch)
 {
+    auto& mmu = cpu.get_mmu();
+
     u32 pte_out_i;
     u8 level_out_i;
 
@@ -716,6 +735,8 @@ TEST_F(MMUTest, MMUTLBCacheLvl3_ctx_switch)
 
 TEST_F(MMUTest, MMUTLBCacheFlush)
 {
+    auto& mmu = cpu.get_mmu();
+
     ASSERT_EQ(mmu.GetCtxNumber(), 0);
 	
 	u32 va = 0x60000d90;
@@ -837,6 +858,8 @@ void mmu_init(MMU& mmu);
 
 TEST_F(MMUTest, MMUTables)
 {
+    auto& mmu = cpu.get_mmu();
+
     // MMU shuld be off in the start
     ASSERT_FALSE(mmu.GetEnabled());
 
@@ -965,6 +988,8 @@ TEST_F(MMUTest, MMUTables)
 
 TEST_F(MMUTest, MMUFaults)
 {
+    auto& mmu = cpu.get_mmu();
+
     // MMU shuld be off in the start
     ASSERT_FALSE(mmu.GetEnabled());
 
@@ -1273,6 +1298,8 @@ TEST_F(MMUTest, MMUFaults)
 
 TEST_F(MMUTest, MMUFaults_cpuOP)
 {
+    auto& mmu = cpu.get_mmu();
+
     // MMU shuld be off in the start
     ASSERT_FALSE(mmu.GetEnabled());
 
@@ -1503,7 +1530,7 @@ void mmu_table_init(MCtrl& mctrl, u32 end_of_mem)
 
 void mmu_init(MMU& mmu)
 {
-
+   
 	mmu.SetCtxTblPtr((0x60002000 >> 4) & 0xfffffff0);
     
     // Flush TLB

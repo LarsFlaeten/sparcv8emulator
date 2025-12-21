@@ -1,8 +1,9 @@
 #ifndef _MMU_H_
 #define _MMU_H_
-class MMU;
-#include "CPU.h"
+
 #include "../peripherals/MCTRL.h"
+
+#include "CPU_defines.h"
 
 /* Declare facilities for detecting and dealing with different byteorder */
 #include <endian.h>

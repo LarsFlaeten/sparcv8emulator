@@ -23,7 +23,6 @@ protected:
     virtual void TearDown();
     IRQMP intc;
     MCtrl mctrl;
-    MMU mmu;
     CPU cpu;
  
     void do_SAVE_instr(u32 rs1, u32 rs2, u32 rd) {
@@ -60,7 +59,7 @@ protected:
 
 
 
-CPUInstructionsTest::CPUInstructionsTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
+CPUInstructionsTest::CPUInstructionsTest() : intc(1), cpu(mctrl, intc)
 {  
    	
 
@@ -118,6 +117,7 @@ TEST_F(CPUInstructionsTest, WRWIM_allOnes)
 
 TEST_F(CPUInstructionsTest, LDSTUB_noMMU)
 {   
+    auto& mmu = cpu.get_mmu();
 
     //for(int i = 0; i <= 8; ++i) 
     //{
@@ -148,6 +148,7 @@ TEST_F(CPUInstructionsTest, LDSTUB_noMMU)
 
 TEST_F(CPUInstructionsTest, SWAP_noMMU)
 {   
+    auto& mmu = cpu.get_mmu();
 
     //for(int i = 0; i <= 8; ++i) 
     //{

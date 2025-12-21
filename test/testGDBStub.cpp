@@ -188,7 +188,6 @@ protected:
 
     IRQMP intc;
     MCtrl mctrl;
-    MMU mmu;
     std::vector<std::unique_ptr<CPU>> cpus;
     GdbStub* pstub = nullptr;
     
@@ -218,9 +217,9 @@ void gdb_server(int server_fd, CPU& cpu) {
 
 // create server and start in separate thread
 GDBStubTest::GDBStubTest()
-    : intc(1), mmu(mctrl), debug_port(1234)
+    : intc(1), debug_port(1234)
 {
-    cpus.emplace_back(std::make_unique<CPU>(mmu, intc));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc));
 	
 
 
@@ -242,7 +241,7 @@ void GDBStubTest::SetUp()
     cpus[0]->reset(entry_va);
  
     // Start GDB stub:
-    pstub = new GdbStub(cpus, mmu);
+    pstub = new GdbStub(cpus);
     cpus[0]->set_gdb_stub(pstub);
 
     std::cout << "[GTEST] GDBStub starting.\n";

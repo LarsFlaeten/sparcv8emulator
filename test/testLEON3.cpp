@@ -27,14 +27,13 @@ protected:
 
     IRQMP intc;    
     MCtrl mctrl;
-    MMU mmu; 
     CPU cpu;
 };
 
 
 
 LEON3Test::LEON3Test()
-    : intc(1), mmu(mctrl), cpu(mmu, intc)
+    : intc(1), cpu(mctrl, intc)
 
 {  
     cpu.set_verbose(true);
@@ -111,6 +110,8 @@ TEST_F(LEON3Test, ASR17Values)
 
 TEST_F(LEON3Test, CASA_swap)
 {
+    auto& mmu = cpu.get_mmu();
+
     u32 op = 0xf7e4c161; // casa [%l3], 0xb, %g1, %i3
      
     // g4;
@@ -174,6 +175,8 @@ TEST_F(LEON3Test, CASA_swap)
 
 TEST_F(LEON3Test, CASA_noswap)
 {
+    auto& mmu = cpu.get_mmu();
+    
     u32 op = 0xf7e4c161; // casa [%l3], 0xb, %g1, %i3
      
     // g4;

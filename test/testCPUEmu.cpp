@@ -24,13 +24,12 @@ protected:
 
     IRQMP intc;
     MCtrl mctrl;
-    MMU mmu;
     CPU cpu;
 };
 
 
 
-CPUEmuTest::CPUEmuTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
+CPUEmuTest::CPUEmuTest() : intc(1), cpu(mctrl, intc)
 {  
    	
 

@@ -124,8 +124,7 @@ TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
 {
     IRQMP intc(1);
     MCtrl mctrl{};
-    MMU mmu(mctrl);
-    CPU cpu(mmu, intc);
+    CPU cpu(mctrl, intc);
     cpu.reset(0x0);
     // enable traps:
     cpu.set_psr(cpu.get_psr() | (0x1u << 5));

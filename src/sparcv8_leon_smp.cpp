@@ -273,14 +273,7 @@ int main(int argc, char **argv) {
     
     // Set up machine
     MCtrl mctrl;
-    MMU mmu(mctrl);
-
-    debug_set_active_mmu(&mmu);
-
-    // Set Cache control regs as TSIM does
-    mmu.SetCCR(0x00020000);
-    mmu.SetICCR(0x10220008);
-    mmu.SetDCCR(0x18220008);
+    
 
     // Main RAM bank
     mctrl.attach_bank<RamBank>(0x40000000, 64 * 1024 * 1024); // Main memory
@@ -318,7 +311,7 @@ int main(int argc, char **argv) {
     std::vector<std::unique_ptr<CPU>> cpus{};
     for(unsigned int i = 0; i < config.num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
-        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mmu, intc, std::cout));
+        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, std::cout));
         cpu->set_cpu_id(i);
 
         cpu->set_break_on_timer_interrupt(true);
@@ -333,6 +326,9 @@ int main(int argc, char **argv) {
         cpu->write_reg(end_of_ram, INREG6); // Write frame pointer
         
     }
+
+    debug_set_active_mmu(&(cpus[0]->get_mmu()));
+
     
     print_config(config);
 

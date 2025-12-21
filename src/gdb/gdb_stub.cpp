@@ -29,7 +29,7 @@ static std::vector<uint8_t> from_hex(const std::string& hex) {
     return res;
 }
 
-GdbStub::GdbStub(std::vector<std::unique_ptr<CPU>>& cpu_refs, MMU& mmu) : cpus(cpu_refs), mmu(mmu) {
+GdbStub::GdbStub(std::vector<std::unique_ptr<CPU>>& cpu_refs) : cpus(cpu_refs) {
     //std::cout << "[GDBStub] constructed, this=" << this
     //      << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
 }
@@ -365,6 +365,8 @@ uint32_t GdbStub::get_breakpoint_instruction(uint32_t addr) {
 void GdbStub::insert_breakpoint(uint32_t addr) {
     if (has_breakpoint(addr)) return;
 
+    MMU& mmu = cpus[current_cpu]->get_mmu();
+
     try {
         uint32_t original = read_mem32(addr);
         breakpoints.push_back({addr, original});
@@ -396,6 +398,8 @@ void GdbStub::insert_breakpoint(uint32_t addr) {
 }
 
 void GdbStub::remove_breakpoint(uint32_t addr) {
+    MMU& mmu = cpus[current_cpu]->get_mmu();
+
     for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
         if (it->addr == addr) {
             try
@@ -493,6 +497,8 @@ bool GdbStub::handle_memory_write(uint32_t addr, size_t len, const std::string& 
 // Try to read memory assuming vaddr is available
 // If it fails, try the two normal mappings on linux boot
 uint32_t GdbStub::read_mem32(uint32_t vaddr) {
+    MMU& mmu = cpus[current_cpu]->get_mmu();
+
     uint32_t val = 0;
     if(mmu.MemAccess<intent_load, 4>(vaddr, val, CROSS_ENDIAN, true) == 0)
         return val;
@@ -514,6 +520,8 @@ uint32_t GdbStub::read_mem32(uint32_t vaddr) {
 }
 
 void GdbStub::write_mem32(uint32_t vaddr, uint32_t value) {
+    MMU& mmu = cpus[current_cpu]->get_mmu();
+
     if(mmu.MemAccess<intent_store, 4>(vaddr, value, CROSS_ENDIAN, true) == 0)
         return;
         

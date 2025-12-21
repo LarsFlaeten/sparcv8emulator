@@ -31,13 +31,12 @@ protected:
 
     IRQMP intc;
     MCtrl mctrl;
-    MMU mmu;
     CPU cpu;
 };
 
 
 
-APBCTRLTest::APBCTRLTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
+APBCTRLTest::APBCTRLTest() : intc(1), cpu(mctrl, intc)
 {  
    	
 

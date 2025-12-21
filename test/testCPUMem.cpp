@@ -24,14 +24,13 @@ protected:
 
     IRQMP intc;
     MCtrl mctrl;
-    MMU mmu;
     CPU cpu;
     
 };
 
 
 
-CPUMemTest::CPUMemTest() : intc(1), mmu(mctrl), cpu(mmu, intc)
+CPUMemTest::CPUMemTest() : intc(1), cpu(mctrl, intc)
 {  
    	
 
@@ -47,8 +46,7 @@ void CPUMemTest::SetUp()
 {
     new (&intc)  IRQMP(1);
     new (&mctrl) MCtrl();     // fully reconstruct
-    new (&mmu)   MMU(mctrl); // MMU now sees fresh MCtrl
-    new (&cpu)   CPU(mmu, intc);
+    new (&cpu)   CPU(mctrl, intc);
 
     mctrl.attach_bank<RamBank>(0x0, 1*1024*1024); // 1 MB @ 0x0
 
@@ -88,6 +86,7 @@ TEST_F(CPUMemTest, TestResetState)
 
 TEST_F(CPUMemTest, MemAccess_ReadWrite)
 {
+    auto& mmu = cpu.get_mmu();
 
     // Checl WORD sized loads and stores, and replace individual bytes
     u32 value = 0xff00ffff;
@@ -133,6 +132,8 @@ TEST_F(CPUMemTest, MemAccess_ReadWrite)
 }
 
 TEST_F(CPUMemTest, Loads_LD) {
+
+    auto& mmu = cpu.get_mmu();
 
     // Put some data in memory
     //
@@ -191,6 +192,8 @@ TEST_F(CPUMemTest, Loads_LD) {
 
 TEST_F(CPUMemTest, Loads_LDD) {
 
+    auto& mmu = cpu.get_mmu();
+    
     // Put some data in memory
     //
     u32 value = 0xcafebabe;
@@ -257,6 +260,8 @@ TEST_F(CPUMemTest, Loads_LDD) {
 }
 
 TEST_F(CPUMemTest, Loads_LDUH) {
+
+    auto& mmu = cpu.get_mmu();
 
     // Put some data in memory
     //
@@ -435,6 +440,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
 }
 
 TEST_F(CPUMemTest, Loads_bytes) {
+    auto& mmu = cpu.get_mmu();
 
     // NOy actually needed, was done as part of verifying the internal memory model
     // after the bug in https://github.com/wyvernSemi/sparc/commit/7fc3e907f150a0b7c10cffe9be5cf7f554446490 

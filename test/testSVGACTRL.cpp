@@ -29,14 +29,13 @@ protected:
 
     IRQMP intc;
     MCtrl mctrl;
-    MMU mmu;
     CPU cpu;
 
 };
 
 
 
-SVGATest::SVGATest() : intc(1), mmu(mctrl), cpu(mmu, intc)
+SVGATest::SVGATest() : intc(1), cpu(mctrl, intc)
 {  
    	
 
