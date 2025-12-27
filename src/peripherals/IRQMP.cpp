@@ -1,6 +1,6 @@
 #include "IRQMP.h"
 
-void IRQMP::TriggerIRQ(u32 IRL) {
+void IRQMP::trigger_irq(u32 IRL) {
     IRL = IRL & 0xf;
 
     std::vector<int> target_cpus;
@@ -34,7 +34,7 @@ void IRQMP::TriggerIRQ(u32 IRL) {
     }
 }
 
-unsigned IRQMP::GetNextIRQPending(u8 cpu_id) const {
+unsigned IRQMP::get_next_pending_irq(u8 cpu_id) const {
     std::shared_lock lock(mtx);
     for(unsigned int i = 15; i >= 1; --i)
         if(IPEND & (0x1 << i)) 

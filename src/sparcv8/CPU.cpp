@@ -208,7 +208,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         
         // Check interrupt controller for pending interrupts and take any,
         // as long as there are not ongoing trap handling
-        u32 _incoming_irl = intc.GetNextIRQPending(this->cpu_id);
+        u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id);
         if(_incoming_irl>0 && trap_type == 0) {
             set_irl(_incoming_irl); // We take this interrupt
             intc.ClearIRQ(_incoming_irl);

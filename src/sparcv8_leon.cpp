@@ -268,13 +268,13 @@ int main(int argc, char **argv)
         grpci.tick();
 
         if (timer.check_interrupt(false))
-            intc.TriggerIRQ(8);
+            intc.trigger_irq(8);
 
         if (uart1.CheckIRQ()) 
-            intc.TriggerIRQ(4);
+            intc.trigger_irq(4);
 
         if (uart9.CheckIRQ()) 
-            intc.TriggerIRQ(3);
+            intc.trigger_irq(3);
     };
 
     // Build the vector of CPUs

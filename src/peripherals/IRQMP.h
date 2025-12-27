@@ -70,9 +70,9 @@ class IRQMP {
 
         void set_cpu_ptr(CPU* cpu) {cpu_ptr_ = cpu;}
 
-        void TriggerIRQ(u32 IRL);
+        void trigger_irq(u32 IRL);
 
-        unsigned int GetNextIRQPending(u8 cpu_id) const;
+        unsigned int get_next_pending_irq(u8 cpu_id) const;
 
         void ClearIRQ(u32 IRL);
 

@@ -54,61 +54,61 @@ void IRQMPTest::TearDown()
 {
 }
 
-TEST_F(IRQMPTest, TriggerIRQ_CheckPending)
+TEST_F(IRQMPTest, trigger_irq_CheckPending)
 {
     IRQMP intc(1);
 
-    intc.TriggerIRQ(8);
+    intc.trigger_irq(8);
     u32 ipend = intc.Read(0x04);
     ASSERT_FALSE(ipend & 0x1 << 8);
 
     // Enable MP interrupt mask for IRQ 8:
     intc.Write(0x40, 0b1 << 8);
 
-    intc.TriggerIRQ(8);
+    intc.trigger_irq(8);
  
     ipend = intc.Read(0x04);
     ASSERT_TRUE(ipend & 0x1 << 8);
 
-    unsigned int irq = intc.GetNextIRQPending(0);
+    unsigned int irq = intc.get_next_pending_irq(0);
     ASSERT_EQ(irq, 8);
     intc.ClearIRQ(8);
-    ASSERT_EQ(intc.GetNextIRQPending(0), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
  
    
     intc.Write(0x04, 0x0); 
-    ASSERT_EQ(intc.GetNextIRQPending(0), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
 
-    intc.TriggerIRQ(3);
-    intc.TriggerIRQ(8);
-    intc.TriggerIRQ(11);
+    intc.trigger_irq(3);
+    intc.trigger_irq(8);
+    intc.trigger_irq(11);
 
     // The mask will ensure only IRQ8 is pending:
-    ASSERT_EQ(intc.GetNextIRQPending(0), 8);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 8);
     intc.ClearIRQ(8);
-    ASSERT_EQ(intc.GetNextIRQPending(0), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
 
     
     // Enable MP interrupt mask for IRQ 3,8,11:
     intc.Write(0x40, 0x1 << 3 | 0x1 << 8 | 0x1 << 11);
 
-    intc.TriggerIRQ(3);
-    intc.TriggerIRQ(8);
-    intc.TriggerIRQ(11);
+    intc.trigger_irq(3);
+    intc.trigger_irq(8);
+    intc.trigger_irq(11);
 
    
-    ASSERT_EQ(intc.GetNextIRQPending(0), 11);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 11);
     intc.ClearIRQ(11);
 
-    ASSERT_EQ(intc.GetNextIRQPending(0), 8);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 8);
     intc.ClearIRQ(8);
 
-    ASSERT_EQ(intc.GetNextIRQPending(0), 3);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 3);
     intc.ClearIRQ(3);
 
     ASSERT_EQ(intc.Read(0x04), 0);
 
-    ASSERT_EQ(intc.GetNextIRQPending(0), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
     intc.ClearIRQ(0);
 
     ASSERT_EQ(intc.Read(0x04), 0);
@@ -147,23 +147,23 @@ TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
     //
     // 2) Trigger timer interrupt (IRL=8)
     //
-    intc.TriggerIRQ(8);         // uses IRQMP logic for delivering
+    intc.trigger_irq(8);         // uses IRQMP logic for delivering
     //cpu.run(1, nullptr);        // allow CPU to observe IRL change
 
     // CPU is in trap, so must NOT take IRQ yet
     EXPECT_EQ(cpu.get_irl(), 0)
         << "Timer IRQ must be pending, even while in trap.";
-    intc.TriggerIRQ(3);  
-    EXPECT_EQ(intc.GetNextIRQPending(0), 8);
+    intc.trigger_irq(3);  
+    EXPECT_EQ(intc.get_next_pending_irq(0), 8);
 
     //
     // 3) Trigger a higher-priority interrupt (IRL=12)
     //
-    intc.TriggerIRQ(12);
+    intc.trigger_irq(12);
     //cpu.run(1, nullptr);
 
     // Now highest priority must be selected
-    EXPECT_EQ(intc.GetNextIRQPending(0), 12)
+    EXPECT_EQ(intc.get_next_pending_irq(0), 12)
         << "Higher IRQ=12 must override IRL, but lower IRQ=8 must remain pending.";
 
 
@@ -185,13 +185,13 @@ TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
     intc.ClearIRQ(12);
     
     // IRL should now fall back to pending IRQ 8
-    EXPECT_EQ(intc.GetNextIRQPending(0), 8)
+    EXPECT_EQ(intc.get_next_pending_irq(0), 8)
         << "After clearing IRQ12, pending timer IRQ8 must be restored.";
 
     intc.ClearIRQ(8);
     
     // IRL should now fall back to pending IRQ 3
-    EXPECT_EQ(intc.GetNextIRQPending(0), 3)
+    EXPECT_EQ(intc.get_next_pending_irq(0), 3)
         << "After clearing IRQ8, pending IRQ3 must be restored.";
 
 }

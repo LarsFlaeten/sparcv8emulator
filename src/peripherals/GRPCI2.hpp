@@ -52,7 +52,7 @@ public:
 
     void raise_pci_irq(uint8_t slot) {
         // For now, always route to a single IRQ line, e.g. #2
-        irqmp_.TriggerIRQ(2);
+        irqmp_.trigger_irq(2);
         //printf("[GRPCI2] PCI IRQ #2 from slot %u -> IRQ2\n", slot);
     }
 

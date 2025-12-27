@@ -112,7 +112,7 @@ void BusClock::run() {
         // Handle tick and check timer interrupt in one go    
         timer_.lock();
         if(timer_.tick_and_check_interrupt_unlocked(true)) {
-            irqmp_.TriggerIRQ(8);
+            irqmp_.trigger_irq(8);
             {
                 std::lock_guard lock(mtx_);
                 tick_count_.fetch_add(1, std::memory_order_relaxed);
@@ -130,7 +130,7 @@ void BusClock::run() {
 
             uart_.tick_scheduled();   // RX polling + TX retrigger
             if (uart_.CheckIRQ())
-                irqmp_.TriggerIRQ(4);
+                irqmp_.trigger_irq(4);
         }
 
         auto end = clock::now();
