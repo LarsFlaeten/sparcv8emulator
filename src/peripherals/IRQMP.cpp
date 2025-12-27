@@ -42,13 +42,13 @@ unsigned IRQMP::get_next_pending_irq(u8 cpu_id) const {
     return 0;
 }
 
-void IRQMP::ClearIRQ(u32 IRL) {
+void IRQMP::clear_irq(u32 IRL) {
     std::unique_lock lock(mtx);
     IRL = IRL & 0xf;
     IPEND = IPEND & ~(0x1 << IRL);
 }
 
-void IRQMP::Write(u32 offset, u32 value) {
+void IRQMP::write(u32 offset, u32 value) {
     std::unique_lock lock(mtx);
     std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << "\n";
     

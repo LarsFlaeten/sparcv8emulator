@@ -59,24 +59,24 @@ TEST_F(IRQMPTest, trigger_irq_CheckPending)
     IRQMP intc(1);
 
     intc.trigger_irq(8);
-    u32 ipend = intc.Read(0x04);
+    u32 ipend = intc.read(0x04);
     ASSERT_FALSE(ipend & 0x1 << 8);
 
     // Enable MP interrupt mask for IRQ 8:
-    intc.Write(0x40, 0b1 << 8);
+    intc.write(0x40, 0b1 << 8);
 
     intc.trigger_irq(8);
  
-    ipend = intc.Read(0x04);
+    ipend = intc.read(0x04);
     ASSERT_TRUE(ipend & 0x1 << 8);
 
     unsigned int irq = intc.get_next_pending_irq(0);
     ASSERT_EQ(irq, 8);
-    intc.ClearIRQ(8);
+    intc.clear_irq(8);
     ASSERT_EQ(intc.get_next_pending_irq(0), 0);
  
    
-    intc.Write(0x04, 0x0); 
+    intc.write(0x04, 0x0); 
     ASSERT_EQ(intc.get_next_pending_irq(0), 0);
 
     intc.trigger_irq(3);
@@ -85,12 +85,12 @@ TEST_F(IRQMPTest, trigger_irq_CheckPending)
 
     // The mask will ensure only IRQ8 is pending:
     ASSERT_EQ(intc.get_next_pending_irq(0), 8);
-    intc.ClearIRQ(8);
+    intc.clear_irq(8);
     ASSERT_EQ(intc.get_next_pending_irq(0), 0);
 
     
     // Enable MP interrupt mask for IRQ 3,8,11:
-    intc.Write(0x40, 0x1 << 3 | 0x1 << 8 | 0x1 << 11);
+    intc.write(0x40, 0x1 << 3 | 0x1 << 8 | 0x1 << 11);
 
     intc.trigger_irq(3);
     intc.trigger_irq(8);
@@ -98,20 +98,20 @@ TEST_F(IRQMPTest, trigger_irq_CheckPending)
 
    
     ASSERT_EQ(intc.get_next_pending_irq(0), 11);
-    intc.ClearIRQ(11);
+    intc.clear_irq(11);
 
     ASSERT_EQ(intc.get_next_pending_irq(0), 8);
-    intc.ClearIRQ(8);
+    intc.clear_irq(8);
 
     ASSERT_EQ(intc.get_next_pending_irq(0), 3);
-    intc.ClearIRQ(3);
+    intc.clear_irq(3);
 
-    ASSERT_EQ(intc.Read(0x04), 0);
+    ASSERT_EQ(intc.read(0x04), 0);
 
     ASSERT_EQ(intc.get_next_pending_irq(0), 0);
-    intc.ClearIRQ(0);
+    intc.clear_irq(0);
 
-    ASSERT_EQ(intc.Read(0x04), 0);
+    ASSERT_EQ(intc.read(0x04), 0);
 
 
 
@@ -130,9 +130,9 @@ TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
     cpu.set_psr(cpu.get_psr() | (0x1u << 5));
 
     // Enable MP interrupt mask for IRQ 8:
-    intc.Write(0x40, 0b1 << 8);
+    intc.write(0x40, 0b1 << 8);
     // Enable MP interrupt mask for IRQ 3,8,11:
-    intc.Write(0x40, 0x1 << 3 | 0x1 << 8 | 0x1 << 12);
+    intc.write(0x40, 0x1 << 3 | 0x1 << 8 | 0x1 << 12);
 
 
     //
@@ -182,13 +182,13 @@ TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
     //
     // 5) Simulate interrupt handler acknowledging IRQ 12
     //
-    intc.ClearIRQ(12);
+    intc.clear_irq(12);
     
     // IRL should now fall back to pending IRQ 8
     EXPECT_EQ(intc.get_next_pending_irq(0), 8)
         << "After clearing IRQ12, pending timer IRQ8 must be restored.";
 
-    intc.ClearIRQ(8);
+    intc.clear_irq(8);
     
     // IRL should now fall back to pending IRQ 3
     EXPECT_EQ(intc.get_next_pending_irq(0), 3)
@@ -206,7 +206,7 @@ TEST_F(IRQMPTest, MPStatus_SingleCPUNoBroadcast)
 
     IRQMP intc(1);
     // Read MPSTAT
-    u32 mpstat = intc.Read(0x10);
+    u32 mpstat = intc.read(0x10);
     u8 numcpus = ((mpstat >> LEON3_IRQMPSTATUS_CPUNR) & 0xf) + 1;
     bool broadcast = (mpstat >> LEON3_IRQMPSTATUS_BROADCAST) & 0x1;
     ASSERT_EQ(numcpus, 1);
@@ -221,7 +221,7 @@ TEST_F(IRQMPTest, MPStatus_Broadcast)
 
     IRQMP intc(2);
     // Read MPSTAT
-    u32 mpstat = intc.Read(0x10);
+    u32 mpstat = intc.read(0x10);
     u8 numcpus = ((mpstat >> LEON3_IRQMPSTATUS_CPUNR) & 0xf) + 1;
     bool broadcast = (mpstat >> LEON3_IRQMPSTATUS_BROADCAST) & 0x1;
     ASSERT_EQ(numcpus, 2);
@@ -233,20 +233,20 @@ TEST_F(IRQMPTest, BroadcastRegMask)
 {
     IRQMP intc(2);
 
-    ASSERT_EQ(intc.Read(LEON3_BRDCST_REG), 0);
+    ASSERT_EQ(intc.read(LEON3_BRDCST_REG), 0);
 
     // Write all ones, check that it is masked correctly:
-    intc.Write(LEON3_BRDCST_REG, 0xffffffff);
+    intc.write(LEON3_BRDCST_REG, 0xffffffff);
 
-    ASSERT_EQ(intc.Read(LEON3_BRDCST_REG) & 0x1, 0);
+    ASSERT_EQ(intc.read(LEON3_BRDCST_REG) & 0x1, 0);
 
-    ASSERT_EQ(intc.Read(LEON3_BRDCST_REG) >> 1, 0x7fff);
+    ASSERT_EQ(intc.read(LEON3_BRDCST_REG) >> 1, 0x7fff);
 
-    ASSERT_EQ((intc.Read(LEON3_BRDCST_REG) >> 1) & 0x1, 0x1);
+    ASSERT_EQ((intc.read(LEON3_BRDCST_REG) >> 1) & 0x1, 0x1);
 
-    ASSERT_EQ((intc.Read(LEON3_BRDCST_REG) >> 15) & 0x1, 0x1);
+    ASSERT_EQ((intc.read(LEON3_BRDCST_REG) >> 15) & 0x1, 0x1);
 
-    ASSERT_EQ(intc.Read(LEON3_BRDCST_REG) >> 16, 0x0);
+    ASSERT_EQ(intc.read(LEON3_BRDCST_REG) >> 16, 0x0);
     
 
 }

@@ -211,7 +211,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id);
         if(_incoming_irl>0 && trap_type == 0) {
             set_irl(_incoming_irl); // We take this interrupt
-            intc.ClearIRQ(_incoming_irl);
+            intc.clear_irq(_incoming_irl);
 
             // In multithreaded, we break out in timer interrupts, and wait until we are started again
             if((irl == 8)) {

@@ -99,7 +99,7 @@ class APBCTRL : public IMemoryBank {
             } else if ( (va & 0xfff00) >> 8 == 0x002) {
                 // Return data from slv 2 (IRQMP)
                 //std::cout << "Read APBCTRL(IRQMP), va = " << std::hex << va << std::dec << "\n";
-                return irq.Read(va & 0x0ff);        
+                return irq.read(va & 0x0ff);        
             } else if ( (va & 0xfff00) >> 8 == 0x003) {
                 // Return data from slv 3 (GRTIMER)
                 //std::cout << "Read APBCTRL(GRTIMER), va = " << std::hex << va << std::dec << "\n";
@@ -136,7 +136,7 @@ class APBCTRL : public IMemoryBank {
             } else if ( (va & 0xfff00) >> 8 == 0x002) {
                 //std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 // Return data from slv 2 (IRQMP)
-                irq.Write(va & 0x0ff, value);        
+                irq.write(va & 0x0ff, value);        
             } else if ( (va & 0xfff00) >> 8 == 0x003) {
                 //std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 // Return data from slv 3 (GRTIMER)

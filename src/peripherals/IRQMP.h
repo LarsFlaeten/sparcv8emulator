@@ -74,9 +74,9 @@ class IRQMP {
 
         unsigned int get_next_pending_irq(u8 cpu_id) const;
 
-        void ClearIRQ(u32 IRL);
+        void clear_irq(u32 IRL);
 
-        u32 Read(u32 offset) const {
+        u32 read(u32 offset) const {
             std::shared_lock lock(mtx);
             std::cout << "Read IRQ at offset " << std::hex << offset << "\n";
             if(offset >= 0x40 && offset < 0x60) {
@@ -114,7 +114,7 @@ class IRQMP {
             }
             return 0; 
         }
-        void Write(u32 offset, u32 value);
+        void write(u32 offset, u32 value);
 
 
 };
