@@ -312,15 +312,18 @@ int main(int argc, char **argv) {
     for(unsigned int i = 0; i < config.num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
         auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, std::cout));
+                
         cpu->set_cpu_id(i);
+        cpu->reset(entry_va);
+
 
         cpu->set_break_on_timer_interrupt(true);
         cpu->enable_power_down(true);
-        // hack:
-        intc.set_cpu_ptr(cpu.get());
+        
 
-        cpu->reset(entry_va);
+        intc.set_cpu_ptr(cpu.get(), i);
 
+        
         // OS boot process step 1: Set stack pointer to end of ram
         cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
         cpu->write_reg(end_of_ram, INREG6); // Write frame pointer

@@ -36,13 +36,14 @@ class IRQMP {
         u32 BRDCST;
         u32 ERRSTAT;
         u32 AMPCTRL;
-        u32 PIMASK[32]; // Processor n interrupt mask registers
+        u32 PIFORCE[8]; // Processor n interrupt force register (when ncpu > 1)
+        u32 PIMASK[8]; // Processor n interrupt mask registers
 
         u32 num_cpus_;
 
         mutable std::shared_mutex mtx;
 
-        CPU* cpu_ptr_ = nullptr;
+        std::vector<CPU*> cpu_ptrs_;
 
     public:
         IRQMP(u8 num_cpus):
@@ -56,32 +57,29 @@ class IRQMP {
             AMPCTRL(0),
             num_cpus_(num_cpus)
         {
-            for(int i = 0; i < 32; ++i)
-                PIMASK[i] = 0;
-
-            if(num_cpus > 1) {
-                // Set MPSTAT
-                // num cpus -1 and enable broadcast
-                MPSTAT = (num_cpus - 1) << LEON3_IRQMPSTATUS_CPUNR | 0x1 << LEON3_IRQMPSTATUS_BROADCAST;
-                
-
-            }
+            reset();
         }
 
-        void set_cpu_ptr(CPU* cpu) {cpu_ptr_ = cpu;}
+        void reset();
+
+        void set_cpu_ptr(CPU* cpu, u8 cpu_id) {
+            if(cpu_id >= cpu_ptrs_.size())
+                throw std::runtime_error("Cannot assign cpu larger than requested number of CPUs");
+            cpu_ptrs_[cpu_id] = cpu;
+        }
 
         void trigger_irq(u32 IRL);
-
+        
         unsigned int get_next_pending_irq(u8 cpu_id) const;
 
-        void clear_irq(u32 IRL);
+        void clear_irq(u32 IRL, u8 cpu_id);
 
         u32 read(u32 offset) const {
             std::shared_lock lock(mtx);
             std::cout << "Read IRQ at offset " << std::hex << offset << "\n";
             if(offset >= 0x40 && offset < 0x60) {
-                u32 n = offset - 0x40;
-                //std::cout << "Read IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << PIMASK[n] << std::dec << "\n";
+                u32 n = (offset - 0x40)/4;
+                std::cout << "Read IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << PIMASK[n] << std::dec << "\n";
                 return PIMASK[n];
             }     
             switch(offset) {
@@ -112,10 +110,17 @@ class IRQMP {
                 default:
                     return 0;
             }
+            throw std::runtime_error("IRQMP::read offset not implemented: " + to_hex(offset));
             return 0; 
         }
         void write(u32 offset, u32 value);
 
+
+        static std::string to_hex(u32 val) {
+            char buf[11];
+            snprintf(buf, sizeof(buf), "%08X", val);
+            return buf;
+        }
 
 };
 
