@@ -110,7 +110,7 @@ void IRQMP::write(u32 offset, u32 value) {
 
         // Check if this is an unmasking of global barrier IRQ (8) and the cpu is
         // powered up:
-        if ((((PIMASK[n] >> 8) & 0x1) != 0x1U) && (((value >> 8) & 0x1U) == 0x1U) && (((MPSTAT >> n) & 0x1U) == 0x0U) )
+        if ((((PIMASK[n] >> barrier_irl) & 0x1) != 0x1U) && (((value >> barrier_irl) & 0x1U) == 0x1U) && (((MPSTAT >> n) & 0x1U) == 0x0U) )
             ++num_active_cpus_;
         
         PIMASK[n] = value;
@@ -144,7 +144,7 @@ void IRQMP::write(u32 offset, u32 value) {
                         
                         // we only increase active cpus if the barrier irq (8)
                         // is unmasked for this cpu
-                        if( (PIMASK[i] >> 8) & 0x1U )
+                        if( (PIMASK[i] >> barrier_irl) & 0x1U )
                             ++num_active_cpus_;
 
                         MPSTAT &= ~(1 << i); // Only write 0 to mpstat if we actually woke up
