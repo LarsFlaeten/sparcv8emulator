@@ -41,10 +41,13 @@ void IRQMP::trigger_irq(u32 IRL) {
             // Set irl to force register of all cpus
             if(num_cpus_ > 1) {
                 for(u8 i = 0; i < num_cpus_; ++i)
-                    PIFORCE[i] |= 0x1U << irl;
+                    if((PIMASK[i] >> irl) & 0x1U)
+                        PIFORCE[i] |= 0x1U << irl;
             } else {
-                PIFORCE[0] |= 0x1U << irl;
-                IFORCE |= 0x1U << irl;
+                if((PIMASK[0] >> irl) & 0x1U) {
+                    PIFORCE[0] |= 0x1U << irl;
+                    IFORCE |= 0x1U << irl;
+                }
             }
         } else { // If not broadcast, the set to normal IPEND
             IPEND = IPEND | (0x1U << irl);
@@ -115,7 +118,12 @@ void IRQMP::write(u32 offset, u32 value) {
         
         PIMASK[n] = value;
         return;
-    }     
+    } else if(offset >= 0x80 && offset < 0xA0) {
+        u32 n = (offset - 0x80)/4;
+        std::cout << "Write IRQ 0x80 + n*4, PIFORCE[" << n << "] = " << std::hex << value << std::dec << "\n";
+        PIFORCE[n] = value;
+        return;
+    }    
     
     switch(offset) {
         case(IRQMP_ILEVEL_OS):
