@@ -115,11 +115,12 @@ struct thread_tick_summary {
 void cpu_thread(CPU& cpu, GlobalIRQBarrier& barrier, APBCTRL& apbctrl, ShutdownControl& sdc) {
     
     set_thread_name(std::format("cpu{}",cpu.get_cpu_id()));
+    IRQMP& intc = apbctrl.GetIntc();
 #ifdef PROFILE_CPU_THREAD
     std::vector<thread_tick_summary> tick_summaries;
 #endif
 
-    // We start in powerdoen for all cpus:
+    // We start in powerdown for all cpus:
     std::cout << "[CPU THREAD " << (int)cpu.get_cpu_id() << "] CPU " << (int)cpu.get_cpu_id() << " entering holding pattern.\n";
     cpu.enter_powerdown();
     std::cout << "[CPU THREAD " << (int)cpu.get_cpu_id() << "] CPU " << (int)cpu.get_cpu_id() << " Starting up.\n";
@@ -159,7 +160,8 @@ void cpu_thread(CPU& cpu, GlobalIRQBarrier& barrier, APBCTRL& apbctrl, ShutdownC
             barrier.arrived++;
 
             // If this CPU is the last:
-            if (barrier.arrived == barrier.total_cpus) {
+            int active_cpus = intc.get_number_active_cpus();
+            if (barrier.arrived == active_cpus) {
                 barrier.release = true;
                 barrier.active = false;
                 barrier.arrived = 0;
