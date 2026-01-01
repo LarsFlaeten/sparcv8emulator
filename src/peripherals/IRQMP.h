@@ -40,6 +40,7 @@ class IRQMP {
         u32 PIMASK[8]; // Processor n interrupt mask registers
 
         u32 num_cpus_;
+        u32 num_active_cpus_;
 
         mutable std::shared_mutex mtx;
 
@@ -55,7 +56,8 @@ class IRQMP {
             BRDCST(0),
             ERRSTAT(0),
             AMPCTRL(0),
-            num_cpus_(num_cpus)
+            num_cpus_(num_cpus),
+            num_active_cpus_(1)
         {
             reset();
         }
@@ -66,6 +68,11 @@ class IRQMP {
             if(cpu_id >= cpu_ptrs_.size())
                 throw std::runtime_error("Cannot assign cpu larger than requested number of CPUs");
             cpu_ptrs_[cpu_id] = cpu;
+        }
+
+        u32 get_number_active_cpus() const {
+            std::shared_lock lock(mtx);
+            return num_active_cpus_;
         }
 
         void trigger_irq(u32 IRL);

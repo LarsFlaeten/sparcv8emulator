@@ -18,6 +18,7 @@ void IRQMP::reset() {
         
         // Set cpu 0 to running, all others in powerdown
         MPSTAT |= 0xfffe; // Bit 0 = 0, bit 1-15 = 1
+        num_active_cpus_ = 1;
 
     }
 
@@ -133,6 +134,7 @@ void IRQMP::write(u32 offset, u32 value) {
                     if(cpu_ptrs_[i] != nullptr) {
                         std::cout << "[IRQMP] Waking up cpu " << int(i) << "\n";
                         cpu_ptrs_[i]->wakeup();
+                        ++num_active_cpus_;
                         MPSTAT &= ~(1 << i); // Only write 0 to mpstat if we actually woke up
                     }
                 }
