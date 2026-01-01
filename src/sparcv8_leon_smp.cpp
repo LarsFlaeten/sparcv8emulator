@@ -172,7 +172,7 @@ void cpu_thread(CPU& cpu, GlobalIRQBarrier& barrier, APBCTRL& apbctrl, ShutdownC
                 barrier.cv_exit.wait(lock, [&]{ return barrier.release; });
             }
         } else {
-            std::cout << "Should not be here.. Exiting\n";
+            throw std::runtime_error("Should not ever be here");
         }
 
 
