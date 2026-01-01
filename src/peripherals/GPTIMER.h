@@ -70,6 +70,8 @@ class GPTIMER : public apb_slave {
         };
 
         timer_impl timers[NUM_IMPLEMENTED_TIMERS];
+
+        double freq = 10'000'000.0;
     public:
         u32 vendor_id() const { return 0x01; }
         u32 device_id() const { return 0x011;}
@@ -80,8 +82,12 @@ class GPTIMER : public apb_slave {
             
             SRELOAD = prescaler & 0xffff;
 
+            freq = 10'000'000.0;
+
             reset();
         }
+
+        void set_system_freq(double f) {freq = f;}
 
         void set_LEON_state() {
             std::lock_guard lock(mtx_);
@@ -295,7 +301,7 @@ class GPTIMER : public apb_slave {
                     SRELOAD = regvalue; 
                     for(int i = 0; i < NUM_IMPLEMENTED_TIMERS; ++i) {
                         std::cout << "Timer " << i << " now ticks at " << SRELOAD << "x" << timers[i].TRLDVAL << " = " << SRELOAD * timers[i].TRLDVAL << " ticks, ";
-                        std::cout << 10000000/ (SRELOAD * timers[i].TRLDVAL) << " Hz\n";
+                        std::cout << std::to_string(freq / (SRELOAD * timers[i].TRLDVAL)) << " Hz\n";
                     }
                     return;
                 case(0x8): CONFIG = regvalue; return;
@@ -312,7 +318,7 @@ class GPTIMER : public apb_slave {
                             case(0x4): 
                                 timers[n].TRLDVAL = regvalue;
                                 std::cout << "Timer " << n << " now ticks at " << SRELOAD << "x" << timers[n].TRLDVAL << " = " << SRELOAD * timers[n].TRLDVAL << " ticks, ";
-                                std::cout << 10000000/ (SRELOAD * timers[n].TRLDVAL) << " Hz\n";
+                                std::cout << std::to_string(freq / (SRELOAD * timers[n].TRLDVAL)) << " Hz\n";
                                 
                                 return;
                             case(0x8): 

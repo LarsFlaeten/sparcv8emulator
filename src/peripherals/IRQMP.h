@@ -76,7 +76,7 @@ class IRQMP {
 
         u32 read(u32 offset) const {
             std::shared_lock lock(mtx);
-            std::cout << "Read IRQ at offset " << std::hex << offset << "\n";
+            std::cout << "Read IRQ at offset " << std::hex << offset << std::dec << "\n";
             if(offset >= 0x40 && offset < 0x60) {
                 u32 n = (offset - 0x40)/4;
                 std::cout << "Read IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << PIMASK[n] << std::dec << "\n";

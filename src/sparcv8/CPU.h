@@ -165,7 +165,6 @@ class CPU
         std::mutex power_mtx;
         std::condition_variable power_cv;
 
-        void enter_powerdown();    // handles sleeping
         
         RunSummary rs;
         GdbStub*    gdb_stub = nullptr;
@@ -266,7 +265,8 @@ class CPU
             bus_tick_func = std::move(f);
         }
 
-
+        void enter_powerdown();    // handles sleeping
+        
         void wakeup();             // called by IRQMP
 
 

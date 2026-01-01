@@ -27,8 +27,8 @@ std::ostream& operator<<(std::ostream& os, const BusClock::Stats& s)
     return os;
 }
 
-BusClock::BusClock(IRQMP& irqmp, GPTIMER& timer, APBUART& uart)
-    : irqmp_(irqmp), timer_(timer), uart_(uart)
+BusClock::BusClock(IRQMP& irqmp, GPTIMER& timer, APBUART& uart, GlobalIRQBarrier& irq_barrier)
+    : irqmp_(irqmp), timer_(timer), uart_(uart), irq_barrier_(irq_barrier)
 {
 }
 
@@ -94,6 +94,8 @@ void BusClock::run() {
         freq = clock_freq_hz_;
     }
 
+    std::cout << "[BUS CLOCK] Starting at " << std::to_string((int)freq) << " hz\n";
+
     const double tick_period_ns = 1e9 / freq;
 
     // performance tracking
@@ -112,12 +114,25 @@ void BusClock::run() {
         // Handle tick and check timer interrupt in one go    
         timer_.lock();
         if(timer_.tick_and_check_interrupt_unlocked(true)) {
+            
+            // Activate IRQ barrier:
+            {
+                std::unique_lock(irq_barrier_.mtx);
+                // Activate global barrier
+                irq_barrier_.active = true;
+                irq_barrier_.release = false;
+            }
+            
+            // Trigger the irq. Qny sleeping CPUs will be awaken
             irqmp_.trigger_irq(8);
+            
             {
                 std::lock_guard lock(mtx_);
                 tick_count_.fetch_add(1, std::memory_order_relaxed);
             }
+
             cv_.notify_all();
+
         }
         timer_.unlock();
         

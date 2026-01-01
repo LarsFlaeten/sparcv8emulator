@@ -100,7 +100,7 @@ void IRQMP::clear_irq(u32 IRL, u8 cpu_id) {
 
 void IRQMP::write(u32 offset, u32 value) {
     std::unique_lock lock(mtx);
-    std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << "\n";
+    std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << std::dec << "\n";
     
     if(offset >= 0x40 && offset < 0x60) {
         u32 n = (offset - 0x40)/4;
