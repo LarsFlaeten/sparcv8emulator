@@ -656,8 +656,12 @@ u32 CPU::GetRegBase (const u32 reg_no)
 
 //------------------------------------------------------------------------
 //
-int CPU::mem_read(const u32 va, const int bytes, const u32 rd, const int signext) 
+int CPU::mem_read(const u32 va, const int bytes, const u32 rd, const int signext, bool forced_cache_miss) 
 {
+    // TODO:
+    // Implement cache and possible forced cache miss (ASI=1)
+
+    
     bool super = ((psr >> 7) & 0x1) == 0x1;
 
 

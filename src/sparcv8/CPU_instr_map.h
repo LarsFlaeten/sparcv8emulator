@@ -47,7 +47,6 @@
 #define STA                STA_impl
 #define STDA               STA_impl
 #define LDSTUBA            UNIMP
-#define SWAPA              UNIMP
 
 #define LDC                UNIMP
 #define LDDC               UNIMP

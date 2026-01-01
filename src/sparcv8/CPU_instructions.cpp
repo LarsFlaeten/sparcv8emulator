@@ -522,7 +522,7 @@ void CPU::LD (pDecode_t d)
     if (d->ev & LOBITS2) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
     } else {
-        if((mem_read(d->ev, 4, d->rd, 0) < 0) && !mmu.GetNoFault())
+        if((mem_read(d->ev, 4, d->rd, 0, false) < 0) && !mmu.GetNoFault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             d->pc = d->npc;
@@ -538,7 +538,7 @@ void CPU::LDUB (pDecode_t d)
     if (verbose) 
        os << std::format("{:#08x} ldub       [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
 
-    if((mem_read(d->ev, 1, d->rd, 0) < 0) && !mmu.GetNoFault())
+    if((mem_read(d->ev, 1, d->rd, 0, false) < 0) && !mmu.GetNoFault())
         trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
     else {
         d->pc = d->npc;
@@ -556,7 +556,7 @@ void CPU::LDUH (pDecode_t d)
     if (d->ev & LOBITS1) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
     } else {
-        if((mem_read(d->ev, 2, d->rd, 0) < 0) && !mmu.GetNoFault())
+        if((mem_read(d->ev, 2, d->rd, 0, false) < 0) && !mmu.GetNoFault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             d->pc = d->npc;
@@ -577,7 +577,7 @@ void CPU::LDD (pDecode_t d)
     } else if (d->ev & LOBITS3) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
     } else {
-        if((mem_read(d->ev, 8, d->rd & ~LOBITS1, 0) < 0) && !mmu.GetNoFault())
+        if((mem_read(d->ev, 8, d->rd & ~LOBITS1, 0, false) < 0) && !mmu.GetNoFault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             d->pc = d->npc;
@@ -593,7 +593,7 @@ void CPU::LDSB (pDecode_t d)
     if (verbose) 
        os << std::format("{:#08x} ldsb     [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
 
-    if((mem_read(d->ev, 1, d->rd, 1) < 0) && !mmu.GetNoFault())
+    if((mem_read(d->ev, 1, d->rd, 1, false) < 0) && !mmu.GetNoFault())
         trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
     else {
         d->pc = d->npc;
@@ -611,7 +611,7 @@ void CPU::LDSH (pDecode_t d)
     if (d->ev & LOBITS1) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
     } else {
-        if((mem_read(d->ev, 2, d->rd, 1) < 0) && !mmu.GetNoFault())
+        if((mem_read(d->ev, 2, d->rd, 1, false) < 0) && !mmu.GetNoFault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             d->pc = d->npc;
@@ -716,7 +716,7 @@ void CPU::SWAP (pDecode_t d)
         *p_swap_reg = d->value;
 
         // Issue the read
-        if(( mem_read(d->ev, 4, d->rd, 0) < 0) && !mmu.GetNoFault())
+        if(( mem_read(d->ev, 4, d->rd, 0, false) < 0) && !mmu.GetNoFault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {   
             // Write the data back
@@ -732,6 +732,52 @@ void CPU::SWAP (pDecode_t d)
 
 // ------------------------------------------------
 
+void CPU::SWAPA (pDecode_t d)
+{
+    u32 asi = (d->opcode >> 5) & 0xFFU; 
+    if (verbose)
+        os << std::format("{:#08x} swapa    [{:#08x}], {} = {:#08x}, asi={}\n", d->pc, d->ev, DispRegStr(d->rd), d->value, asi );
+    
+    
+    
+    bool forced_cache_miss = false;
+    if(asi == 1)
+        forced_cache_miss = true;
+    else {
+        std::cout << "SWAPA error, unimplemeted ASI\n";
+        os << std::format("{:#08x} swapa    [{:#08x}], {} = {:#08x}, asi={}\n", d->pc, d->ev, DispRegStr(d->rd), d->value, asi );
+        UNIMP(d);
+        return;
+    }
+
+    if (!d->p->s) {
+        trap (d, SPARC_PRIVILEGED_INSTRUCTION);
+        return;
+    } else if (d->ev & LOBITS2) {
+        trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
+        return;
+    } else {
+        // Copy data to swap register
+        *p_swap_reg = d->value;
+
+        // Issue the read
+        if(( mem_read(d->ev, 4, d->rd, 0, forced_cache_miss) < 0) && !mmu.GetNoFault())
+            trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+        else {   
+            // Write the data back
+            if((mem_write(d->ev, 4, GLOBALREG8) < 0) && !mmu.GetNoFault())
+                trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+            else { 
+                d->pc = d->npc;
+                d->npc += 4;
+            }
+        }
+    }
+
+}
+
+// ------------------------------------------------
+
 void CPU::LDSTUB (pDecode_t d)
 {
     //u32 value;
@@ -739,7 +785,7 @@ void CPU::LDSTUB (pDecode_t d)
     if (verbose) 
         os << std::format("{:#08x} ldstub   [{:#08x}], {}\n", d->pc, d->ev, DispRegStr(d->rd));
 
-    if(( mem_read(d->ev, 1, d->rd, 0) < 0) && !mmu.GetNoFault())
+    if(( mem_read(d->ev, 1, d->rd, 0, false) < 0) && !mmu.GetNoFault())
     {
         trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         return;

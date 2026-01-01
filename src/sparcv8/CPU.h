@@ -223,11 +223,10 @@ class CPU
         void read_reg (const u32 reg_no, u32 * const value);
         //u32  ReadRegsAll (const int reg_base); 
         void write_reg (const u32 value, const u32 reg_no);
-        //void WriteRegAll (const int RegBase, const u32 WriteValue);
-        int  mem_read(const u32 va, const int bytes, const u32 rd, const int signext);    
+        
+        int  mem_read(const u32 va, const int bytes, const u32 rd, const int signext, bool forced_cache_miss);    
         int  mem_write(const u32 va, const int bytes, const u32 rd);
-        //u32  GetRegBase (const u32 reg_no); 
-
+        
         // Get/Set multi-core id:
         void set_cpu_id(u32 value) { cpu_id = value; }
         u32 get_cpu_id() const { return cpu_id; }
@@ -313,6 +312,7 @@ class CPU
 	void STH     (pDecode_t d);
 	void STD     (pDecode_t d);
 	void SWAP    (pDecode_t d);
+	void SWAPA    (pDecode_t d);
 	void LDSTUB  (pDecode_t d);
 	void MUL     (pDecode_t d);
 	void DIV     (pDecode_t d);
