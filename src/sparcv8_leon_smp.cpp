@@ -219,6 +219,7 @@ int main(int argc, char **argv) {
                 break;
             case 'n':
                 num_cpus_requested = (u32)strtol(optarg, NULL, 0);
+                break;
             default:
             std::cerr << 
                     "Usage: " << argv[0] << "[-i <filename>] \n"
@@ -304,17 +305,6 @@ int main(int argc, char **argv) {
     print_config(config);
 
     
-
-    
-    
-
-
-    
-    
-    
-    
-    
-
     // Syncronization and threads
     ShutdownControl sdc{};
     global_shutdown = &sdc;
