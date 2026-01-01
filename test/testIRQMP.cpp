@@ -568,7 +568,14 @@ TEST_F(IRQMPTest, SMP_PIFORCE_write)
     intc.write(0x84, 0x2000);
 
     ASSERT_EQ(intc.get_next_pending_irq(1), 13);
-    
+    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
+
+    // Force IRL 13 for first cpu:
+    intc.write(0x80, 0x2000);
+
+    ASSERT_EQ(intc.get_next_pending_irq(1), 13);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 13);
+
 
 
 }
