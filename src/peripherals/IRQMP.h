@@ -41,6 +41,7 @@ class IRQMP {
 
         u32 num_cpus_;
         u32 num_active_cpus_;
+        u8  barrier_irl;
 
         mutable std::shared_mutex mtx;
 
@@ -57,7 +58,8 @@ class IRQMP {
             ERRSTAT(0),
             AMPCTRL(0),
             num_cpus_(num_cpus),
-            num_active_cpus_(1)
+            num_active_cpus_(0),
+            barrier_irl(8)
         {
             reset();
         }

@@ -11,6 +11,8 @@ void IRQMP::reset() {
         PIFORCE[i] = 0;
     }
 
+    num_active_cpus_ = 0;
+
     if(num_cpus_ > 1) {
         // Set MPSTAT
         // num cpus -1 and enable broadcast
@@ -18,7 +20,6 @@ void IRQMP::reset() {
         
         // Set cpu 0 to running, all others in powerdown
         MPSTAT |= 0xfffe; // Bit 0 = 0, bit 1-15 = 1
-        num_active_cpus_ = 1;
 
     }
 
@@ -105,7 +106,13 @@ void IRQMP::write(u32 offset, u32 value) {
     
     if(offset >= 0x40 && offset < 0x60) {
         u32 n = (offset - 0x40)/4;
-        //std::cout << "Write IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << value << std::dec << "\n";
+        std::cout << "Write IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << value << std::dec << "\n";
+
+        // Check if this is an unmasking of global barrier IRQ (8) and the cpu is
+        // powered up:
+        if ((((PIMASK[n] >> 8) & 0x1) != 0x1U) && (((value >> 8) & 0x1U) == 0x1U) && (((MPSTAT >> n) & 0x1U) == 0x0U) )
+            ++num_active_cpus_;
+        
         PIMASK[n] = value;
         return;
     }     
@@ -134,7 +141,12 @@ void IRQMP::write(u32 offset, u32 value) {
                     if(cpu_ptrs_[i] != nullptr) {
                         std::cout << "[IRQMP] Waking up cpu " << int(i) << "\n";
                         cpu_ptrs_[i]->wakeup();
-                        ++num_active_cpus_;
+                        
+                        // we only increase active cpus if the barrier irq (8)
+                        // is unmasked for this cpu
+                        if( (PIMASK[i] >> 8) & 0x1U )
+                            ++num_active_cpus_;
+
                         MPSTAT &= ~(1 << i); // Only write 0 to mpstat if we actually woke up
                     }
                 }

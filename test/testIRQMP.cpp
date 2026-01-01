@@ -462,3 +462,80 @@ TEST_F(IRQMPTest, SMP_MPSTAT_wakeup)
 
 
 }
+
+TEST_F(IRQMPTest, SMP_active_cpus_bookkeeping)
+{
+
+    IRQMP intc(8);
+
+    CPU cpu(mctrl, intc);
+    // Just use the same CPU for all three
+    intc.set_cpu_ptr(&cpu, 0);
+    intc.set_cpu_ptr(&cpu, 1);
+    intc.set_cpu_ptr(&cpu, 2);
+    intc.set_cpu_ptr(&cpu, 3);
+    intc.set_cpu_ptr(&cpu, 4);
+    intc.set_cpu_ptr(&cpu, 5);
+    intc.set_cpu_ptr(&cpu, 6);
+    intc.set_cpu_ptr(&cpu, 7);
+
+    // Set broadcast for IRL 8:
+    intc.write(0x14U, 0x1U << 8);
+
+    ASSERT_EQ(intc.get_number_active_cpus(), 0)
+        << "No CPUS should be marked as active in the barrier IRQ";
+
+    // Read mpstatus, check that only CPU 0 is running
+    auto mpstat = intc.read(0x10);
+    ASSERT_EQ(mpstat >> 28, 8-1) << "8 CPUS should exist for this test case";
+    ASSERT_EQ(mpstat & 0xFFFFU, 0xFFFEU) << "Only CPU0 should be running"; // All bits except bit 0 set
+    
+    // The number of CPUs participating in barrier ops shohuld still be zero:
+    ASSERT_EQ(intc.get_number_active_cpus(), 0);
+
+    // Unmask IRL 8 for cpu 0:
+    intc.write(0x40, 0x1U << 8);
+    // The number of CPUs participating in barrier ops should now be 1:
+    ASSERT_EQ(intc.get_number_active_cpus(), 1);
+    
+    // Check that IRL 8 is only visible to CPU 0
+    intc.trigger_irq(8);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 8);
+    ASSERT_EQ(intc.get_next_pending_irq(1), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(2), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(3), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(4), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(5), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(6), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(7), 0);
+    intc.clear_irq(8,0);
+
+    // Start CPU 1:
+    intc.write(0x10, 0x1U << 1);
+    // The number of CPUs participating in barrier ops should still be 1:
+    ASSERT_EQ(intc.get_number_active_cpus(), 1);
+    // Unmask IRL 8 for CPU 1:
+    intc.write(0x44, 0x1U << 8);
+    // The number of CPUs participating in barrier ops should now be 2:
+    ASSERT_EQ(intc.get_number_active_cpus(), 2);
+    // ..and both CPU 0 and 1 sohuld see the broadcasted IRL 8:
+    intc.trigger_irq(8);
+    ASSERT_EQ(intc.get_next_pending_irq(0), 8);
+    ASSERT_EQ(intc.get_next_pending_irq(1), 8);
+    ASSERT_EQ(intc.get_next_pending_irq(2), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(3), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(4), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(5), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(6), 0);
+    ASSERT_EQ(intc.get_next_pending_irq(7), 0);
+    intc.clear_irq(8,0);
+    intc.clear_irq(8,1);
+    
+
+    
+
+    
+
+
+
+}
