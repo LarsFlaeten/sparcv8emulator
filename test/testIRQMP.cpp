@@ -389,7 +389,7 @@ TEST_F(IRQMPTest, SMP_correctPIMASK)
     ASSERT_EQ(intc.get_next_pending_irq(1), 2);
     ASSERT_EQ(intc.get_next_pending_irq(2), 3);
     ASSERT_EQ(intc.get_next_pending_irq(3), 4);
-    ASSERT_EQ(intc.get_next_pending_irq(4), 5);
+    ASSERT_EQ(intc.get_next_pending_irq(4), 0); // Still 0, since IRL was not latched due to earlier mask
     ASSERT_EQ(intc.get_next_pending_irq(5), 13);
     ASSERT_EQ(intc.get_next_pending_irq(6), 13);
     ASSERT_EQ(intc.get_next_pending_irq(7), 8);
@@ -539,3 +539,37 @@ TEST_F(IRQMPTest, SMP_active_cpus_bookkeeping)
 
 
 }
+
+TEST_F(IRQMPTest, SMP_PIFORCE_write)
+{
+
+    IRQMP intc(8);
+
+    CPU cpu(mctrl, intc);
+    // Just use the same CPU for all three
+    intc.set_cpu_ptr(&cpu, 0);
+    intc.set_cpu_ptr(&cpu, 1);
+    intc.set_cpu_ptr(&cpu, 2);
+    intc.set_cpu_ptr(&cpu, 3);
+    intc.set_cpu_ptr(&cpu, 4);
+    intc.set_cpu_ptr(&cpu, 5);
+    intc.set_cpu_ptr(&cpu, 6);
+    intc.set_cpu_ptr(&cpu, 7);
+
+    // Imitate linux SMP boot:
+    intc.write(0x40, 0xa100); // PIMASK cpu 0, IRL 15, 13, 8
+    intc.write(0x14, 0x100); // BCST for IRL 8
+    
+    // Wake up second cpu:
+    intc.write(0x10, 0x2);
+    intc.write(0x44, 0xa100); // PIMASK cpu 1, IRL 15, 13, 8
+
+    // Force IRL 13 for second cpu:
+    intc.write(0x84, 0x2000);
+
+    ASSERT_EQ(intc.get_next_pending_irq(1), 13);
+    
+
+
+}
+
