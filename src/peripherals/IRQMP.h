@@ -83,45 +83,7 @@ class IRQMP {
 
         void clear_irq(u32 IRL, u8 cpu_id);
 
-        u32 read(u32 offset) const {
-            std::shared_lock lock(mtx);
-            std::cout << "Read IRQ at offset " << std::hex << offset << std::dec << "\n";
-            if(offset >= 0x40 && offset < 0x60) {
-                u32 n = (offset - 0x40)/4;
-                std::cout << "Read IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << PIMASK[n] << std::dec << "\n";
-                return PIMASK[n];
-            }     
-            switch(offset) {
-                case(IRQMP_ILEVEL_OS):
-                    return ILEVEL;
-                    break;
-                case(IRQMP_IPEND_OS):
-                    return IPEND;
-                    break;
-                case(IRQMP_IFORCE_OS):
-                    return IFORCE;
-                    break;
-                case(IRQMP_ICLEAR_OS):
-                    return ICLEAR;
-                    break;
-                case(IRQMP_MPSTAT_OS):
-                    return MPSTAT;
-                    break;
-                case(IRQMP_BRDCST_OS):
-                    return BRDCST;
-                    break;
-                case(IRQMP_ERRSTAT_OS):
-                    return ERRSTAT;
-                    break;
-                case(IRQMP_AMPCTRL_OS):
-                    return AMPCTRL;
-                    break;
-                default:
-                    return 0;
-            }
-            throw std::runtime_error("IRQMP::read offset not implemented: " + to_hex(offset));
-            return 0; 
-        }
+        u32 read(u32 offset) const;
         void write(u32 offset, u32 value);
 
 

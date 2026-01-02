@@ -103,13 +103,54 @@ void IRQMP::clear_irq(u32 IRL, u8 cpu_id) {
    IPEND &= mask;
 }
 
+u32 IRQMP::read(u32 offset) const {
+    std::shared_lock lock(mtx);
+    //std::cout << "Read IRQ at offset " << std::hex << offset << std::dec << "\n";
+    if(offset >= 0x40 && offset < 0x60) {
+        u32 n = (offset - 0x40)/4;
+        //std::cout << "Read IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << PIMASK[n] << std::dec << "\n";
+        return PIMASK[n];
+    }     
+    switch(offset) {
+        case(IRQMP_ILEVEL_OS):
+            return ILEVEL;
+            break;
+        case(IRQMP_IPEND_OS):
+            return IPEND;
+            break;
+        case(IRQMP_IFORCE_OS):
+            return IFORCE;
+            break;
+        case(IRQMP_ICLEAR_OS):
+            return ICLEAR;
+            break;
+        case(IRQMP_MPSTAT_OS):
+            return MPSTAT;
+            break;
+        case(IRQMP_BRDCST_OS):
+            return BRDCST;
+            break;
+        case(IRQMP_ERRSTAT_OS):
+            return ERRSTAT;
+            break;
+        case(IRQMP_AMPCTRL_OS):
+            return AMPCTRL;
+            break;
+        default:
+            return 0;
+    }
+    throw std::runtime_error("IRQMP::read offset not implemented: " + to_hex(offset));
+    return 0; 
+}
+        
+
 void IRQMP::write(u32 offset, u32 value) {
     std::unique_lock lock(mtx);
-    std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << std::dec << "\n";
+    //std::cout << "write IRQ at offset " << std::hex << offset << ", value= " << value << std::dec << "\n";
     
     if(offset >= 0x40 && offset < 0x60) {
         u32 n = (offset - 0x40)/4;
-        std::cout << "Write IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << value << std::dec << "\n";
+        //std::cout << "Write IRQ 0x40 + n*4, PIMASK[" << n << "] = " << std::hex << value << std::dec << "\n";
 
         // Check if this is an unmasking of global barrier IRQ (8) and the cpu is
         // powered up:
@@ -120,7 +161,7 @@ void IRQMP::write(u32 offset, u32 value) {
         return;
     } else if(offset >= 0x80 && offset < 0xA0) {
         u32 n = (offset - 0x80)/4;
-        std::cout << "Write IRQ 0x80 + n*4, PIFORCE[" << n << "] = " << std::hex << value << std::dec << "\n";
+        //std::cout << "Write IRQ 0x80 + n*4, PIFORCE[" << n << "] = " << std::hex << value << std::dec << "\n";
         PIFORCE[n] = value;
         return;
     }    
@@ -147,7 +188,7 @@ void IRQMP::write(u32 offset, u32 value) {
                 {
                     // power up cpu i
                     if(cpu_ptrs_[i] != nullptr) {
-                        std::cout << "[IRQMP] Waking up cpu " << int(i) << "\n";
+                        //std::cout << "[IRQMP] Waking up cpu " << int(i) << "\n";
                         cpu_ptrs_[i]->wakeup();
                         
                         // we only increase active cpus if the barrier irq (8)
