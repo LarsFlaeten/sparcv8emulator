@@ -308,7 +308,7 @@ TEST_F(GDBStubTest, GDB_helper)
 
 }
 */
-/*
+
 TEST_F(GDBStubTest, GDB_setup)
 {
     // Send something and check that the server responds correctly:
@@ -326,20 +326,22 @@ TEST_F(GDBStubTest, GDB_setup)
 
 TEST_F(GDBStubTest, GDB_CheckStandardReplies)
 {
+    pstub->set_total_num_cpus(1);
+
     std::vector<std::pair<std::string, std::string>> accepted;
 
     // A series of standard cmds and queries we get the from GDB and the expected replies
     accepted.push_back({"vMustReplyEmpty", ""});
     accepted.push_back({"Hg0", "OK"});
     accepted.push_back({"qTStatus", ""});
-    accepted.push_back({"?", "S05"});
-    accepted.push_back({"qfThreadInfo", ""});
+    accepted.push_back({"?", "T05thread:1;"});
+    accepted.push_back({"qfThreadInfo", "m1"});
     //accepted.push_back({"qfThreadInfo", "m0"});
     //accepted.push_back({"qfThreadInfo", "mp01.01"});
-    //accepted.push_back({"qsThreadInfo", "l"});
+    accepted.push_back({"qsThreadInfo", "l"});
     accepted.push_back({"qL1200000000000000000", ""});
     accepted.push_back({"Hc-1", "OK"});
-    accepted.push_back({"qC", ""});
+    accepted.push_back({"qC", "QC1"});
     accepted.push_back({"qAttached", ""});
     accepted.push_back({"qOffsets", ""});
     accepted.push_back({"qSymbol::", ""});
@@ -356,6 +358,94 @@ TEST_F(GDBStubTest, GDB_CheckStandardReplies)
 
 }
 
+TEST_F(GDBStubTest, GDB_CheckStandardReplies_SMP4)
+{
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 1));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 2));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 3));
+
+    pstub->set_total_num_cpus(4);
+    
+    std::vector<std::pair<std::string, std::string>> accepted;
+
+    accepted.push_back({"qfThreadInfo", "m1,2,3,4"});
+    accepted.push_back({"qsThreadInfo", "l"});
+
+    for(const auto& a : accepted) {
+	    ASSERT_TRUE(tcp_send(client_socket, a.first));
+    
+        std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+   
+        auto ret = tcp_recv(client_socket);
+        ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), a.second.c_str());
+        ASSERT_TRUE(validate(ret));
+    }
+
+}
+
+TEST_F(GDBStubTest, GDB_CheckStandardReplies_SMP8)
+{
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 1));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 2));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 3));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 4));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 5));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 6));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 7));
+    
+    pstub->set_total_num_cpus(8);
+    
+    std::vector<std::pair<std::string, std::string>> accepted;
+
+    accepted.push_back({"qfThreadInfo", "m1,2,3,4,5,6,7,8"});
+    accepted.push_back({"qsThreadInfo", "l"});
+
+    for(const auto& a : accepted) {
+	    ASSERT_TRUE(tcp_send(client_socket, a.first));
+    
+        std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+   
+        auto ret = tcp_recv(client_socket);
+        ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), a.second.c_str());
+        ASSERT_TRUE(validate(ret));
+    }
+
+}
+
+TEST_F(GDBStubTest, GDB_SMP4_ChangeThread)
+{
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 1));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 2));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 3));
+    
+    pstub->set_total_num_cpus(4);
+    
+    std::vector<std::pair<std::string, std::string>> accepted;
+
+    accepted.push_back({"Hg0", "OK"}); // Select HW thread 1
+    accepted.push_back({"qfThreadInfo", "m1,2,3,4"});
+    accepted.push_back({"qsThreadInfo", "l"});
+    accepted.push_back({"?", "T05thread:1;"}); // Should respond with thread 1
+    accepted.push_back({"qC", "QC1"}); // Should respond with thread 1
+    accepted.push_back({"Hg3", "OK"}); // Select HW thread 4
+    accepted.push_back({"?", "T05thread:4;"}); // Should respond with thread 4
+    accepted.push_back({"qC", "QC4"}); // Should respond with thread 4
+    
+    
+
+    for(const auto& a : accepted) {
+	    ASSERT_TRUE(tcp_send(client_socket, a.first));
+    
+        std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_TIME_MS));
+   
+        auto ret = tcp_recv(client_socket);
+        ASSERT_STREQ(get_payload(strip_ack(ret)).c_str(), a.second.c_str());
+        ASSERT_TRUE(validate(ret));
+    }
+
+}
+
+/*
 TEST_F(GDBStubTest, GDB_read_registers)
 {
     // Send something and check that the server responds correctly:

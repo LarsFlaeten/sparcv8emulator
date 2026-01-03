@@ -279,6 +279,7 @@ int main(int argc, char **argv) {
     std::vector<std::unique_ptr<CPU>> cpus{};
     // Set up gdb stub
     auto gdb_stub = std::make_unique<GdbStub>(cpus);  
+    gdb_stub->set_total_num_cpus(config.num_cpus);
 
     for(unsigned int i = 0; i < config.num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";

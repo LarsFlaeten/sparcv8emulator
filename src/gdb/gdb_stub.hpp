@@ -31,6 +31,8 @@ public:
     void remove_breakpoint(uint32_t addr);
     uint32_t get_breakpoint_instruction(uint32_t addr);
 
+    void set_total_num_cpus(int nc) {total_num_cpus = nc;}
+
     void print_breakpoints(std::ostream& os = std::cout) const {
         os << "Breakpoints (" << breakpoints.size() << "):";
         if (breakpoints.empty()) {
@@ -70,6 +72,7 @@ private:
     std::atomic<bool> active = false;
     std::atomic<bool> waiting = false;
     int current_cpu = 0;
+    int total_num_cpus = 0;
     int client_fd = -1;
     int halted_cpu = -1;
     int server_fd = -1;

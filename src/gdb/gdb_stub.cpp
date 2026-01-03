@@ -108,12 +108,27 @@ void GdbStub::gdb_thread(uint16_t port) {
     }
 }
 
+std::string make_qfThreadInfo_reply(int total_num_cpus)
+{
+    if (total_num_cpus <= 0)
+        return "l";   // no threads
+
+    std::string r = "m";
+    for (int i = 0; i < total_num_cpus; ++i) {
+        if (i > 0)
+            r += ",";
+        r += std::to_string(i + 1);  // GDB thread IDs are 1-based
+    }
+    return r;
+}
+
 void GdbStub::handle_packet(const std::string& pkt) {
     
     std::cout << "[GDB] Handle packet: [" << pkt << "]\n";
     //std::cout << "[GDB] handle_packet: this=" << this << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
     if (pkt == "?") {
-        send_packet("S05");
+        int tid = current_cpu + 1; // GDB threads are 1-based
+        send_packet("T05thread:" + std::to_string(tid) + ";");
     }
     else if(pkt.size() == 1 && static_cast<unsigned char>(pkt[0]) == 0x03) {
         // Interrupt from the remote!
@@ -122,9 +137,22 @@ void GdbStub::handle_packet(const std::string& pkt) {
             dsc->request_stop(DebugStopController::StopReason::CtrlC);
             dsc->wait_until_all_stopped();
             std::cout << "[GDB] Stopped the world!\n";
-            send_packet("S02"); // TODO: Send T01??
+            //send_packet("S02"); // TODO: Send T01??
+            int tid = current_cpu + 1; // GDB threads are 1-based
+            send_packet("T05thread:" + std::to_string(tid) + ";");
             return;
         }
+    }
+    else if (pkt.starts_with("qC")) {
+        // Current thread
+        int tid = current_cpu + 1;
+        send_packet("QC" + std::to_string(tid));
+    }
+    else if (pkt.starts_with("qfThreadInfo")) {
+        send_packet(make_qfThreadInfo_reply(total_num_cpus));
+    }
+    else if (pkt.starts_with("qsThreadInfo")) {
+        send_packet("l");
     }
     else if (pkt[0] == 'g') {
         if (current_cpu < 0 || current_cpu >= (int)cpus.size()) {
@@ -246,7 +274,7 @@ void GdbStub::notify_breakpoint(int cpu_id, uint32_t pc) {
         std::unique_lock lock(mtx);
         halted_cpu = cpu_id;
         waiting = true;
-        send_packet("S05");
+        send_packet("T05thread:" + std::to_string(cpu_id+1) + ";");
             
         while (waiting) {
             assert(lock.owns_lock());
