@@ -458,7 +458,7 @@ void CPU::enter_powerdown()
 {
     std::unique_lock<std::mutex> lock(power_mtx);
 
-    powerdown_flag.store(true);
+    powerdown_flag.store(true, std::memory_order_release);
 
     power_cv.wait(lock, [&]{
         return wakeup_flag.load();

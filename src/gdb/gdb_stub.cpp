@@ -109,10 +109,22 @@ void GdbStub::gdb_thread(uint16_t port) {
 }
 
 void GdbStub::handle_packet(const std::string& pkt) {
+    
     std::cout << "[GDB] Handle packet: [" << pkt << "]\n";
     //std::cout << "[GDB] handle_packet: this=" << this << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
     if (pkt == "?") {
         send_packet("S05");
+    }
+    else if(pkt.size() == 1 && static_cast<unsigned char>(pkt[0]) == 0x03) {
+        // Interrupt from the remote!
+        std::cout << "[GDB] Received Ctr+C from remote!\n";
+        if (auto* dsc = DebugStopController::Global()) {
+            dsc->request_stop(DebugStopController::StopReason::CtrlC);
+            dsc->wait_until_all_stopped();
+            std::cout << "[GDB] Stopped the world!\n";
+            send_packet("S02"); // TODO: Send T01??
+            return;
+        }
     }
     else if (pkt[0] == 'g') {
         if (current_cpu < 0 || current_cpu >= (int)cpus.size()) {
@@ -147,7 +159,10 @@ void GdbStub::handle_packet(const std::string& pkt) {
             waiting = false;
         }
         
-        cv.notify_all();        
+        cv.notify_all();     
+
+        if (auto* dsc = DebugStopController::Global())
+            dsc->resume();   
     }
     else if (pkt.starts_with("Hg")) {
         int id = std::stoi(pkt.substr(2));
@@ -251,6 +266,7 @@ std::optional<std::string> GdbStub::recv_packet() {
     char ch;
     std::string buf;
 
+    /*
     // Wait for '$' — or return if disconnected
     while (read(client_fd, &ch, 1) == 1 && ch != '$') {
         if (shutting_down) return std::nullopt;
@@ -262,6 +278,53 @@ std::optional<std::string> GdbStub::recv_packet() {
     while (read(client_fd, &ch, 1) == 1 && ch != '#') {
         buf += ch;
     }
+    */
+
+    auto handle_ctrl_c = [&]() -> std::optional<std::string> {
+        // Return syntetic pakket to dispatcher:
+        return std::string(1, '\x03');
+    };
+
+    // Wait for '$' — or return if disconnected
+    while (true) {
+        ssize_t n = read(client_fd, &ch, 1);
+        if (n == 0) return std::nullopt;          // disconnected
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return std::nullopt;
+        }
+
+        if (shutting_down) return std::nullopt;
+
+        if (static_cast<unsigned char>(ch) == 0x03) {
+            return handle_ctrl_c();
+        }
+
+        if (ch == '$') break;
+
+        // Ignore any other noise (e.g. '+' ACKs etc.)
+    }
+
+    // Read until '#' (start of checksum)
+    while (true) {
+        ssize_t n = read(client_fd, &ch, 1);
+        if (n == 0) return std::nullopt;
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return std::nullopt;
+        }
+
+        if (shutting_down) return std::nullopt;
+
+        if (static_cast<unsigned char>(ch) == 0x03) {
+            // Ctrl+C Can come at any time, drop ongoing packet
+            return handle_ctrl_c();
+        }
+
+        if (ch == '#') break;
+        buf += ch;
+    }
+
 
     // Read checksum (2 bytes)
     char csum1, csum2;
