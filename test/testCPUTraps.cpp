@@ -55,7 +55,7 @@ protected:
 
 
 
-CPUTrapsTest::CPUTrapsTest() : intc(1), cpu(mctrl, intc)
+CPUTrapsTest::CPUTrapsTest() : intc(1), cpu(mctrl, intc, 0)
 {  
    	
 

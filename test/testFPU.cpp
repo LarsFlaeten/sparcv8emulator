@@ -153,7 +153,7 @@ protected:
 
 
 
-FPUTest::FPUTest() : intc(1), cpu(mctrl, intc)
+FPUTest::FPUTest() : intc(1), cpu(mctrl, intc, 0)
 {  
    	
 

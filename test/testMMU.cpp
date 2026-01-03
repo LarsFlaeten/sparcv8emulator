@@ -92,7 +92,7 @@ protected:
 
 
 
-MMUTest::MMUTest() : intc(1), cpu(mctrl, intc)
+MMUTest::MMUTest() : intc(1), cpu(mctrl, intc, 0)
 {  
    	
 

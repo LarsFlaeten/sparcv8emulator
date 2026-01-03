@@ -154,9 +154,9 @@ void CPU::RDY (pDecode_t d)
         } else if(d->rs1 == 17 && (d->op_2_3 & 0x2f) == 0x28) {
             // Leon specific, read CPU id, NWINDOWS etc from ASR17
             if (verbose) 
-                os << std::format("{:#08x} rd %asr17      {} = {:#08x}\n", d->pc, DispRegStr(d->rd), this->cpu_id);
+                os << std::format("{:#08x} rd %asr17      {} = {:#08x}\n", d->pc, DispRegStr(d->rd), this->cpu_id_);
             d->wb_type = WriteBackType::WRITEBACKREG;
-            d->value = (this->cpu_id << 28) 
+            d->value = (this->cpu_id_ << 28) 
                 | (0x1 << 26)   // NOTAG / CASA
                 | (0b11 << 10)  // GRFP liteU
                 | (0x1 << 8)    // SparcV8 MUL/DIV
@@ -376,7 +376,7 @@ void CPU::TICC (pDecode_t d)
                 // Since it seems gdb may remove it during handling notify_bp
                 auto bp_i = gdb_stub->get_breakpoint_instruction(this->pc);
                 
-                gdb_stub->notify_breakpoint(this->cpu_id, this->pc);
+                gdb_stub->notify_breakpoint(this->cpu_id_, this->pc);
                 
                 // Get the original instruction and execute it:
                 d->opcode = bp_i;

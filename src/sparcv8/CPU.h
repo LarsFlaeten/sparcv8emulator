@@ -74,6 +74,7 @@ class MMU;
 
 struct  DecodeStruct;
 #include "../gdb/gdb_stub.hpp"
+#include "../gdb/DebugStopController.hpp"
 
 
 typedef struct DecodeStruct *pDecode_t;
@@ -137,7 +138,7 @@ class CPU
 
         u32 y_reg;
 
-        u32 cpu_id;
+        u32 cpu_id_;
         u32 fsr; // FPU state register
         ///////////////////////
         // Registers
@@ -168,6 +169,7 @@ class CPU
         
         RunSummary rs;
         GdbStub*    gdb_stub = nullptr;
+        DebugStopController::WorkerToken wtoken;
         
         std::string DispRegStr (u32 regnum);
 
@@ -177,12 +179,16 @@ class CPU
         MMU mmu;  
         IRQMP& intc;      
    public:
-        CPU(MCtrl& mctrl, IRQMP& intc, std::ostream& out = std::cout) : cpu_id(0), os(out), _interrupt(false), mmu(mctrl), intc(intc)
+        CPU(MCtrl& mctrl, IRQMP& intc, u32 cpu_id, std::ostream& out = std::cout) : cpu_id_(cpu_id), os(out), _interrupt(false), mmu(mctrl), intc(intc)
         { 
             // Set Cache control regs as TSIM does
             mmu.SetCCR(0x00020000);
             mmu.SetICCR(0x10220008);
             mmu.SetDCCR(0x18220008);
+
+            // Register worker since we now have the unique name
+            if (auto* dbg = DebugStopController::Global())
+                wtoken = dbg->register_worker("CPU" + std::to_string(cpu_id_));
             
         }
 
@@ -228,8 +234,10 @@ class CPU
         int  mem_write(const u32 va, const int bytes, const u32 rd);
         
         // Get/Set multi-core id:
-        void set_cpu_id(u32 value) { cpu_id = value; }
-        u32 get_cpu_id() const { return cpu_id; }
+        //void set_cpu_id(u32 value) { 
+        //    cpu_id = value; 
+        //}
+        u32 get_cpu_id() const { return cpu_id_; }
         // State Accessors
         u32 get_psr() const {return psr;}
         void set_psr(u32 value) { psr = value; }

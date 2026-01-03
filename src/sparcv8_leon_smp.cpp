@@ -11,7 +11,6 @@
 
 #include <signal.h>
 
-
 #include "sparcv8/CPU.h"
 #include "sparcv8/MMU.h"
 #include "peripherals/Peripherals.h"
@@ -24,23 +23,12 @@
 
 #include "cv_log.hpp"
 
-#include <pthread.h>
+#include "gdb/DebugStopController.hpp"
 
+#include <pthread.h>
 void set_thread_name(const std::string& name) {
     pthread_setname_np(pthread_self(), name.c_str());
 }
-
-// Shared state
-/*struct SyncState {
-    std::mutex mtx;
-    std::condition_variable cv_start;
-    std::condition_variable cv_done;
-    bool start_tick = false;
-    int active_cpus = 0;
-    std::atomic<bool> shutdown_cpus = false;
-    std::atomic<bool> global_shutdown = false;
-    
-};*/
 
 struct ShutdownControl{
     /*cvlog::Mutex mtx{"SynxState.mtx"};
@@ -200,8 +188,10 @@ void cpu_thread(CPU& cpu, GlobalIRQBarrier& barrier, APBCTRL& apbctrl, ShutdownC
 int main(int argc, char **argv) {
     CVLOG_MUTE();
     
-    
-    //set_thread_name("main");
+    DebugStopController dbg;
+    DebugStopController::InstallGlobal(&dbg);
+
+    set_thread_name("main");
     // Set up handler for external SIGINTs
     struct sigaction act;
     act.sa_handler =  signal_handler;
@@ -282,9 +272,8 @@ int main(int argc, char **argv) {
     std::vector<std::unique_ptr<CPU>> cpus{};
     for(unsigned int i = 0; i < config.num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
-        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, std::cout));
+        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, i, std::cout));
                 
-        cpu->set_cpu_id(i);
         cpu->reset(entry_va);
 
 
@@ -350,6 +339,8 @@ int main(int argc, char **argv) {
 
 
     std::cout << "** Emulation complete.\n";
+
+    DebugStopController::UninstallGlobal(&dbg);
     return 0;
     
 

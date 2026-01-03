@@ -30,7 +30,7 @@ protected:
 
 
 
-CPUMemTest::CPUMemTest() : intc(1), cpu(mctrl, intc)
+CPUMemTest::CPUMemTest() : intc(1), cpu(mctrl, intc, 0)
 {  
    	
 
@@ -46,7 +46,7 @@ void CPUMemTest::SetUp()
 {
     new (&intc)  IRQMP(1);
     new (&mctrl) MCtrl();     // fully reconstruct
-    new (&cpu)   CPU(mctrl, intc);
+    new (&cpu)   CPU(mctrl, intc, 0);
 
     mctrl.attach_bank<RamBank>(0x0, 1*1024*1024); // 1 MB @ 0x0
 
@@ -492,13 +492,12 @@ TEST_F(CPUMemTest, RD_ASR17) {
     ASSERT_EQ(res>>28, 0x0);
 
 
-
-    cpu.set_cpu_id(3);
-    cpu.decode(&d);
-    d.function(&cpu, &d);
-    cpu.write_back(&d); 
+    CPU cpu3(mctrl, intc, 3);
+    cpu3.decode(&d);
+    d.function(&cpu3, &d);
+    cpu3.write_back(&d); 
  
-    cpu.read_reg(GLOBALREG4, &res);
+    cpu3.read_reg(GLOBALREG4, &res);
  
     ASSERT_EQ((d.value >> 28), 0x03);
     ASSERT_EQ(res>>28, 0x03);

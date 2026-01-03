@@ -54,12 +54,10 @@ protected:
 
 
 INSTRFPUTest::INSTRFPUTest()
-    : intc(1), cpu(mctrl, intc)
+    : intc(1), cpu(mctrl, intc, 0)
 
 {  
-    //cpu.SetVerbose(true);
-    cpu.set_cpu_id(0);
-
+    
     mctrl.attach_bank<RamBank>(0x0, 16*1024*1024); // 16 MB @ 0x0
 }
 

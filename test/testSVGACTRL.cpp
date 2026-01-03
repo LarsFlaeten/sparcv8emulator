@@ -35,7 +35,7 @@ protected:
 
 
 
-SVGATest::SVGATest() : intc(1), cpu(mctrl, intc)
+SVGATest::SVGATest() : intc(1), cpu(mctrl, intc, 0)
 {  
    	
 

@@ -8,6 +8,10 @@
 #include "../cv_log.hpp"
 
 #include "../LoopTimer.h"
+
+#include "../gdb/DebugStopController.hpp"
+
+
 #if 0
 #define PERFORMANCE_MONITOR
 #endif
@@ -150,6 +154,9 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
     running = true;
     while ((ExecCount == 0) ? 1 : (count < (u64)ExecCount)) {
 
+        // Halt here if stopped by debug context:
+        if (auto* dbg = DebugStopController::Global()) dbg->checkpoint(wtoken);
+
 #ifdef PERFORMANCE_MONITOR
 		lt.start();
 #endif		
@@ -208,10 +215,10 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         
         // Check interrupt controller for pending interrupts and take any,
         // as long as there are not ongoing trap handling
-        u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id);
+        u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id_);
         if(_incoming_irl>0 && trap_type == 0) {
             set_irl(_incoming_irl); // We take this interrupt
-            intc.clear_irq(_incoming_irl, this->cpu_id);
+            intc.clear_irq(_incoming_irl, this->cpu_id_);
 
             // In multithreaded, we break out in timer interrupts, and wait until we are started again
             if((irl == 8)) {
@@ -661,7 +668,7 @@ int CPU::mem_read(const u32 va, const int bytes, const u32 rd, const int signext
     // TODO:
     // Implement cache and possible forced cache miss (ASI=1)
 
-    
+
     bool super = ((psr >> 7) & 0x1) == 0x1;
 
 

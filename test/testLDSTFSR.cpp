@@ -60,7 +60,7 @@ protected:
 
 
 
-LDSTFSRTest::LDSTFSRTest() : intc(1), cpu(mctrl, intc)
+LDSTFSRTest::LDSTFSRTest() : intc(1), cpu(mctrl, intc, 0)
 {  
    	
 

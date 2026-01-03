@@ -219,7 +219,7 @@ void gdb_server(int server_fd, CPU& cpu) {
 GDBStubTest::GDBStubTest()
     : intc(1), debug_port(1234)
 {
-    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc));
+    cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 0));
 	
 
 

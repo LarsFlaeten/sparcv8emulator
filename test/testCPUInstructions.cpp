@@ -59,7 +59,7 @@ protected:
 
 
 
-CPUInstructionsTest::CPUInstructionsTest() : intc(1), cpu(mctrl, intc)
+CPUInstructionsTest::CPUInstructionsTest() : intc(1), cpu(mctrl, intc, 0)
 {  
    	
 

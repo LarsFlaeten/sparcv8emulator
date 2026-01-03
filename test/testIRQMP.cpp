@@ -58,8 +58,7 @@ void IRQMPTest::TearDown()
 TEST_F(IRQMPTest, trigger_irq_CheckPending)
 {
     IRQMP intc(1);
-    CPU cpu(mctrl, intc);
-    cpu.set_cpu_id(0);
+    CPU cpu(mctrl, intc, 0);
     intc.set_cpu_ptr(&cpu, 0);
 
     intc.trigger_irq(8);
@@ -136,7 +135,7 @@ TEST_F(IRQMPTest, trigger_irq_CheckPending)
 TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
 {
     IRQMP intc(1);
-    CPU cpu(mctrl, intc);
+    CPU cpu(mctrl, intc, 0);
     intc.set_cpu_ptr(&cpu, 0);
 
     cpu.reset(0x0);
@@ -294,7 +293,7 @@ TEST_F(IRQMPTest, SMP_correctPIMASK)
 
     IRQMP intc(8);
 
-    CPU cpu(mctrl, intc);
+    CPU cpu(mctrl, intc, 0);
     // Just use the saem CPU for all 8
     intc.set_cpu_ptr(&cpu, 0);
     intc.set_cpu_ptr(&cpu, 1);
@@ -403,7 +402,7 @@ TEST_F(IRQMPTest, SMP_broadcast_irl8)
 
     IRQMP intc(3);
 
-    CPU cpu(mctrl, intc);
+    CPU cpu(mctrl, intc, 0);
     // Just use the saem CPU for all three
     intc.set_cpu_ptr(&cpu, 0);
     intc.set_cpu_ptr(&cpu, 1);
@@ -439,7 +438,7 @@ TEST_F(IRQMPTest, SMP_MPSTAT_wakeup)
 
     IRQMP intc(3);
 
-    CPU cpu(mctrl, intc);
+    CPU cpu(mctrl, intc, 0);
     // Just use the saem CPU for all three
     intc.set_cpu_ptr(&cpu, 0);
     intc.set_cpu_ptr(&cpu, 1);
@@ -468,7 +467,7 @@ TEST_F(IRQMPTest, SMP_active_cpus_bookkeeping)
 
     IRQMP intc(8);
 
-    CPU cpu(mctrl, intc);
+    CPU cpu(mctrl, intc, 0);
     // Just use the same CPU for all three
     intc.set_cpu_ptr(&cpu, 0);
     intc.set_cpu_ptr(&cpu, 1);
@@ -545,7 +544,7 @@ TEST_F(IRQMPTest, SMP_PIFORCE_write)
 
     IRQMP intc(8);
 
-    CPU cpu(mctrl, intc);
+    CPU cpu(mctrl, intc, 0);
     // Just use the same CPU for all three
     intc.set_cpu_ptr(&cpu, 0);
     intc.set_cpu_ptr(&cpu, 1);

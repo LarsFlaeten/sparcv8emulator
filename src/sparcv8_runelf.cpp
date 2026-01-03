@@ -133,8 +133,7 @@ int main(int argc, char **argv)
 
     for(int i = 0; i < num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
-        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, write_to_file ? os : std::cout));
-        cpu->set_cpu_id(i);
+        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, i, write_to_file ? os : std::cout));
         cpu->set_verbose(verbose);
         cpu->reset(entry_va);
         // OS boot process step 1: Set stack pointer to end of ram

@@ -29,7 +29,7 @@ protected:
 
 
 
-CPUEmuTest::CPUEmuTest() : intc(1), cpu(mctrl, intc)
+CPUEmuTest::CPUEmuTest() : intc(1), cpu(mctrl, intc, 0)
 {  
    	
 

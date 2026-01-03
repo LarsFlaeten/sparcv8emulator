@@ -280,10 +280,9 @@ int main(int argc, char **argv)
     // Build the vector of CPUs
     std::vector<std::unique_ptr<CPU>> cpus{};
     for(int i = 0; i < num_cpus; ++i) {
-        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, write_to_file ? os : std::cout)); 
+        auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, i, write_to_file ? os : std::cout)); 
         cpu->set_verbose(verbose);
-        cpu->set_cpu_id(i);
-
+        
         cpu->register_bus_tick_function( tick_lambda );
 
         cpu->reset(entry_va);
