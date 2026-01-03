@@ -49,7 +49,11 @@ void signal_handler(int signal)
     switch(signal) {
         case(SIGINT):
             if(global_shutdown != nullptr) {
-                std::cout << "Setting global state to shutdown\n";
+                if(auto dsc = DebugStopController::Global()) {
+                    std::cout << "[MAIN] Releasing threads from stop-the-world\n";
+                    dsc->resume();
+                }
+                std::cout << "[MAIN] Setting global state to shutdown\n";
                 //std::unique_lock<std::mutex> lock(global_syncstate->mtx);
                 //cvlog::UniqueLock lock(global_syncstate->mtx);
                 global_shutdown->shutdown_cpus = true;
