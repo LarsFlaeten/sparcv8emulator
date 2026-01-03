@@ -149,7 +149,7 @@ void GdbStub::handle_packet(const std::string& pkt) {
         send_packet("QC" + std::to_string(tid));
     }
     else if (pkt.starts_with("qfThreadInfo")) {
-        send_packet(make_qfThreadInfo_reply(total_num_cpus));
+        send_packet(make_qfThreadInfo_reply((int)cpus.size()));
     }
     else if (pkt.starts_with("qsThreadInfo")) {
         send_packet("l");
@@ -194,13 +194,24 @@ void GdbStub::handle_packet(const std::string& pkt) {
     }
     else if (pkt.starts_with("Hg")) {
         int id = std::stoi(pkt.substr(2));
-        if (id >= 0 && id < (int)cpus.size()) {
-            current_cpu = id;
+        if( id == 0) {
+            send_packet("OK");
+        } else if (id > 0 && id <= (int)cpus.size()) {
+            current_cpu = id-1;
             send_packet("OK");
         } else {
             send_packet("E01");
         }
     }
+    else if (pkt.starts_with("T")) {
+        int id = std::stoi(pkt.substr(1));
+        // Is thread <tid> alive?
+        if(id > 0 && id <= (int)cpus.size())
+            send_packet("OK");
+        else
+            send_packet("E01");
+    }
+    
     else if (pkt.starts_with("Hc")) {
         int id = std::stoi(pkt.substr(2));
 

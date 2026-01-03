@@ -326,8 +326,7 @@ TEST_F(GDBStubTest, GDB_setup)
 
 TEST_F(GDBStubTest, GDB_CheckStandardReplies)
 {
-    pstub->set_total_num_cpus(1);
-
+    
     std::vector<std::pair<std::string, std::string>> accepted;
 
     // A series of standard cmds and queries we get the from GDB and the expected replies
@@ -364,7 +363,6 @@ TEST_F(GDBStubTest, GDB_CheckStandardReplies_SMP4)
     cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 2));
     cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 3));
 
-    pstub->set_total_num_cpus(4);
     
     std::vector<std::pair<std::string, std::string>> accepted;
 
@@ -393,7 +391,6 @@ TEST_F(GDBStubTest, GDB_CheckStandardReplies_SMP8)
     cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 6));
     cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 7));
     
-    pstub->set_total_num_cpus(8);
     
     std::vector<std::pair<std::string, std::string>> accepted;
 
@@ -418,16 +415,23 @@ TEST_F(GDBStubTest, GDB_SMP4_ChangeThread)
     cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 2));
     cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, 3));
     
-    pstub->set_total_num_cpus(4);
     
     std::vector<std::pair<std::string, std::string>> accepted;
 
-    accepted.push_back({"Hg0", "OK"}); // Select HW thread 1
+    accepted.push_back({"Hg0", "OK"}); // Select no HW thread
+    accepted.push_back({"T1", "OK"}); // Is thread 1 alive?
+    accepted.push_back({"T2", "OK"}); // Is thread 2 alive?
+    accepted.push_back({"T3", "OK"}); // Is thread 3 alive?
+    accepted.push_back({"T4", "OK"}); // Is thread 4 alive?
+    accepted.push_back({"T5", "E01"}); // Is thread 5 alive? no..
+    
     accepted.push_back({"qfThreadInfo", "m1,2,3,4"});
     accepted.push_back({"qsThreadInfo", "l"});
+    accepted.push_back({"Hg1", "OK"}); // Select HW thread 1 (CPU 0)
+    
     accepted.push_back({"?", "T05thread:1;"}); // Should respond with thread 1
     accepted.push_back({"qC", "QC1"}); // Should respond with thread 1
-    accepted.push_back({"Hg3", "OK"}); // Select HW thread 4
+    accepted.push_back({"Hg4", "OK"}); // Select HW thread 4
     accepted.push_back({"?", "T05thread:4;"}); // Should respond with thread 4
     accepted.push_back({"qC", "QC4"}); // Should respond with thread 4
     
