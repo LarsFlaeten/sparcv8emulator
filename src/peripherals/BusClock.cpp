@@ -30,6 +30,9 @@ std::ostream& operator<<(std::ostream& os, const BusClock::Stats& s)
 BusClock::BusClock(IRQMP& irqmp, GPTIMER& timer, APBUART& uart, GlobalIRQBarrier& irq_barrier)
     : irqmp_(irqmp), timer_(timer), uart_(uart), irq_barrier_(irq_barrier)
 {
+    // Register worker
+    if (auto* dbg = DebugStopController::Global())
+        wtoken = dbg->register_worker("BusClock");
 }
 
 BusClock::~BusClock() {
@@ -109,6 +112,8 @@ void BusClock::run() {
 
     while (running_) {
         auto start = clock::now();
+
+        if (auto* dbg = DebugStopController::Global()) dbg->checkpoint(wtoken);
         
         
         // Handle tick and check timer interrupt in one go    

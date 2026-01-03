@@ -17,6 +17,8 @@
 
 #include "../cv_log.hpp"
 
+#include "../gdb/DebugStopController.hpp"
+
 struct GlobalIRQBarrier {
     std::mutex mtx;
     std::condition_variable cv_enter;
@@ -83,5 +85,7 @@ private:
     GPTIMER& timer_;
     APBUART& uart_;
     GlobalIRQBarrier& irq_barrier_;
+
+    DebugStopController::WorkerToken wtoken;
     
 };
