@@ -460,12 +460,28 @@ void CPU::enter_powerdown()
 
     powerdown_flag.store(true, std::memory_order_release);
 
-    power_cv.wait(lock, [&]{
-        return wakeup_flag.load();
-    });
+    // Optional global controller (no ctor dependency)
+    DebugStopController* dsc = DebugStopController::Global();
 
-    powerdown_flag.store(false);
-    wakeup_flag.store(false);
+    auto pred = [&] {
+        // Acquire er greit her siden wakeup() bruker release.
+        return wakeup_flag.load(std::memory_order_acquire);
+    };
+
+    if (dsc) {
+        // DSC is present
+        // Then we assume we have a valid worker token also
+        // Do a wait with stop-the-world functionality
+        dsc->wait_for_or_stop(wtoken, power_cv, lock, pred);
+    } else {
+        power_cv.wait(lock, pred);
+    }
+
+    // We will ever only get here if the pred is satisfied, even
+    // if we have been in a DebugStopController stop-the-world (returns
+    // to wait for wakeup after stop-the-world is resumed)
+    powerdown_flag.store(false, std::memory_order_release);
+    wakeup_flag.store(false, std::memory_order_release);
 }
 
 void CPU::wakeup()
