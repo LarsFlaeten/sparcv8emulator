@@ -202,9 +202,11 @@ int main(int argc, char **argv) {
 
     int    option;
     int    num_cpus_requested = 0;
+    bool debug_server = false; 
+    int debug_port = 0; // Supress uninitiliazed warning
     std::string fname = "/home/lars//workspace/gaisler-buildroot-2024.02-1.1/output/images/image.ram";
     
-    while ((option = getopt(argc, argv, "i:n:")) != EOF) {
+    while ((option = getopt(argc, argv, "i:n:g:")) != EOF) {
         switch(option) {
             case 'i':
                 fname = optarg;
@@ -212,12 +214,17 @@ int main(int argc, char **argv) {
             case 'n':
                 num_cpus_requested = (u32)strtol(optarg, NULL, 0);
                 break;
+            case 'g':
+                debug_port = (u32)strtol(optarg, NULL, 0);
+                debug_server = true;
+                break;
             default:
             std::cerr << 
                     "Usage: " << argv[0] << "[-i <filename>] \n"
                     "\n"
                      "    -i path/file: Path to the linux buildroot image\n"
                      "    -n [num]: Number of CPUs to emulate\n" 
+                     "    -g (port) Start gdb server on specified port\n"
                     "\n";
             exit(EXIT_SUCCESS);
             break;
@@ -270,6 +277,9 @@ int main(int argc, char **argv) {
     // Create the cpus
     config.num_cpus = num_cpus_requested;
     std::vector<std::unique_ptr<CPU>> cpus{};
+    // Set up gdb stub
+    auto gdb_stub = std::make_unique<GdbStub>(cpus);  
+
     for(unsigned int i = 0; i < config.num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
         auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, i, std::cout));
@@ -288,6 +298,9 @@ int main(int argc, char **argv) {
         cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
         cpu->write_reg(end_of_ram, INREG6); // Write frame pointer
         
+        if(debug_server)
+            cpu->set_gdb_stub(gdb_stub.get());
+
     }
 
     debug_set_active_mmu(&(cpus[0]->get_mmu()));
@@ -323,6 +336,12 @@ int main(int argc, char **argv) {
     // Ok, start it up...
     std::cout << "** Starting the machine..\n";
 
+    // Start the gdb stub
+    if(debug_server) {
+        gdb_stub->start(debug_port);
+    }
+
+    // Start bus timer
     bus->start();
     
     // We start the first cpu, everything else will be handled from there
@@ -337,6 +356,7 @@ int main(int argc, char **argv) {
     auto stats = bus->getStats();
     std::cout << stats << std::endl;
 
+    DebugStopController::Global()->dump_stderr();
 
     std::cout << "** Emulation complete.\n";
 

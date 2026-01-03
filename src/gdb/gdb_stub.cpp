@@ -15,6 +15,8 @@ void set_thread_name(const char* name) {
     pthread_setname_np(pthread_self(), name);
 }
 
+#include "DebugStopController.hpp"
+
 static std::string to_hex(const uint8_t* data, size_t len) {
     std::ostringstream oss;
     for (size_t i = 0; i < len; i++)
@@ -107,7 +109,7 @@ void GdbStub::gdb_thread(uint16_t port) {
 }
 
 void GdbStub::handle_packet(const std::string& pkt) {
-    //std::cout << "[GDB] Handle packet: [" << pkt << "]\n";
+    std::cout << "[GDB] Handle packet: [" << pkt << "]\n";
     //std::cout << "[GDB] handle_packet: this=" << this << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
     if (pkt == "?") {
         send_packet("S05");
@@ -221,17 +223,28 @@ void GdbStub::handle_packet(const std::string& pkt) {
 void GdbStub::notify_breakpoint(int cpu_id, uint32_t pc) {
     //std::cout << "[GDB] notify_breakpoint: this=" << this << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
 
-    std::unique_lock lock(mtx);
-    halted_cpu = cpu_id;
-    waiting = true;
-    send_packet("S05");
+    // Halt all other threads/workers
+    if (auto* dbg = DebugStopController::Global())
+        dbg->request_stop(DebugStopController::StopReason::Breakpoint);
+
+    {
+        std::unique_lock lock(mtx);
+        halted_cpu = cpu_id;
+        waiting = true;
+        send_packet("S05");
+            
+        while (waiting) {
+            assert(lock.owns_lock());
+            cv.wait(lock);
+        }
         
-    while (waiting) {
-        assert(lock.owns_lock());
-        cv.wait(lock);
+        halted_cpu = -1;
     }
-    
-    halted_cpu = -1;
+
+    // Release all other workers/threads
+    if (auto* dbg = DebugStopController::Global())
+        dbg->resume();
+
 }
 
 std::optional<std::string> GdbStub::recv_packet() {
