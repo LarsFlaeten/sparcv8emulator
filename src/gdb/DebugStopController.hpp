@@ -182,4 +182,81 @@ private:
 
     // Used to break waits cleanly across resume/stop cycles.
     uint64_t stop_epoch_ = 0;
+
+public:
+
+    static const char* StopStateToString(uint8_t s) {
+        switch (static_cast<StopState>(s)) {
+            case StopState::Running:       return "Running";
+            case StopState::StopRequested: return "StopRequested";
+            case StopState::Stopped:       return "Stopped";
+        }
+        return "Unknown";
+    }
+
+    static const char* StopReasonToString(StopReason r) {
+        switch (r) {
+            case StopReason::Breakpoint:  return "Breakpoint";
+            case StopReason::SingleStep:  return "SingleStep";
+            case StopReason::CtrlC:       return "CtrlC";
+            case StopReason::Watchpoint:  return "Watchpoint";
+            case StopReason::UserRequest: return "UserRequest";
+            case StopReason::Fatal:       return "Fatal";
+        }
+        return "Unknown";
+    }
+
+    // Returnerer en tekst-dump (lett å bruke i logger/tester).
+    std::string dump() const {
+        std::ostringstream os;
+        dump_to(os);
+        return os.str();
+    }
+
+    // Skriver til ostream (lett å sende til logg-systemer).
+    void dump_to(std::ostream& os) const {
+        // Ta en konsistent snapshot under lock.
+        std::unique_lock lk(mtx_);
+
+        const auto s = state_.load(std::memory_order_acquire);
+        const auto r = stop_reason(); // leser atomisk internt
+        const uint64_t epoch = stop_epoch_;
+
+        os << "DebugStopController@" << this
+           << " global=" << (Global() == this ? "yes" : (Global() ? "other" : "null"))
+           << "\n  state=" << StopStateToString(static_cast<uint8_t>(s))
+           << " reason=" << StopReasonToString(r)
+           << " epoch=" << epoch
+           << "\n  expected_workers=" << expected_workers_
+           << " stopped_count=" << stopped_count_
+           << " workers.size=" << workers_.size()
+           << "\n  workers:\n";
+
+        // Stabil og “pen” rekkefølge: sorter ids.
+        std::vector<uint32_t> ids;
+        ids.reserve(workers_.size());
+        for (auto& kv : workers_) ids.push_back(kv.first);
+        std::sort(ids.begin(), ids.end());
+
+        for (uint32_t id : ids) {
+            const auto& ws = workers_.at(id);
+            os << "    - id=" << id
+               << " stopped=" << (ws.stopped ? "yes" : "no")
+               << " name=\"" << ws.name << "\"\n";
+        }
+    }
+
+    // Direkte til FILE* (praktisk i "call" fra GDB uten å måtte fange string).
+    void dump_to(FILE* f) const {
+        if (!f) return;
+        std::ostringstream os;
+        dump_to(os);
+        std::fwrite(os.str().data(), 1, os.str().size(), f);
+        std::fflush(f);
+    }
+
+    // Enda mer GDB-vennlig: alltid til stderr.
+    void dump_stderr() const {
+        dump_to(stderr);
+    }
 };
