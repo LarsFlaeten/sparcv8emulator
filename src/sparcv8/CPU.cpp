@@ -168,6 +168,8 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
                 os << std::format("INT  {:#x} PC={:#08x} NPC={:#08x}\n", irl, pc, npc);
 
             trap_type = irl + SPARC_INTERRUPT;
+            intc.clear_irq(irl, this->cpu_id_);
+
             // Do we clear IRL here, or handle that in interrupt handler?
             // Update - yes we absolutely have to clear it here. The interrupt handlers cannot reach IRL,
             // as it is not exposed in the machine... Hence, it was nevre cleared..
@@ -217,14 +219,15 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         // as long as there are not ongoing trap handling
         u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id_);
         if(_incoming_irl>0 && trap_type == 0) {
-            set_irl(_incoming_irl); // We take this interrupt
-            intc.clear_irq(_incoming_irl, this->cpu_id_);
-
-            // In multithreaded, we break out in timer interrupts, and wait until we are started again
-            if((irl == 8)) {
-                if(break_on_timer_interrupt) {
-                    rs.reason = TerminateReason::TIMER_INTERRUPT;
-                    break;
+            if(_incoming_irl > irl) {
+                set_irl(_incoming_irl); // We take this interrupt
+                
+                // In SMP, we break out in timer interrupts, and wait until we are started again
+                if((irl == 8)) {
+                    if(break_on_timer_interrupt) {
+                        rs.reason = TerminateReason::TIMER_INTERRUPT;
+                        break;
+                    }
                 }
             }
         }
