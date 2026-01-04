@@ -362,6 +362,10 @@ int main(int argc, char **argv) {
 
     DebugStopController::Global()->dump_stderr();
 
+    #ifdef PROFILE_MEM_ACCESS
+    mctrl.print_profile();
+    #endif
+
     std::cout << "** Emulation complete.\n";
 
     DebugStopController::UninstallGlobal(&dbg);

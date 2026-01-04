@@ -350,6 +350,9 @@ int main(int argc, char **argv)
          (write_to_file ? os : std::cout) << "Instruction count = " <<  std::dec << rs.instr_count << "\n";
 
     os.close();
+#ifdef PROFILE_MEM_ACCESS
+    mctrl.print_profile();
+#endif
 
     return (rs.reason != TerminateReason::NORMAL) ? rs.reason : EXIT_SUCCESS;
 }
