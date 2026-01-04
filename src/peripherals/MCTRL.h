@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <stdexcept>
 #include <iostream>
 #include <algorithm>
@@ -11,6 +13,16 @@
 #include <string>
 
 #include "../common.h"
+
+#if 1
+#define PROFILE_MEM_ACCESS
+    struct MctrlProfile {
+        // Counters:
+        u64 r8, r16, r32, r64;
+        u64 w8, w16, w32, w64;
+    };
+    void print_mctrl_profile(const MctrlProfile& p);
+#endif
 
 std::string demangle(const char* name);
 
@@ -176,11 +188,13 @@ public:
     }
 
     u8 read8(u32 addr) const override {
+        std::lock_guard<std::mutex> lk(mtx);
         check_range(addr);
         return data[addr - base];
     }
 
     void write8(u32 addr, u8 val) override {
+        std::lock_guard<std::mutex> lk(mtx);
         check_range(addr);
         data[addr - base] = val;
     }
@@ -194,6 +208,8 @@ private:
     u32 base;
     size_t size;
     std::vector<u8> data;
+
+    mutable std::mutex mtx;
 
     void check_range(u32 addr) const {
         if (!contains(addr))
@@ -223,35 +239,59 @@ public:
     }
 
     u8 read8(u32 addr) const {
+        #ifdef PROFILE_MEM_ACCESS
+        p.r8++;
+        #endif
         return find_bank(addr)->read8(addr);
     }
 
     u16 read16(u32 addr, bool align = true) const {
+        #ifdef PROFILE_MEM_ACCESS
+        p.r16++;
+        #endif
         return find_bank(addr)->read16(addr, align);
     }
 
     u32 read32(u32 addr, bool align = true) const {
+        #ifdef PROFILE_MEM_ACCESS
+        p.r32++;
+        #endif
         return find_bank(addr)->read32(addr, align);
     }
 
     u64 read64(u32 addr, bool align = true) const {
+        #ifdef PROFILE_MEM_ACCESS
+        p.r64++;
+        #endif
         return find_bank(addr)->read64(addr, align);
     }
 
     void write8(u32 addr, u8 val) {
+        #ifdef PROFILE_MEM_ACCESS
+        p.w8++;
+        #endif
         find_bank(addr)->write8(addr, val);
     }
 
     void write16(u32 addr, u16 val, bool align = true) {
+        #ifdef PROFILE_MEM_ACCESS
+        p.w16++;
+        #endif
         find_bank(addr)->write16(addr, val, align);
     }
 
     void write32(u32 addr, u32 val, bool align = true) {
+        #ifdef PROFILE_MEM_ACCESS
+        p.w32++;
+        #endif
         
         find_bank(addr)->write32(addr, val, align);
     }
 
     void write64(u32 addr, u64 val, bool align = true) {
+        #ifdef PROFILE_MEM_ACCESS
+        p.w64++;
+        #endif
         find_bank(addr)->write64(addr, val, align);
     }
 
@@ -370,7 +410,15 @@ public:
 private:
     std::vector<std::unique_ptr<IMemoryBank>> banks;
 
-    
+#ifdef PROFILE_MEM_ACCESS
+private:
+    mutable MctrlProfile p{};
+public:
+    void print_profile() {
+        print_mctrl_profile(p);
+    } 
+private:
+#endif
 
     static bool ranges_overlap(u32 a_start, u32 a_end,
                                 u32 b_start, u32 b_end) {
@@ -382,7 +430,8 @@ private:
         snprintf(buf, sizeof(buf), "%08X", val);
         return buf;
     }
-
-
-
 };
+
+
+
+
