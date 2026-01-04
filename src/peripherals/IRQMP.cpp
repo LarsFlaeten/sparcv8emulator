@@ -87,6 +87,8 @@ unsigned IRQMP::get_next_pending_irq(u8 cpu_id) const {
 }
 
 void IRQMP::clear_irq(u32 IRL, u8 cpu_id) {
+    if(IRL == 13)
+        std::cout << "[IRQMP] CPU" << (int)cpu_id << " took IRL 13\n";
     std::unique_lock lock(mtx);
     u8 irl = IRL & 0xf;
     u8 cpu = cpu_id & 0x7U;
@@ -162,6 +164,8 @@ void IRQMP::write(u32 offset, u32 value) {
     } else if(offset >= 0x80 && offset < 0xA0) {
         u32 n = (offset - 0x80)/4;
         //std::cout << "Write IRQ 0x80 + n*4, PIFORCE[" << n << "] = " << std::hex << value << std::dec << "\n";
+        if((value >> 13) && 0x1U)
+                std::cout << "[IRQMP] IRQ 13 -> IFORCE for CPU" << (int)n << "\n";
         PIFORCE[n] = value;
         return;
     }    
@@ -171,6 +175,8 @@ void IRQMP::write(u32 offset, u32 value) {
             ILEVEL = value;
             break;
         case(IRQMP_IPEND_OS):
+            if((value >> 13) && 0x1U)
+                std::cout << "[IRQMP] IRQ 13 -> IPEND\n";
             IPEND = value;
             break;
         case(IRQMP_IFORCE_OS):
