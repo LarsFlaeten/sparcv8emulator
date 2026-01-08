@@ -122,7 +122,7 @@ int main(int argc, char **argv)
 
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
-    u32 word_count = ReadElf(fname, mctrl, entry_va, false, std::cout); 
+    u32 word_count = ReadElf(fname, mctrl, entry_va, true, std::cout); 
     
     u32 end_of_ram = mctrl.find_bank(0x00000000)->get_limit();
 
@@ -188,6 +188,10 @@ int main(int argc, char **argv)
          (write_to_file ? os : std::cout) << "Instruction count = " <<  std::dec << rs.instr_count << "\n";
 
     os.close();
+
+    #ifdef PROFILE_MEM_ACCESS
+    mctrl.print_profile();
+    #endif
 
     return (rs.reason != TerminateReason::NORMAL) ? rs.reason : NOERROR;
 }
