@@ -11,7 +11,8 @@
 testlist="sethi and or xor shift add sub \
           ld fld fbfcc st swap ldstub mul div bicc \
           rd_wr call jmpl ticc mulscc \
-          save_rest tadd tsub endian"
+          save_rest tadd tsub endian \
+          casa"
 
 # Save the directory the script was called from
 CALL_DIR="$(pwd)"
