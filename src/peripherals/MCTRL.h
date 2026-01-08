@@ -16,12 +16,7 @@
 
 #if 1
 #define PROFILE_MEM_ACCESS
-    struct MctrlProfile {
-        // Counters:
-        u64 r8, r16, r32, r64;
-        u64 w8, w16, w32, w64;
-    };
-    void print_mctrl_profile(const MctrlProfile& p);
+#include "../memaccessprofiler.hpp"
 #endif
 
 std::string demangle(const char* name);
@@ -29,6 +24,11 @@ std::string demangle(const char* name);
 enum class Endian {
     Little,
     Big
+};
+
+struct AtomicResult {
+  bool ok;          // false => bus error / not supported
+  uint32_t old;     // old value (byte in low 8 bits for ldstub)
 };
 
 class IMemoryBank {
@@ -45,6 +45,14 @@ public:
     
     // Gets a pointer to the host data buffer
     virtual u32* get_ptr() = 0;
+
+    // Atomics with RAM access (default: not supported)
+    virtual AtomicResult atomic_ldstub8(uint32_t paddr) { return {false, 0}; }
+    virtual AtomicResult atomic_swap32 (uint32_t paddr, uint32_t newv) { return {false, 0}; }
+    virtual AtomicResult atomic_casa32 (uint32_t paddr, uint32_t expected, uint32_t desired, bool* swapped) {
+        if (swapped) *swapped = false;
+        return {false, 0};
+    }
 
     virtual u16 read16(u32 addr, bool align = true) const {
         if (align && (addr & 1))
@@ -188,13 +196,13 @@ public:
     }
 
     u8 read8(u32 addr) const override {
-        std::lock_guard<std::mutex> lk(mtx);
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
         check_range(addr);
         return data[addr - base];
     }
 
     void write8(u32 addr, u8 val) override {
-        std::lock_guard<std::mutex> lk(mtx);
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
         check_range(addr);
         data[addr - base] = val;
     }
@@ -204,17 +212,82 @@ public:
 
     u32* get_ptr() override { return reinterpret_cast<u32*>(data.data());}
 
+    AtomicResult atomic_ldstub8(uint32_t paddr) override {
+        std::lock_guard lk(global_ram_mtx);
+        uint8_t old = read8_nolock(paddr);
+        write8_nolock(paddr, 0xFF);
+        return {true, (uint32_t)old};
+    }
+
+    AtomicResult atomic_swap32(uint32_t paddr, uint32_t newv) override {
+        std::lock_guard lk(global_ram_mtx);
+        uint32_t old = read32_nolock(paddr);          // BE handling here
+        write32_nolock(paddr, newv);
+        return {true, old};
+    }
+
+    AtomicResult atomic_casa32(uint32_t paddr, uint32_t expected, uint32_t desired, bool* swapped) override {
+        std::lock_guard lk(global_ram_mtx);
+        uint32_t old = read32_nolock(paddr);
+        if (old == expected) {
+            write32_nolock(paddr, desired);
+            if (swapped) *swapped = true;
+        } else {
+            if (swapped) *swapped = false;
+        }
+        return {true, old};
+    }
+
 private:
     u32 base;
     size_t size;
     std::vector<u8> data;
 
-    mutable std::mutex mtx;
+    mutable std::mutex global_ram_mtx;
 
     void check_range(u32 addr) const {
         if (!contains(addr))
             throw std::out_of_range("RAM access out of range");
     }
+
+        u8 read8_nolock(u32 addr) const {
+        return data[addr - base];
+    }
+
+    void write8_nolock(u32 addr, u8 val) {
+        data[addr - base] = val;
+    }
+
+    u32 read32_nolock(u32 addr, bool align = true) const {
+        if (align && (addr & 3))
+            throw std::runtime_error("Unaligned 32-bit read at 0x" + to_hex(addr));
+        u8 b0 = read8_nolock(addr);
+        u8 b1 = read8_nolock(addr + 1);
+        u8 b2 = read8_nolock(addr + 2);
+        u8 b3 = read8_nolock(addr + 3);
+        if (bankEndian == Endian::Big) {
+            return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+        } else {
+            return (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
+        }
+    }
+
+    virtual void write32_nolock(u32 addr, u32 val, bool align = true) {
+        if (align && (addr & 3))
+            throw std::runtime_error("Unaligned 32-bit write at 0x" + to_hex(addr));
+        if (bankEndian == Endian::Big) {
+            write8_nolock(addr,     (val >> 24) & 0xFF);
+            write8_nolock(addr + 1, (val >> 16) & 0xFF);
+            write8_nolock(addr + 2, (val >> 8)  & 0xFF);
+            write8_nolock(addr + 3,  val        & 0xFF);
+        } else {
+            write8_nolock(addr,      val        & 0xFF);
+            write8_nolock(addr + 1, (val >> 8)  & 0xFF);
+            write8_nolock(addr + 2, (val >> 16) & 0xFF);
+            write8_nolock(addr + 3, (val >> 24) & 0xFF);
+        }
+    }
+
 };
 
 
@@ -240,49 +313,49 @@ public:
 
     u8 read8(u32 addr) const {
         #ifdef PROFILE_MEM_ACCESS
-        p.r8++;
+        g_memprof.record(MemAccessProfiler::Op::Read, addr, 1);
         #endif
         return find_bank(addr)->read8(addr);
     }
 
     u16 read16(u32 addr, bool align = true) const {
         #ifdef PROFILE_MEM_ACCESS
-        p.r16++;
+        g_memprof.record(MemAccessProfiler::Op::Read, addr, 2);
         #endif
         return find_bank(addr)->read16(addr, align);
     }
 
     u32 read32(u32 addr, bool align = true) const {
         #ifdef PROFILE_MEM_ACCESS
-        p.r32++;
+        g_memprof.record(MemAccessProfiler::Op::Read, addr, 4);
         #endif
         return find_bank(addr)->read32(addr, align);
     }
 
     u64 read64(u32 addr, bool align = true) const {
         #ifdef PROFILE_MEM_ACCESS
-        p.r64++;
+        g_memprof.record(MemAccessProfiler::Op::Read, addr, 8);
         #endif
         return find_bank(addr)->read64(addr, align);
     }
 
     void write8(u32 addr, u8 val) {
         #ifdef PROFILE_MEM_ACCESS
-        p.w8++;
+        g_memprof.record(MemAccessProfiler::Op::Write, addr, 1);
         #endif
         find_bank(addr)->write8(addr, val);
     }
 
     void write16(u32 addr, u16 val, bool align = true) {
         #ifdef PROFILE_MEM_ACCESS
-        p.w16++;
+        g_memprof.record(MemAccessProfiler::Op::Write, addr, 2);
         #endif
         find_bank(addr)->write16(addr, val, align);
     }
 
     void write32(u32 addr, u32 val, bool align = true) {
         #ifdef PROFILE_MEM_ACCESS
-        p.w32++;
+        g_memprof.record(MemAccessProfiler::Op::Write, addr, 4);
         #endif
         
         find_bank(addr)->write32(addr, val, align);
@@ -290,9 +363,27 @@ public:
 
     void write64(u32 addr, u64 val, bool align = true) {
         #ifdef PROFILE_MEM_ACCESS
-        p.w64++;
+        g_memprof.record(MemAccessProfiler::Op::Write, addr, 8);
         #endif
         find_bank(addr)->write64(addr, val, align);
+    }
+
+    AtomicResult atomic_ldstub8(uint32_t paddr) {
+        auto* bank = find_bank(paddr);
+        if (!bank) return {false, 0};
+        return bank->atomic_ldstub8(paddr);
+    }
+
+    AtomicResult atomic_swap32(uint32_t paddr, uint32_t newv) {
+        auto* bank = find_bank(paddr);
+        if (!bank) return {false, 0};
+        return bank->atomic_swap32(paddr, newv);
+    }
+
+    AtomicResult atomic_casa32(uint32_t paddr, uint32_t expected, uint32_t desired, bool* swapped) {
+        auto* bank = find_bank(paddr);
+        if (!bank) { if (swapped) *swapped = false; return {false, 0}; }
+        return bank->atomic_casa32(paddr, expected, desired, swapped);
     }
 
     IMemoryBank* find_bank(u32 addr) const {
@@ -412,10 +503,11 @@ private:
 
 #ifdef PROFILE_MEM_ACCESS
 private:
-    mutable MctrlProfile p{};
+    mutable MemAccessProfiler g_memprof{12}; // 4KiB
+
 public:
     void print_profile() {
-        print_mctrl_profile(p);
+        g_memprof.dump(std::cout, 10);
     } 
 private:
 #endif
