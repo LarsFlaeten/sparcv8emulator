@@ -230,8 +230,15 @@ class CPU
         //u32  ReadRegsAll (const int reg_base); 
         void write_reg (const u32 value, const u32 reg_no);
         
-        int  mem_read(const u32 va, const int bytes, const u32 rd, const int signext, bool forced_cache_miss);    
-        int  mem_write(const u32 va, const int bytes, const u32 rd);
+        // Handy methods for reading/writing between memory and a reg
+        int load8(const u32 va, const u32 rd, const int signext, bool forced_cache_miss);    
+        int load16(const u32 va, const u32 rd, const int signext, bool forced_cache_miss);    
+        int load32(const u32 va, const u32 rd, const int signext, bool forced_cache_miss);    
+        int load64(const u32 va, const u32 rd, const int signext, bool forced_cache_miss);    
+        int store8(const u32 va, const u32 rd);
+        int store16(const u32 va, const u32 rd);
+        int store32(const u32 va, const u32 rd);
+        int store64(const u32 va, const u32 rd);
         
         // Get/Set multi-core id:
         //void set_cpu_id(u32 value) { 

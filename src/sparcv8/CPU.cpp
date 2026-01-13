@@ -682,7 +682,62 @@ u32 CPU::GetRegBase (const u32 reg_no)
 
 //------------------------------------------------------------------------
 //
-int CPU::mem_read(const u32 va, const int bytes, const u32 rd, const int signext, bool forced_cache_miss) 
+
+int CPU::load8(const u32 va, const u32 rd, const int signext, bool forced_cache_miss) 
+{
+    // TODO:
+    // Implement cache and possible forced cache miss (ASI=1)
+
+    bool super = ((psr >> 7) & 0x1) == 0x1;
+
+    u32 value = 0;
+    
+    int ret1 = mmu.MemAccess<intent_load,1>(va, value, CROSS_ENDIAN, super);
+    if(ret1 == 0) {
+        value |= ((signext && (value & BIT7)) ? 0xffffff00 : 0);
+        write_reg(value, rd);
+    }
+    
+    return ret1;
+}
+
+int CPU::load16(const u32 va, const u32 rd, const int signext, bool forced_cache_miss) 
+{
+    // TODO:
+    // Implement cache and possible forced cache miss (ASI=1)
+
+    bool super = ((psr >> 7) & 0x1) == 0x1;
+
+    u32 value = 0;
+
+    int ret1 = mmu.MemAccess<intent_load,2>(va, value, CROSS_ENDIAN, super);
+    if(ret1 == 0) {
+        value |= ((signext && (value & BIT15)) ? 0xffff0000 : 0);
+        write_reg(value, rd);
+    }
+    
+    return ret1;
+}
+
+int CPU::load32(const u32 va, const u32 rd, const int signext, bool forced_cache_miss) 
+{
+    // TODO:
+    // Implement cache and possible forced cache miss (ASI=1)
+
+    bool super = ((psr >> 7) & 0x1) == 0x1;
+
+    u32 value = 0;
+    
+    int ret1 = mmu.MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
+    if(ret1 == 0) {
+        value |= ((signext && (value & BIT7)) ? 0xffffff00 : 0);
+        write_reg(value, rd);
+    }
+
+    return ret1;
+}
+
+int CPU::load64(const u32 va, const u32 rd, const int signext, bool forced_cache_miss) 
 {
     // TODO:
     // Implement cache and possible forced cache miss (ASI=1)
@@ -693,39 +748,12 @@ int CPU::mem_read(const u32 va, const int bytes, const u32 rd, const int signext
 
     u32 value = 0;
     u32 value_ext = 0;
-    int ret1, ret2;
-    //reg_no = GetRegBase(rd);
-
-    ret1 = ret2 = 0;
-
-    switch (bytes) {
-    case 1 :
-        ret1 = mmu.MemAccess<intent_load,1>(va, value, CROSS_ENDIAN, super);
-        if(ret1 == 0) {
-            value |= ((signext && (value & BIT7)) ? 0xffffff00 : 0);
-            write_reg(value, rd);
-        }
-        break;
-    case 2 : 
-        ret1 = mmu.MemAccess<intent_load,2>(va, value, CROSS_ENDIAN, super);
-        if(ret1 == 0) {
-            value |= ((signext && (value & BIT15)) ? 0xffff0000 : 0);
-            write_reg(value, rd);
-        }
-        break;
-    case 4 :
-        ret1 = mmu.MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
-        if(ret1 == 0)
-            write_reg(value, rd);
-        break;
-    case 8 :
-        ret1 = mmu.MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
-        ret2 = mmu.MemAccess<intent_load,4>(va+4, value_ext, CROSS_ENDIAN, super);
-        if( (ret1 == 0) && (ret2 == 0) ) {
-            write_reg(value, rd);
-            write_reg(value_ext, rd+1);
-        }
-        break;
+    
+    int ret1 = mmu.MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
+    int ret2 = mmu.MemAccess<intent_load,4>(va+4, value_ext, CROSS_ENDIAN, super);
+    if( (ret1 == 0) && (ret2 == 0) ) {
+        write_reg(value, rd);
+        write_reg(value_ext, rd+1);
     }
 
     return ret1 | ret2;
@@ -733,67 +761,63 @@ int CPU::mem_read(const u32 va, const int bytes, const u32 rd, const int signext
 
 //------------------------------------------------------------------------
 //
-int CPU::mem_write(const u32 va, const int bytes, const u32 rd) 
+int CPU::store8(const u32 va, const u32 rd) 
 {
     u32 value;
-    int ret1, ret2;
-
+    
     bool super = ((psr >> 7) & 0x1) == 0x1;
 
-
-    
     read_reg(rd, &value);
     
-    ret1 = ret2 = 0;
-    switch (bytes) {
-    case 1 :
-        ret1 = mmu.MemAccess<intent_store,1>(va, value, CROSS_ENDIAN, super);
-        break;
-    case 2 : 
-        ret1 = mmu.MemAccess<intent_store,2>(va, value, CROSS_ENDIAN, super);
-        break;
-    case 4 :
-        ret1 = mmu.MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
-        break;
-    case 8 :
-        ret1 = mmu.MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
-        read_reg(rd+1, &value);
-        ret2 = mmu.MemAccess<intent_store,4>(va+4, value, CROSS_ENDIAN, super);
-        break;
-    }
-
-    return ret1 | ret2; 
-
+    int ret1 = mmu.MemAccess<intent_store,1>(va, value, CROSS_ENDIAN, super);
+    
+    return ret1; 
 }
-
 
 //------------------------------------------------------------------------
 //
-/*
-void CPU::disp_read_reg (const u32 reg_no, u32 *value) 
+int CPU::store16(const u32 va, const u32 rd) 
 {
-    u32  win;
-   
-    win = (get_psr() & LOBITS4);
-    globals[0] = 0;
+    u32 value;
+    
+    bool super = ((psr >> 7) & 0x1) == 0x1;
 
-    switch ((reg_no >> 3) & LOBITS2) {
-    case 0 : // Globals
-        *value = globals[reg_no & LOBITS3];
-        break;
-    case 1 : // Outs
-        *value = outs [(win << 3) | (reg_no & LOBITS3)];
-        break;
-    case 2 : // locals
-        *value = locals [(win << 3) | (reg_no & LOBITS3)];
-        break;
-    case 3 : // Ins
-        win = (get_psr() & LOBITS4) + 1;
-        *value = outs [(win << 3) | (reg_no & LOBITS3)];
-        break;
-    }
+    read_reg(rd, &value);
+    
+    int ret1 = mmu.MemAccess<intent_store,2>(va, value, CROSS_ENDIAN, super);
+    
+    return ret1; 
 }
-*/
+
+//------------------------------------------------------------------------
+//
+int CPU::store32(const u32 va, const u32 rd) 
+{
+    u32 value;
+    
+    bool super = ((psr >> 7) & 0x1) == 0x1;
+
+    read_reg(rd, &value);
+    
+    int ret1 = mmu.MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
+    
+    return ret1; 
+}
+
+int CPU::store64(const u32 va, const u32 rd) 
+{
+    u32 value;
+    
+    bool super = ((psr >> 7) & 0x1) == 0x1;
+
+    read_reg(rd, &value);    
+    int ret1 = mmu.MemAccess<intent_store,4>(va, value, CROSS_ENDIAN, super);
+    read_reg(rd+1, &value);    
+    int ret2 = mmu.MemAccess<intent_store,4>(va+4, value, CROSS_ENDIAN, super);
+    
+    return ret1 | ret2; 
+}
+
 
 //------------------------------------------------------------------------
 //
