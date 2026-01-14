@@ -619,66 +619,6 @@ void CPU::write_reg (const u32 value, const u32 reg_no)
       break;
    }
 }
-/*
-//------------------------------------------------------------------------
-//
-void CPU::WriteRegAll (const int RegBase, const u32 WriteValue) {
-    switch ((RegBase >> 7) & 3) {
-    case 0:
-        Outs[RegBase & LOBITS7] = WriteValue;
-        //if (Debug)
-        //    fprintf(ofp, "          Read Outs[%0d]=%x\n", RegBase & LOBITS7, WriteValue); 
-        break;
-    case 1:
-        Locals[RegBase & LOBITS7] = WriteValue;
-        //if (Debug)
-        //    fprintf(ofp, "          Read Locals[%0d]=%x\n", RegBase & LOBITS7, WriteValue); 
-        break;
-    case 2:
-        Globals[RegBase & LOBITS4] = WriteValue;
-        //if (Debug)
-        //    fprintf(ofp, "          Read Globals[%0d]=%x\n", RegBase & LOBITS4, WriteValue); 
-        break;
-    case 3:
-        throw std::runtime_error("*** WriteRegAll(): bad register address\n");
-        break;
-   }
-}
-
-//------------------------------------------------------------------------
-//
-u32 CPU::ReadRegsAll (const int reg_base) 
-{
-    switch ((reg_base >> 7) & LOBITS2) {
-    case 0: return Outs[reg_base & LOBITS7]; break;
-    case 1: return Locals[reg_base & LOBITS7]; break;
-    case 2: return Globals[reg_base & LOBITS4]; break;
-   }
-
-   return 0;
-}
-
-//------------------------------------------------------------------------
-//
-u32 CPU::GetRegBase (const u32 reg_no) 
-{
-    switch ((reg_no >> 3) & LOBITS2) {
-    case 0 : // Globals
-        return  (2 << 7) | (reg_no & LOBITS3);
-        break;
-    case 1 : // Outs
-        return  ((GetPSR() & 0xf) << 3) | (reg_no & LOBITS3);
-        break;
-    case 2 : // locals
-        return  (1 << 7) | ((GetPSR() & LOBITS4) << 3) | (reg_no & LOBITS3);
-        break;
-    case 3 : // Ins
-        return   (((GetPSR()+1) & LOBITS4) << 3) | (reg_no & LOBITS3);
-        break;
-    }
-    return 0;
-}
-*/
 
 //------------------------------------------------------------------------
 //

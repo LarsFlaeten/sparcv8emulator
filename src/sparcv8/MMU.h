@@ -227,6 +227,9 @@ public:
         u8 level = 0;
        
         // Check alignment
+        // We drop aligment check, since the relevant instructions allready does this test
+        // and software (linux) does not rely on FSR/FAR in unaligned-traps.
+        /*
         if(virt_addr % size != 0) {
             u32 AT = get_access_type(rw, supervisor);
             u32 FT = 3;
@@ -237,7 +240,7 @@ public:
             }
             return -FT;
         }
-
+        */
         
     
         if(GetEnabled()) {
@@ -272,10 +275,10 @@ public:
                         mctrl.write8(phys_addr, value);
                         break;
                     case(2):
-                        mctrl.write16(phys_addr, value);
+                        mctrl.write16(phys_addr, value, false);
                         break;
                     case(4):
-                        mctrl.write32(phys_addr, value);
+                        mctrl.write32(phys_addr, value, false);
                         break;
                     default:
                         throw std::runtime_error("Error write size != {1,2,4}");
@@ -288,10 +291,10 @@ public:
                         value = mctrl.read8(phys_addr);
                         break;
                     case(2):
-                        value = mctrl.read16(phys_addr);
+                        value = mctrl.read16(phys_addr, false);
                         break;
                     case(4):
-                        value = mctrl.read32(phys_addr);
+                        value = mctrl.read32(phys_addr, false);
                         break;
                     default:
                         throw std::runtime_error("Error read size != {1,2,4}");

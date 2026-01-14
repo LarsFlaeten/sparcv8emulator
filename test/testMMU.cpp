@@ -1021,9 +1021,14 @@ TEST_F(MMUTest, MMUFaults)
     u32 val;
     int ret;
     // Should flag unaligned:
+    // Update:
+    // Should NOT flag unaligned:
+    // we drop the alignment check in the MMU access. This is handled by
+    // LOAD/STORE instructions themselves, and traps, not MMU faults.
     ret = mmu.MemAccess<intent_load>(0x6000000F, val, CROSS_ENDIAN);
-    ASSERT_EQ(ret, -3);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0x60000000); // Corresponding page
+    ASSERT_EQ(ret, 0);
+    //ASSERT_EQ(ret, -3);
+    //ASSERT_EQ(mmu.GetFaultAddress(), 0x60000000); // Corresponding page
 
     // Get a level 3 and level 1 physical address we can play with
     u32 pa_l3 = mctrl.read32(_mmu_ctx0_ffd_level3[0]) >> 8;
