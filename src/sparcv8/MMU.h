@@ -182,17 +182,17 @@ public:
         dtlb.flush();
     }
 
-    inline u32 MemAccessBypassRead4(u32 pa) const {
+    inline u32 MemAccessBypassRead4(u32 pa) const noexcept {
         u32 out;
         auto r = mctrl.try_read32(pa, out, false);
-        if(r.ok)
+        if(r == MemBusStatus::Ok)
             return out;
         else
             return 0x0;
     }
 
-    inline void MemAccessBypassWrite4(u32 pa, u32 value) {
-        auto r = mctrl.try_write32(pa, value);
+    inline void MemAccessBypassWrite4(u32 pa, u32 value) noexcept {
+        mctrl.try_write32(pa, value);
         return;
     }
 
