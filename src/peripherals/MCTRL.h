@@ -14,7 +14,7 @@
 
 #include "../common.h"
 
-#if 1
+#if 0
 #define PROFILE_MEM_ACCESS
 #include "../memaccessprofiler.hpp"
 #endif
@@ -225,6 +225,56 @@ public:
         std::lock_guard<std::mutex> lk(global_ram_mtx);
         //check_range(addr); // We dont check range, tha dress has allready been throug find_bank
         data[addr - base] = val;
+    }
+
+     u16 read16(u32 addr, bool align = true) const override {
+#ifndef NDEBUG
+        if (align && (addr & 1)) std::abort();
+#endif
+        const u32 off = addr - base;
+#ifndef NDEBUG
+        if (off + 1 >= mem_.size()) std::abort();
+#endif
+        const u8* p = &data[off];
+        // SPARC RAM as big-endian
+        return (u16(p[0]) << 8) | u16(p[1]);
+    }
+
+    void write16(u32 addr, u16 val, bool align = true) override {
+#ifndef NDEBUG
+        if (align && (addr & 1)) std::abort();
+#endif
+        const u32 off = addr - base;
+#ifndef NDEBUG
+        if (off + 1 >= mem_.size()) std::abort();
+#endif
+        u8* p = &data[off];
+        p[0] = u8((val >> 8) & 0xff);
+        p[1] = u8((val >> 0) & 0xff);
+    }
+
+    u32 read32(u32 addr, bool align = true) const override {
+        // assume align already handled above; if you keep align param:
+#ifndef NDEBUG
+        if (align && (addr & 3)) std::abort();
+#endif
+        const u32 off = addr - base;              // or however you map
+        const u8* p = &data[off];                  // mem_ is contiguous u8 storage
+
+        // Guest is big-endian on SPARC; assemble without calling read8()
+        return (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]);
+    }
+
+    void write32(u32 addr, u32 val, bool align = true) override {
+#ifndef NDEBUG
+        if (align && (addr & 3)) std::abort();
+#endif
+        const u32 off = addr - base;
+        u8* p = &data[off];
+        p[0] = (val >> 24) & 0xff;
+        p[1] = (val >> 16) & 0xff;
+        p[2] = (val >>  8) & 0xff;
+        p[3] = (val >>  0) & 0xff;
     }
 
     u32 get_base() const override { return base; }
