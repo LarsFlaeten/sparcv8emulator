@@ -665,9 +665,8 @@ int CPU::load32(const u32 va, const u32 rd, const int signext, bool forced_cache
     // Implement cache and possible forced cache miss (ASI=1)
 
     bool super = ((psr >> 7) & 0x1) == 0x1;
-
     u32 value = 0;
-    
+
     int ret1 = mmu.MemAccess<intent_load,4>(va, value, CROSS_ENDIAN, super);
     if(ret1 == 0) {
         value |= ((signext && (value & BIT7)) ? 0xffffff00 : 0);
