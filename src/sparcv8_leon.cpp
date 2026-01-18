@@ -282,13 +282,15 @@ int main(int argc, char **argv)
     for(int i = 0; i < num_cpus; ++i) {
         auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, i, write_to_file ? os : std::cout)); 
         cpu->set_verbose(verbose);
-        
         cpu->register_bus_tick_function( tick_lambda );
 
         cpu->reset(entry_va);
 
         cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
         cpu->write_reg(end_of_ram, INREG6); // Write frame pointer
+    
+        intc.set_cpu_ptr(cpu.get(), i);
+        
     }
     
     
