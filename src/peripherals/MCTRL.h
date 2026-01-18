@@ -14,7 +14,7 @@
 
 #include "../common.h"
 
-#if 1
+#if 0
 #define PROFILE_MEM_ACCESS
 #include "../memaccessprofiler.hpp"
 #endif
