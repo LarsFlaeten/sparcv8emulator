@@ -14,7 +14,7 @@
 
 #include "../common.h"
 
-#if 0
+#if 1
 #define PROFILE_MEM_ACCESS
 #include "../memaccessprofiler.hpp"
 #endif
@@ -421,6 +421,10 @@ public:
     }
 
     MemBusStatus try_read8(u32 addr, u32& out) const noexcept {
+        #ifdef PROFILE_MEM_ACCESS
+        g_memprof.record(MemAccessProfiler::Op::Read, addr, 1);
+        #endif
+        
         auto* b = find_bank_or_null(addr);
         if (!b) return MemBusStatus::NoDevice;
         // For now keep the existing IMemoryBank::read32 implementation
@@ -429,6 +433,10 @@ public:
     }
 
     MemBusStatus try_read16(u32 addr, u32& out, bool align = true) const noexcept {
+        #ifdef PROFILE_MEM_ACCESS
+        g_memprof.record(MemAccessProfiler::Op::Read, addr, 2);
+        #endif
+        
         auto* b = find_bank_or_null(addr);
         if (!b) return MemBusStatus::NoDevice;
         // For now keep the existing IMemoryBank::read32 implementation
@@ -437,6 +445,10 @@ public:
     }
 
     MemBusStatus try_read32(u32 addr, u32& out, bool align = true) const noexcept {
+        #ifdef PROFILE_MEM_ACCESS
+        g_memprof.record(MemAccessProfiler::Op::Read, addr, 4);
+        #endif
+        
         auto* b = find_bank_or_null(addr);
         if (!b) return MemBusStatus::NoDevice;
         // For now keep the existing IMemoryBank::read32 implementation
@@ -445,6 +457,10 @@ public:
     }
 
     MemBusStatus try_read64(u32 addr, u32& out, bool align = true) const noexcept {
+        #ifdef PROFILE_MEM_ACCESS
+        g_memprof.record(MemAccessProfiler::Op::Read, addr, 8);
+        #endif
+        
         auto* b = find_bank_or_null(addr);
         if (!b) return MemBusStatus::NoDevice;
         // For now keep the existing IMemoryBank::read32 implementation
@@ -453,6 +469,10 @@ public:
     }
 
     MemBusStatus try_write8(u32 addr, u32 value) noexcept {
+        #ifdef PROFILE_MEM_ACCESS
+        g_memprof.record(MemAccessProfiler::Op::Write, addr, 1);
+        #endif
+        
         auto* b = find_bank_or_null(addr);
         if (!b) return MemBusStatus::NoDevice;
         b->write8(addr, value);
@@ -460,6 +480,11 @@ public:
     }
 
     MemBusStatus try_write16(u32 addr, u32 value, bool align = true) noexcept {
+        #ifdef PROFILE_MEM_ACCESS
+        g_memprof.record(MemAccessProfiler::Op::Write, addr, 2);
+        #endif
+        
+        
         auto* b = find_bank_or_null(addr);
         if (!b) return MemBusStatus::NoDevice;
         b->write16(addr, value, align);
@@ -467,6 +492,12 @@ public:
     }
 
     MemBusStatus try_write32(u32 addr, u32 value, bool align = true) noexcept {
+        #ifdef PROFILE_MEM_ACCESS
+        g_memprof.record(MemAccessProfiler::Op::Write, addr, 4);
+        #endif
+        
+
+
         auto* b = find_bank_or_null(addr);
         if (!b) return MemBusStatus::NoDevice;
         b->write32(addr, value, align);
@@ -474,6 +505,10 @@ public:
     }
 
     MemBusStatus try_write64(u32 addr, u32 value, bool align = true) noexcept {
+        #ifdef PROFILE_MEM_ACCESS
+        g_memprof.record(MemAccessProfiler::Op::Write, addr, 8);
+        #endif
+        
         auto* b = find_bank_or_null(addr);
         if (!b) return MemBusStatus::NoDevice;
         b->write64(addr, value, align);
@@ -510,73 +545,6 @@ public:
         throw std::out_of_range("No bank for addr");
     }
 
-    /*
-    void debug_read8(u32 addr) const {
-        try {
-            const IMemoryBank* bank = find_bank_or_null(addr);
-            u8 val = bank->read8(addr);
-
-            std::cout << "[debug_read8]  Addr: 0x" << std::hex << addr
-                    << " -> Value: 0x" << +val
-                    << " (Bank: 0x" << bank->get_base()
-                    << " - 0x" << (bank->get_limit() - 1)
-                    << ")\n";
-        } catch (const std::exception& e) {
-            std::cerr << "[debug_read8]  Error at 0x" << std::hex << addr
-                    << ": " << e.what() << "\n";
-        }
-    }
-
-    void debug_read16(u32 addr, bool align = true) const {
-        try {
-            const IMemoryBank* bank = find_bank_or_null(addr);
-            u16 val = bank->read16(addr, align);
-            Endian endian = bank->get_endian();
-
-            std::cout << "[debug_read16] Addr: 0x" << std::hex << addr
-                    << " -> Value: 0x" << val
-                    << " (Bank: 0x" << bank->get_base()
-                    << " - 0x" << (bank->get_limit() - 1)
-                    << ", " << (endian == Endian::Big ? "Big" : "Little") << "-endian)\n";
-        } catch (const std::exception& e) {
-            std::cerr << "[debug_read16] Error at 0x" << std::hex << addr
-                    << ": " << e.what() << "\n";
-        }
-    }
-
-    void debug_read32(u32 addr, bool align = true) const {
-        try {
-            const IMemoryBank* bank = find_bank_or_null(addr);
-            u32 val = bank->read32(addr, align);
-            Endian endian = bank->get_endian();
-
-            std::cout << "[debug_read32] Addr: 0x" << std::hex << addr
-                    << " -> Value: 0x" << val
-                    << " (Bank: 0x" << bank->get_base()
-                    << " - 0x" << (bank->get_limit() - 1)
-                    << ", " << (endian == Endian::Big ? "Big" : "Little") << "-endian)\n";
-        } catch (const std::exception& e) {
-            std::cerr << "[debug_read32] Error at 0x" << std::hex << addr
-                    << ": " << e.what() << "\n";
-        }
-    }
-    void debug_read64(u32 addr, bool align = true) const {
-        try {
-            const IMemoryBank* bank = find_bank_or_null(addr);
-            uint64_t val = bank->read64(addr, align);
-            Endian endian = bank->get_endian();
-
-            std::cout << "[debug_read64] Addr: 0x" << std::hex << addr
-                    << " -> Value: 0x" << std::setw(16) << std::setfill('0') << val
-                    << " (Bank: 0x" << bank->get_base()
-                    << " - 0x" << (bank->get_limit() - 1)
-                    << ", " << (endian == Endian::Big ? "Big" : "Little") << "-endian)\n";
-        } catch (const std::exception& e) {
-            std::cerr << "[debug_read64] Error at 0x" << std::hex << addr
-                    << ": " << e.what() << "\n";
-        }
-    }
-    */
     void debug_list_banks() const {
         std::cout << "\n[Memory Map Overview]\n";
         std::cout << "Idx |      Start -       End  |   Size   | Access | Endian | Type\n";
