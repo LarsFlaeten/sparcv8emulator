@@ -57,6 +57,22 @@ public:
 };
 
 
+
+struct MMUFault {
+    u32 far;      // faulting VA (full)
+    u8  ft;       // fault type (SRMMU)
+    u8  at;       // access type (0..7)
+    u8  level;    // 0..3 (table walk level; 0 if N/A)
+    bool fav;     // Fault Address Valid
+};
+
+struct MMUTranslateResult {
+    bool ok;
+    u32 pa;
+    u8 level;
+};
+
+
 class MMU {
     MCtrl& mctrl;
     // MMUR REGS
@@ -88,6 +104,15 @@ class MMU {
  
     TLB itlb; // TLB for instructions
     TLB dtlb; // For data R/W
+
+    // SRMMU FSR packer 
+    inline u32 make_fsr(u8 level, u8 at, u8 ft, bool fav)
+    {
+        return ((u32(level & 0x3) << 8) |
+                (u32(at    & 0x7) << 5) |
+                (u32(ft    & 0x7) << 2) |
+                (fav ? 0x2u : 0u));
+    }
     
 public:
     MCtrl&  GetMCTRL() {return mctrl;}
@@ -165,8 +190,8 @@ public:
         mctrl.write32(pa, value);
     }
 
-    inline u32 get_access_type(intent rw, bool supervisor) {
-        u32 AT = 0;
+    inline u8 get_access_type(intent rw, bool supervisor) {
+        u8 AT = 0;
 
         // ACCESS TYPE
         if(rw == intent_load) {
@@ -207,9 +232,13 @@ public:
     
     
 
-    u32 translate_va(u32 virt_addr, bool supervisor, intent rw=intent_load, bool report_faults = true);
+    MMUTranslateResult translate_va(u32 virt_addr, bool supervisor, intent rw=intent_load, bool report_faults = true);
       
-    
+    inline void set_fault(const MMUFault& f)
+    {
+        fault_address_reg = f.far;
+        fault_status_reg  = make_fsr(f.level, f.at, f.ft, f.fav);
+    }
     
     /* All memory access is routed through this template function. */
     /* It handles reads and writes of different sizes,
@@ -220,34 +249,23 @@ public:
      * 0  - OK, data read or written
      * <0 - MMU FAULT
      */
+
+    struct MemAccessResult {
+        bool ok;
+        // optional: for debug/metrics
+    };
+
     template<intent rw=intent_load, unsigned size = 4>
     int MemAccess(u32 virt_addr, u32& value, bool reverse, bool supervisor = true, bool report_faults = true)
     {
         u32 phys_addr = 0x0;
         u8 level = 0;
        
-        // Check alignment
-        // We drop aligment check, since the relevant instructions allready does this test
-        // and software (linux) does not rely on FSR/FAR in unaligned-traps.
-        /*
-        if(virt_addr % size != 0) {
-            u32 AT = get_access_type(rw, supervisor);
-            u32 FT = 3;
-            u32 FAV = 0x2;
-            if(report_faults) {
-                fault_status_reg = 0x0 | ((level&0x3) << 8) | (AT & 0x7) << 5 | FT << 2 | FAV;
-                fault_address_reg = virt_addr & ~0xfff;
-            }
-            return -FT;
-        }
-        */
-        
-    
         if(GetEnabled()) {
 
-            phys_addr = translate_va(virt_addr, supervisor, rw, report_faults);
+            auto res = translate_va(virt_addr, supervisor, rw, report_faults);
             
-            if((phys_addr == 0xffffffff) && (virt_addr != 0xffffffff))
+            if(!res.ok)
             {
                 u32 FT;
                 // We failed
@@ -260,6 +278,8 @@ public:
                 return -FT;
 
             }
+
+            phys_addr = res.pa;
 
         } else {
             // MMU disabled - phys addr == virt addr
@@ -305,13 +325,19 @@ public:
         catch(const std::out_of_range& c)
         {
             //fprintf(stderr, "MemAccess(virt=%08X,phys=%08X,size=%u,reverse=%s,mode=%s,UM=%d,VM=%d> failed because of bad function call!\n",
-            u8 FT = 1;
-            u32 FAV = 0x2;
             if(report_faults) {
-                fault_status_reg = 0x0 | ((level&0x3) << 8) | FT << 2 | FAV;
-                fault_address_reg = virt_addr & ~0xfff;
+            
+                MMUFault f{
+                    .far = virt_addr,
+                    .ft = 5, 
+                    .at = (u8)get_access_type(rw, supervisor),
+                    .level = level,
+                    .fav = true,
+                };
+
+                set_fault(f);
             }
-            return -FT;
+            return -1;
         }
         
         return 0;

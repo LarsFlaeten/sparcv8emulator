@@ -943,7 +943,8 @@ TEST_F(MMUTest, MMUTables)
 
     ret = mmu.MemAccess<intent_load>(0xFBFFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xFBFFF000); // Corresponing page
+    //ASSERT_EQ(mmu.GetFaultAddress(), 0xFBFFF000); // Corresponing page
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xFBFFFFFC); // We now do full VA
 
     // Area not mapped,  * 0xFC000000-0xFFCFFFFF: Not Mapped
     ret = mmu.MemAccess<intent_load>(0xFC000000, val, CROSS_ENDIAN);
@@ -952,17 +953,20 @@ TEST_F(MMUTest, MMUTables)
 
     ret = mmu.MemAccess<intent_load>(0xFFCFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFCFF000);
+    //ASSERT_EQ(mmu.GetFaultAddress(), 0xFFCFF000);
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFCFFFFC); // We now do full VA
 
 
     // Area not mapped,   * 0xFFD3FFFF-0xFFFFFFFF: Not Mapped
     ret = mmu.MemAccess<intent_load>(0xFFD3FFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFD3F000);
+    //ASSERT_EQ(mmu.GetFaultAddress(), 0xFFD3F000);
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFD3FFFC); // We now do full VA
 
     ret = mmu.MemAccess<intent_load>(0xFFFFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFFFF000);
+    //ASSERT_EQ(mmu.GetFaultAddress(), 0xFFFFF000);
+    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFFFFFFC); // We now do full VA
 
     
     // Read memory through MMU translation for 81 kb PROM (mapped to end of ram)
@@ -1298,7 +1302,23 @@ TEST_F(MMUTest, MMUFaults)
     mmu.flush();
     ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, false);
     ASSERT_LT(ret, 0);
- 
+
+    // Access outside physical memory should have MMY set FT = 5:
+    mmu.flush();
+    ret = mmu.MemAccess<intent_load>(0x50000000, val, CROSS_ENDIAN, true);
+    ASSERT_LT(ret, 0);
+
+    auto fsr = mmu.GetFaultStatus();
+    ASSERT_EQ((fsr >> 2) & LOBITS3, 5); // FT == 5, Access Bus Error
+    ASSERT_EQ((fsr >> 1) & 0x1, 0x1); // FAV == 1, Fault Address Valid
+    ASSERT_EQ((fsr >> 5) & LOBITS3, 0x1); // AT == 1, Load from super data
+    
+
+    
+
+
+
+
 }   
 
 TEST_F(MMUTest, MMUFaults_cpuOP)

@@ -244,7 +244,7 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
 }
 
 
-u32 MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool report_faults) {
+MMUTranslateResult MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool report_faults) {
      
     
     // Lookup from TLB
@@ -279,9 +279,9 @@ u32 MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool report_faults)
     u32 ET = pte & SRMMU_ET_MASK;
 
     // Fault handling:    
-    u32 FT = 0; // Fault type      
-    u32 ACC = (pte >> 2) & 0x7;
-    u32 AT = get_access_type(rw, supervisor);
+    u8 FT = 0; // Fault type      
+    u8 ACC = (pte >> 2) & 0x7;
+    auto AT = get_access_type(rw, supervisor);
 
 
     if((ET == 1 && level == 3) || ET == 3) {
@@ -319,15 +319,18 @@ u32 MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool report_faults)
     if(FT != 0) {
         //std::cerr << "MMU Fault, virt_addr = 0x" << std::hex << virt_addr << ", lvl: " << std::dec << (int)level << ", intent=" << rw << " (" << rw_str(rw) << "), AT = " << AT << " (" << at_str(AT) << "), ACC = " << ACC << " (" << acc_str(ACC, supervisor) << "), FT = " << FT << " (" << ft_str(FT) << ")\n";
         if(report_faults) {
-            if(FT == 2)
-                fault_address_reg = vaddr; // Only show page, not page offset
-            else
-                fault_address_reg = vaddr & ~0xfff; // Only show page, not page offset
-        
-            u32 FAV = 0x2;
-            fault_status_reg = 0x0 | ((level&0x3) << 8) | (AT & 0x7) << 5 | FT << 2 | FAV;
+            MMUFault f{
+                    .far = vaddr,
+                    .ft = FT, 
+                    .at = AT,
+                    .level = level,
+                    .fav = true,
+                };
+
+            set_fault(f);    
         }
-        return 0xffffffff;
+
+        return {false, 0x0, level};
     }
 
 
@@ -343,6 +346,6 @@ u32 MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool report_faults)
     }
     u32 phys_addr = (va | (PPN << 12));
 
-    return phys_addr;
+    return {true, phys_addr, level};
 }
 
