@@ -228,6 +228,8 @@ public:
     }
 
      u16 read16(u32 addr, bool align = true) const override {
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
+        
 #ifndef NDEBUG
         if (align && (addr & 1)) std::abort();
 #endif
@@ -241,6 +243,8 @@ public:
     }
 
     void write16(u32 addr, u16 val, bool align = true) override {
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
+        
 #ifndef NDEBUG
         if (align && (addr & 1)) std::abort();
 #endif
@@ -254,6 +258,8 @@ public:
     }
 
     u32 read32(u32 addr, bool align = true) const override {
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
+        
         // assume align already handled above; if you keep align param:
 #ifndef NDEBUG
         if (align && (addr & 3)) std::abort();
@@ -266,6 +272,8 @@ public:
     }
 
     void write32(u32 addr, u32 val, bool align = true) override {
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
+        
 #ifndef NDEBUG
         if (align && (addr & 3)) std::abort();
 #endif
