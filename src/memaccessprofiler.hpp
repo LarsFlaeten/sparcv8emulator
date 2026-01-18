@@ -6,6 +6,70 @@
 #include <ostream>
 #include <iomanip>
 
+static inline double pct(uint64_t part, uint64_t whole) {
+    return whole ? (100.0 * double(part) / double(whole)) : 0.0;
+}
+
+static inline double mib(uint64_t bytes) {
+    return double(bytes) / (1024.0 * 1024.0);
+}
+
+static inline void print_count_pct(std::ostream& os,
+                                   const char* label,
+                                   uint64_t part,
+                                   uint64_t whole,
+                                   const char* suffix = "")
+{
+    os << "  " << std::left << std::setw(6) << label << ": "
+       << std::right << std::setw(12) << part
+       << "  (" << std::fixed << std::setprecision(1)
+       << std::setw(5) << pct(part, whole) << "%)"
+       << suffix << "\n";
+}
+
+static inline void print_bytes_pct(std::ostream& os,
+                                   const char* label,
+                                   uint64_t part_bytes,
+                                   uint64_t whole_bytes)
+{
+    os << "  " << std::left << std::setw(6) << label << ": "
+       << std::right << std::setw(12) << part_bytes << " B  ("
+       << std::fixed << std::setprecision(1) << std::setw(6)
+       << mib(part_bytes) << " MiB)  ("
+       << std::setw(5) << pct(part_bytes, whole_bytes) << "%)\n";
+}
+
+static inline void print_size_ops(std::ostream& os,
+                                 const char* label,
+                                 const uint64_t by_size[9],
+                                 uint64_t total_ops)
+{
+    auto one = by_size[1], two = by_size[2], four = by_size[4], eight = by_size[8];
+    os << "  " << label << ": "
+       << "1B=" << std::setw(10) << one  << " (" << std::setw(5) << pct(one,  total_ops)  << "%)  "
+       << "2B=" << std::setw(10) << two  << " (" << std::setw(5) << pct(two,  total_ops)  << "%)  "
+       << "4B=" << std::setw(10) << four << " (" << std::setw(5) << pct(four, total_ops)  << "%)  "
+       << "8B=" << std::setw(10) << eight<< " (" << std::setw(5) << pct(eight,total_ops) << "%)\n";
+}
+
+static inline void print_size_bytes(std::ostream& os,
+                                   const char* label,
+                                   const uint64_t by_size[9],
+                                   uint64_t total_bytes)
+{
+    auto b1 = by_size[1] * 1ull;
+    auto b2 = by_size[2] * 2ull;
+    auto b4 = by_size[4] * 4ull;
+    auto b8 = by_size[8] * 8ull;
+
+    os << "  " << label << ": "
+       << "1B=" << std::fixed << std::setprecision(2) << std::setw(7) << mib(b1) << " MiB (" << std::setw(5) << pct(b1, total_bytes) << "%)  "
+       << "2B=" << std::setw(7) << mib(b2) << " MiB (" << std::setw(5) << pct(b2, total_bytes) << "%)  "
+       << "4B=" << std::setw(7) << mib(b4) << " MiB (" << std::setw(5) << pct(b4, total_bytes) << "%)  "
+       << "8B=" << std::setw(7) << mib(b8) << " MiB (" << std::setw(5) << pct(b8, total_bytes) << "%)\n";
+}
+
+
 class MemAccessProfiler {
 public:
     enum class Op : uint8_t { Read, Write };
@@ -86,21 +150,33 @@ public:
         os << "MemAccessProfiler\n";
         os << "---------------------------------------------\n";
         os << "Totals:\n";
-        os << "  Reads : " << totals_.reads  << " (" << totals_.read_bytes  << " bytes)\n";
-        os << "  Writes: " << totals_.writes << " (" << totals_.write_bytes << " bytes)\n";
-        os << "  Total : " << (totals_.reads + totals_.writes)
-           << " (" << (totals_.read_bytes + totals_.write_bytes) << " bytes)\n";
+        const uint64_t total_ops   = totals_.reads + totals_.writes;
+        const uint64_t total_bytes = totals_.read_bytes + totals_.write_bytes;
 
-        auto print_sizes = [&](const char* label, const uint64_t by_size[9]) {
-            os << "  " << label << " by size: "
-               << "1B=" << by_size[1] << ", "
-               << "2B=" << by_size[2] << ", "
-               << "4B=" << by_size[4] << ", "
-               << "8B=" << by_size[8] << "\n";
-        };
-        print_sizes("Reads ", totals_.r_by_size);
-        print_sizes("Writes", totals_.w_by_size);
+        print_count_pct(os, "Ops",    total_ops,   total_ops);
+        print_count_pct(os, "Reads",  totals_.reads,  total_ops);
+        print_count_pct(os, "Writes", totals_.writes, total_ops);
 
+        os << "\n";
+        os << "Bytes:\n";
+        print_bytes_pct(os, "Total", total_bytes, total_bytes);
+        print_bytes_pct(os, "Read",  totals_.read_bytes,  total_bytes);
+        print_bytes_pct(os, "Write", totals_.write_bytes, total_bytes);
+
+        os << "\nAvg bytes/op:\n";
+        auto avg = [&](uint64_t bytes, uint64_t ops) { return ops ? (double(bytes)/double(ops)) : 0.0; };
+        os << "  Reads : "  << std::fixed << std::setprecision(2) << avg(totals_.read_bytes,  totals_.reads)  << " B/op\n";
+        os << "  Writes: "  << std::fixed << std::setprecision(2) << avg(totals_.write_bytes, totals_.writes) << " B/op\n";
+        os << "  Total : "  << std::fixed << std::setprecision(2) << avg(total_bytes, total_ops) << " B/op\n";
+
+        os << "\nBreakdown by access size (ops):\n";
+        os << std::fixed << std::setprecision(1);
+        print_size_ops(os,  "Reads ", totals_.r_by_size, totals_.reads);
+        print_size_ops(os,  "Writes", totals_.w_by_size, totals_.writes);
+
+        os << "\nBreakdown by access size (bytes):\n";
+        print_size_bytes(os, "Reads ", totals_.r_by_size, totals_.read_bytes);
+        print_size_bytes(os, "Writes", totals_.w_by_size, totals_.write_bytes);
         os << "\nTop " << top_n << " pages by ops (page_size=" << page_size_ << "):\n";
         auto tp = top_pages_by_ops(top_n);
         print_pages(os, tp);
