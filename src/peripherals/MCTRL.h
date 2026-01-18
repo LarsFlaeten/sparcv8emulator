@@ -31,6 +31,10 @@ struct AtomicResult {
   uint32_t old;     // old value (byte in low 8 bits for ldstub)
 };
 
+enum class MemBusStatus : u8 { Ok, NoDevice /* decode hole */, DeviceError /* optional */ };
+
+
+
 class IMemoryBank {
 public:
     IMemoryBank(Endian endian = Endian::Big) : bankEndian(endian) {}
@@ -55,16 +59,21 @@ public:
     }
 
     virtual u16 read16(u32 addr, bool align = true) const {
+        #ifndef NDEBUG
         if (align && (addr & 1))
-            throw std::runtime_error("Unaligned 16-bit read at 0x" + to_hex(addr));
+            assert(false);
+        #endif
+
         u8 hi = read8(addr);
         u8 lo = read8(addr + 1);
         return (bankEndian == Endian::Big) ? (hi << 8 | lo) : (lo << 8 | hi);
     }
 
     virtual void write16(u32 addr, u16 val, bool align = true) {
+        #ifndef NDEBUG
         if (align && (addr & 1))
-            throw std::runtime_error("Unaligned 16-bit write at 0x" + to_hex(addr));
+            assert(false);
+        #endif
         if (bankEndian == Endian::Big) {
             write8(addr,     (val >> 8) & 0xFF);
             write8(addr + 1,  val       & 0xFF);
@@ -75,8 +84,11 @@ public:
     }
 
     virtual u32 read32(u32 addr, bool align = true) const {
+        #ifndef NDEBUG
         if (align && (addr & 3))
-            throw std::runtime_error("Unaligned 32-bit read at 0x" + to_hex(addr));
+            assert(false);
+        #endif
+
         u8 b0 = read8(addr);
         u8 b1 = read8(addr + 1);
         u8 b2 = read8(addr + 2);
@@ -89,8 +101,11 @@ public:
     }
 
     virtual void write32(u32 addr, u32 val, bool align = true) {
+        #ifndef NDEBUG
         if (align && (addr & 3))
-            throw std::runtime_error("Unaligned 32-bit write at 0x" + to_hex(addr));
+            assert(false);
+        #endif
+        
         if (bankEndian == Endian::Big) {
             write8(addr,     (val >> 24) & 0xFF);
             write8(addr + 1, (val >> 16) & 0xFF);
@@ -105,8 +120,11 @@ public:
     }
 
     virtual u64 read64(u32 addr, bool align = true) const {
+        #ifndef NDEBUG
         if (align && (addr & 7))
-            throw std::runtime_error("Unaligned 64-bit read at 0x" + to_hex(addr));
+            assert(false);
+        #endif
+       
         u32 hi, lo;
         if (bankEndian == Endian::Big) {
             hi = read32(addr);
@@ -119,8 +137,10 @@ public:
     }
 
     virtual void write64(u32 addr, u64 val, bool align = true) {
+        #ifndef NDEBUG
         if (align && (addr & 7))
-            throw std::runtime_error("Unaligned 64-bit write at 0x" + to_hex(addr));
+            assert(false);
+        #endif
         u32 hi = static_cast<u32>(val >> 32);
         u32 lo = static_cast<u32>(val & 0xFFFFFFFF);
         if (bankEndian == Endian::Big) {
@@ -156,7 +176,7 @@ public:
     }
 
     u8 read8(u32 addr) const override {
-        check_range(addr);
+        //check_range(addr);
         return data[addr - base];
     }
 
@@ -164,7 +184,7 @@ public:
         if(!writeable)
             throw std::runtime_error("Write to read-only memory");
         else {
-            check_range(addr);
+            //check_range(addr);
             data[addr - base] = val;
         }
     }
@@ -195,15 +215,15 @@ public:
         return addr >= base && addr < base + size;
     }
 
-    u8 read8(u32 addr) const override {
+    u8 read8(u32 addr) const noexcept override  {
         std::lock_guard<std::mutex> lk(global_ram_mtx);
-        check_range(addr);
+        //check_range(addr); // We dont check range, tha dress has allready been throug find_bank
         return data[addr - base];
     }
 
-    void write8(u32 addr, u8 val) override {
+    void write8(u32 addr, u8 val) noexcept override {
         std::lock_guard<std::mutex> lk(global_ram_mtx);
-        check_range(addr);
+        //check_range(addr); // We dont check range, tha dress has allready been throug find_bank
         data[addr - base] = val;
     }
 
@@ -250,17 +270,19 @@ private:
             throw std::out_of_range("RAM access out of range");
     }
 
-        u8 read8_nolock(u32 addr) const {
+    u8 read8_nolock(u32 addr) const noexcept {
         return data[addr - base];
     }
 
-    void write8_nolock(u32 addr, u8 val) {
+    void write8_nolock(u32 addr, u8 val) noexcept {
         data[addr - base] = val;
     }
 
-    u32 read32_nolock(u32 addr, bool align = true) const {
+    u32 read32_nolock(u32 addr, bool align = true) const noexcept {
+        #ifndef NDEBUG
         if (align && (addr & 3))
-            throw std::runtime_error("Unaligned 32-bit read at 0x" + to_hex(addr));
+            assert(false);
+        #endif
         u8 b0 = read8_nolock(addr);
         u8 b1 = read8_nolock(addr + 1);
         u8 b2 = read8_nolock(addr + 2);
@@ -272,9 +294,11 @@ private:
         }
     }
 
-    virtual void write32_nolock(u32 addr, u32 val, bool align = true) {
+    virtual void write32_nolock(u32 addr, u32 val, bool align = true) noexcept {
+        #ifndef NDEBUG
         if (align && (addr & 3))
-            throw std::runtime_error("Unaligned 32-bit write at 0x" + to_hex(addr));
+            assert(false);
+        #endif
         if (bankEndian == Endian::Big) {
             write8_nolock(addr,     (val >> 24) & 0xFF);
             write8_nolock(addr + 1, (val >> 16) & 0xFF);
@@ -315,42 +339,62 @@ public:
         #ifdef PROFILE_MEM_ACCESS
         g_memprof.record(MemAccessProfiler::Op::Read, addr, 1);
         #endif
-        return find_bank(addr)->read8(addr);
+        auto b = find_bank_or_null(addr);
+        if(!b)
+            throw std::out_of_range("[MCTRL] Out of range: 0x" + to_hex(addr));
+        return b->read8(addr);
     }
 
     u16 read16(u32 addr, bool align = true) const {
         #ifdef PROFILE_MEM_ACCESS
         g_memprof.record(MemAccessProfiler::Op::Read, addr, 2);
         #endif
-        return find_bank(addr)->read16(addr, align);
+        auto b = find_bank_or_null(addr);
+        if(!b)
+            throw std::out_of_range("[MCTRL] Out of range: 0x" + to_hex(addr));
+        return b->read16(addr, align);
     }
 
     u32 read32(u32 addr, bool align = true) const {
         #ifdef PROFILE_MEM_ACCESS
         g_memprof.record(MemAccessProfiler::Op::Read, addr, 4);
         #endif
-        return find_bank(addr)->read32(addr, align);
+        auto b = find_bank_or_null(addr);
+        if(!b)
+            throw std::out_of_range("[MCTRL] Out of range: 0x" + to_hex(addr));
+        return b->read32(addr, align);
     }
 
     u64 read64(u32 addr, bool align = true) const {
         #ifdef PROFILE_MEM_ACCESS
         g_memprof.record(MemAccessProfiler::Op::Read, addr, 8);
         #endif
-        return find_bank(addr)->read64(addr, align);
+        auto b = find_bank_or_null(addr);
+        if(!b)
+            throw std::out_of_range("[MCTRL] Out of range: 0x" + to_hex(addr));
+        return b->read64(addr, align);
     }
 
     void write8(u32 addr, u8 val) {
         #ifdef PROFILE_MEM_ACCESS
         g_memprof.record(MemAccessProfiler::Op::Write, addr, 1);
         #endif
-        find_bank(addr)->write8(addr, val);
+        auto b = find_bank_or_null(addr);
+        if(!b)
+            throw std::out_of_range("[MCTRL] Out of range: 0x" + to_hex(addr));
+        
+        b->write8(addr, val);
     }
 
     void write16(u32 addr, u16 val, bool align = true) {
         #ifdef PROFILE_MEM_ACCESS
         g_memprof.record(MemAccessProfiler::Op::Write, addr, 2);
         #endif
-        find_bank(addr)->write16(addr, val, align);
+        auto b = find_bank_or_null(addr);
+        if(!b)
+            throw std::out_of_range("[MCTRL] Out of range: 0x" + to_hex(addr));
+        
+        b->write16(addr, val, align);
     }
 
     void write32(u32 addr, u32 val, bool align = true) {
@@ -358,45 +402,118 @@ public:
         g_memprof.record(MemAccessProfiler::Op::Write, addr, 4);
         #endif
         
-        find_bank(addr)->write32(addr, val, align);
+        auto b = find_bank_or_null(addr);
+        if(!b)
+            throw std::out_of_range("[MCTRL] Out of range: 0x" + to_hex(addr));
+        
+        b->write32(addr, val, align);
     }
 
     void write64(u32 addr, u64 val, bool align = true) {
         #ifdef PROFILE_MEM_ACCESS
         g_memprof.record(MemAccessProfiler::Op::Write, addr, 8);
         #endif
-        find_bank(addr)->write64(addr, val, align);
+        auto b = find_bank_or_null(addr);
+        if(!b)
+            throw std::out_of_range("[MCTRL] Out of range: 0x" + to_hex(addr));
+        
+        b->write64(addr, val, align);
     }
 
-    AtomicResult atomic_ldstub8(uint32_t paddr) {
-        auto* bank = find_bank(paddr);
+    MemBusStatus try_read8(u32 addr, u32& out) const noexcept {
+        auto* b = find_bank_or_null(addr);
+        if (!b) return MemBusStatus::NoDevice;
+        // For now keep the existing IMemoryBank::read32 implementation
+        out = b->read8(addr);
+        return MemBusStatus::Ok;
+    }
+
+    MemBusStatus try_read16(u32 addr, u32& out, bool align = true) const noexcept {
+        auto* b = find_bank_or_null(addr);
+        if (!b) return MemBusStatus::NoDevice;
+        // For now keep the existing IMemoryBank::read32 implementation
+        out = b->read16(addr, align);
+        return MemBusStatus::Ok;
+    }
+
+    MemBusStatus try_read32(u32 addr, u32& out, bool align = true) const noexcept {
+        auto* b = find_bank_or_null(addr);
+        if (!b) return MemBusStatus::NoDevice;
+        // For now keep the existing IMemoryBank::read32 implementation
+        out = b->read32(addr, align);
+        return MemBusStatus::Ok;
+    }
+
+    MemBusStatus try_read64(u32 addr, u32& out, bool align = true) const noexcept {
+        auto* b = find_bank_or_null(addr);
+        if (!b) return MemBusStatus::NoDevice;
+        // For now keep the existing IMemoryBank::read32 implementation
+        out = b->read64(addr, align);
+        return MemBusStatus::Ok;
+    }
+
+    MemBusStatus try_write8(u32 addr, u32 value) noexcept {
+        auto* b = find_bank_or_null(addr);
+        if (!b) return MemBusStatus::NoDevice;
+        b->write8(addr, value);
+        return MemBusStatus::Ok;
+    }
+
+    MemBusStatus try_write16(u32 addr, u32 value, bool align = true) noexcept {
+        auto* b = find_bank_or_null(addr);
+        if (!b) return MemBusStatus::NoDevice;
+        b->write16(addr, value, align);
+        return MemBusStatus::Ok;
+    }
+
+    MemBusStatus try_write32(u32 addr, u32 value, bool align = true) noexcept {
+        auto* b = find_bank_or_null(addr);
+        if (!b) return MemBusStatus::NoDevice;
+        b->write32(addr, value, align);
+        return MemBusStatus::Ok;
+    }
+
+    MemBusStatus try_write64(u32 addr, u32 value, bool align = true) noexcept {
+        auto* b = find_bank_or_null(addr);
+        if (!b) return MemBusStatus::NoDevice;
+        b->write64(addr, value, align);
+        return MemBusStatus::Ok;
+    }
+
+    AtomicResult atomic_ldstub8(uint32_t paddr) noexcept {
+        auto* bank = find_bank_or_null(paddr);
         if (!bank) return {false, 0};
         return bank->atomic_ldstub8(paddr);
     }
 
-    AtomicResult atomic_swap32(uint32_t paddr, uint32_t newv) {
-        auto* bank = find_bank(paddr);
+    AtomicResult atomic_swap32(uint32_t paddr, uint32_t newv) noexcept {
+        auto* bank = find_bank_or_null(paddr);
         if (!bank) return {false, 0};
         return bank->atomic_swap32(paddr, newv);
     }
 
-    AtomicResult atomic_casa32(uint32_t paddr, uint32_t expected, uint32_t desired, bool* swapped) {
-        auto* bank = find_bank(paddr);
+    AtomicResult atomic_casa32(uint32_t paddr, uint32_t expected, uint32_t desired, bool* swapped) noexcept {
+        auto* bank = find_bank_or_null(paddr);
         if (!bank) { if (swapped) *swapped = false; return {false, 0}; }
         return bank->atomic_casa32(paddr, expected, desired, swapped);
     }
 
-    IMemoryBank* find_bank(u32 addr) const {
+    IMemoryBank* find_bank_or_null(u32 addr) const noexcept {
         for (const auto& bank : banks) {
             if (bank->contains(addr)) return bank.get();
         }
-        //debug_list_banks();
-        throw std::out_of_range("No memory mapped at addr " + to_hex(addr));
+        return nullptr;
     }
 
+    IMemoryBank* find_bank(u32 addr) const {
+        if (auto* b = find_bank_or_null(addr)) return b;
+        throw std::out_of_range("No bank for addr");
+    }
+
+    /*
     void debug_read8(u32 addr) const {
         try {
-            const IMemoryBank* bank = find_bank(addr);
+            const IMemoryBank* bank = find_bank_or_null(addr);
             u8 val = bank->read8(addr);
 
             std::cout << "[debug_read8]  Addr: 0x" << std::hex << addr
@@ -412,7 +529,7 @@ public:
 
     void debug_read16(u32 addr, bool align = true) const {
         try {
-            const IMemoryBank* bank = find_bank(addr);
+            const IMemoryBank* bank = find_bank_or_null(addr);
             u16 val = bank->read16(addr, align);
             Endian endian = bank->get_endian();
 
@@ -429,7 +546,7 @@ public:
 
     void debug_read32(u32 addr, bool align = true) const {
         try {
-            const IMemoryBank* bank = find_bank(addr);
+            const IMemoryBank* bank = find_bank_or_null(addr);
             u32 val = bank->read32(addr, align);
             Endian endian = bank->get_endian();
 
@@ -445,7 +562,7 @@ public:
     }
     void debug_read64(u32 addr, bool align = true) const {
         try {
-            const IMemoryBank* bank = find_bank(addr);
+            const IMemoryBank* bank = find_bank_or_null(addr);
             uint64_t val = bank->read64(addr, align);
             Endian endian = bank->get_endian();
 
@@ -459,7 +576,7 @@ public:
                     << ": " << e.what() << "\n";
         }
     }
-
+    */
     void debug_list_banks() const {
         std::cout << "\n[Memory Map Overview]\n";
         std::cout << "Idx |      Start -       End  |   Size   | Access | Endian | Type\n";

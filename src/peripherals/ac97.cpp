@@ -806,7 +806,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                     return;
 
                 // BD BAR unprogrammed → cannot start yet
-                if (bdbar_playback_ == 0 || !mctrl_.find_bank(bdbar_playback_)) {
+                if (bdbar_playback_ == 0 || !mctrl_.find_bank_or_null(bdbar_playback_)) {
                     po_running_ = false;
                     po_status_ |= 0x01;
                     return;

@@ -938,11 +938,11 @@ TEST_F(MMUTest, MMUTables)
     // Area 0xF1000000 - 0xFBFFFFFF mapped, but no physical memory there
     u32 val;
     int ret = mmu.MemAccess<intent_load>(0xF1000000, val, CROSS_ENDIAN);
-    ASSERT_EQ(ret, -1);
+    ASSERT_EQ(ret, -5); // Bus error
     ASSERT_EQ(mmu.GetFaultAddress(), 0xF1000000);
 
     ret = mmu.MemAccess<intent_load>(0xFBFFFFFC, val, CROSS_ENDIAN);
-    ASSERT_EQ(ret, -1);
+    ASSERT_EQ(ret, -5);
     //ASSERT_EQ(mmu.GetFaultAddress(), 0xFBFFF000); // Corresponing page
     ASSERT_EQ(mmu.GetFaultAddress(), 0xFBFFFFFC); // We now do full VA
 

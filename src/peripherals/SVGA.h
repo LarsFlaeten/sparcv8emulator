@@ -94,11 +94,16 @@ public:
             case(0x10):
                 linlen = value;
                 break;
-            case(0x14):
+            case(0x14): {
                 fbuf = value;
-                video_mem_ptr = mctrl.find_bank(value)->get_ptr();
-                display.set_framebuffer(video_mem_ptr);
+                auto p = mctrl.find_bank_or_null(value);
+                if(p) {
+                    video_mem_ptr = p->get_ptr();
+                    display.set_framebuffer(video_mem_ptr);
+                } else
+                    std::cout << "Error: Video init: No memory mapped at " << std::hex << value << std::dec << "\n";
                 break;
+            }
             case(0x28):
                 clut = value;
                 throw std::runtime_error("SVGA: CLUT writes to be implemented.");

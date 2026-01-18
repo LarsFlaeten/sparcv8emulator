@@ -183,11 +183,17 @@ public:
     }
 
     inline u32 MemAccessBypassRead4(u32 pa) const {
-        return mctrl.read32(pa);
+        u32 out;
+        auto r = mctrl.try_read32(pa, out, false);
+        if(r.ok)
+            return out;
+        else
+            return 0x0;
     }
 
     inline void MemAccessBypassWrite4(u32 pa, u32 value) {
-        mctrl.write32(pa, value);
+        auto r = mctrl.try_write32(pa, value);
+        return;
     }
 
     inline u8 get_access_type(intent rw, bool supervisor) {
@@ -258,9 +264,23 @@ public:
     template<intent rw=intent_load, unsigned size = 4>
     int MemAccess(u32 virt_addr, u32& value, bool reverse, bool supervisor = true, bool report_faults = true)
     {
+        auto bus_fault = [&](){
+            if (report_faults) {
+                MMUFault f{
+                    .far   = virt_addr,  // full VA
+                    .ft    = 5,          // access bus error
+                    .at    = get_access_type(rw, supervisor),
+                    .level = 0,          // not meaningful here
+                    .fav   = true,       // OK for data; also fine for execute
+                };
+                set_fault(f);
+            }
+            return -5;
+        };
+
+
         u32 phys_addr = 0x0;
-        u8 level = 0;
-       
+        
         if(GetEnabled()) {
 
             auto res = translate_va(virt_addr, supervisor, rw, report_faults);
@@ -286,58 +306,42 @@ public:
             phys_addr = virt_addr;
         }
 
-        try
+        if constexpr (rw==intent_store)
         {
-            if(rw==intent_store)
-            {
-                switch(size) {
-                    case(1):
-                        mctrl.write8(phys_addr, value);
-                        break;
-                    case(2):
-                        mctrl.write16(phys_addr, value, false);
-                        break;
-                    case(4):
-                        mctrl.write32(phys_addr, value, false);
-                        break;
-                    default:
-                        throw std::runtime_error("Error write size != {1,2,4}");
-                }
+            MemBusStatus st = MemBusStatus::Ok;
+            switch(size) {
+                case(1):
+                    st = mctrl.try_write8(phys_addr, value);
+                    break;
+                case(2):
+                    st = mctrl.try_write16(phys_addr, value, false);
+                    break;
+                case(4):
+                    st = mctrl.try_write32(phys_addr, value, false);
+                    break;
+                default:
+                    throw std::runtime_error("Error write size != {1,2,4}");
             }
-            else // read or execute
-            {
-                switch(size) {
-                    case(1):
-                        value = mctrl.read8(phys_addr);
-                        break;
-                    case(2):
-                        value = mctrl.read16(phys_addr, false);
-                        break;
-                    case(4):
-                        value = mctrl.read32(phys_addr, false);
-                        break;
-                    default:
-                        throw std::runtime_error("Error read size != {1,2,4}");
-                }
-            }
-
+            if(st != MemBusStatus::Ok) return bus_fault();
         }
-        catch(const std::out_of_range& c)
+        else // read or execute
         {
-            //fprintf(stderr, "MemAccess(virt=%08X,phys=%08X,size=%u,reverse=%s,mode=%s,UM=%d,VM=%d> failed because of bad function call!\n",
-            if(report_faults) {
+            MemBusStatus st = MemBusStatus::Ok;
             
-                MMUFault f{
-                    .far = virt_addr,
-                    .ft = 5, 
-                    .at = (u8)get_access_type(rw, supervisor),
-                    .level = level,
-                    .fav = true,
-                };
-
-                set_fault(f);
+            switch(size) {
+                case(1):
+                    st = mctrl.try_read8(phys_addr, value);
+                    break;
+                case(2):
+                    st = mctrl.try_read16(phys_addr, value, false);
+                    break;
+                case(4):
+                    st = mctrl.try_read32(phys_addr, value, false);
+                    break;
+                default:
+                    throw std::runtime_error("Error read size != {1,2,4}");
             }
-            return -1;
+            if (st != MemBusStatus::Ok) return bus_fault();
         }
         
         return 0;
