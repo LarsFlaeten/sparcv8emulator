@@ -131,7 +131,7 @@ TEST_F(CPUInstructionsTest, LDSTUB_noMMU)
 
         u32 op3 = 0b001101; // LDSTUB
         do_op3_instr(3, op3, GLOBALREG2, LOCALREG0, OUTREG0);
-
+        ASSERT_EQ(cpu.get_trap_type(),0) << "No traps should occur after LDSTUB";
         
         u32 val1; cpu.read_reg(OUTREG0, &val1);
         u32 val2; mmu.MemAccess<intent_load, 1>(0x100, val2, CROSS_ENDIAN); 

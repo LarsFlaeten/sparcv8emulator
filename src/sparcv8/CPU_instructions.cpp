@@ -785,21 +785,41 @@ void CPU::LDSTUB (pDecode_t d)
     if (verbose) 
         os << std::format("{:#08x} ldstub   [{:#08x}], {}\n", d->pc, d->ev, DispRegStr(d->rd));
 
-    if(( load8(d->ev, d->rd, 0, false) < 0) && !mmu.GetNoFault())
-    {
+    // Here we do manual translate, and we do not use MMU generic
+    // access funcs for read and write. This is to retain atomicity
+    
+    bool super = (d->p->s == 0x1U);
+    u32 paddr = 0x0U;
+
+    if(mmu.GetEnabled()) {
+        auto translate_res = mmu.translate_va(d->ev, super, intent_load, true);
+        if(!translate_res.ok) {
+            trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+            return;    
+        }
+
+        paddr = translate_res.pa;
+    } else
+        paddr = d->ev;
+
+
+    // Do the ldstub
+    auto ares = mmu.GetMCTRL().atomic_ldstub8(paddr);
+
+    if(!ares.ok) {
         trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         return;
     }
 
-    // Set memory byte to all 1s
-    *p_swap_reg = 0xff;
+    write_reg((ares.old & 0xff), d->rd);
 
-    if((store8(d->ev, GLOBALREG8) < 0) && !mmu.GetNoFault())
-        trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
-    else { 
-        d->pc = d->npc;
-        d->npc += 4;
-    }
+    // For the sake of order, we set the swap reg (G8), even though we do
+    // not use it in our transaction.
+    *p_swap_reg = 0xff;
+    
+    d->pc = d->npc;
+    d->npc += 4;
+
 }
 
 // ------------------------------------------------
