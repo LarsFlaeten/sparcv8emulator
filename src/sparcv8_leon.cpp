@@ -251,7 +251,7 @@ int main(int argc, char **argv)
     }
 
     // OS boot process step 1: Set stack pointer to end of ram
-    u32 end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
+    u32 end_of_ram = mctrl.find_bank(0x40000000)->get_end_exclusive();
     
     // Call back for bus tick:
     static std::function<void()> tick_lambda =

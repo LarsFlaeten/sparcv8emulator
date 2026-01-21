@@ -91,7 +91,7 @@ class APBCTRL : public IMemoryBank {
             if ( (va & 0xfff00) >> 8 == 0x000) {
                 // Return data from 255 bytes Memory range 000-0ff;
                 //std::cout << "Read APBCTRL, va = " << std::hex << va << std::dec << "\n";
-                return mem->read32((va & 0x0ff));        
+                return mem->read32((va & 0x0ff), align);        
             } else if ( (va & 0xfff00) >> 8 == 0x001) {
                 // Return data from slv 1 (APBUART)
                 //std::cout << "Read APBCTRL(APBUART), va = " << std::hex << va << std::dec << "\n";
@@ -129,7 +129,7 @@ class APBCTRL : public IMemoryBank {
             if ( (va & 0xfff00) >> 8 == 0x000) {
                 //std::cout << "Write APBCTRL, va = " << std::hex << va << std::dec << "\n";
                 // Return data from 255 bytes Memory range 000-0ff;
-                mem->write32((va & 0x0ff), value);        
+                mem->write32((va & 0x0ff), value, align);        
             } else if ( (va & 0xfff00) >> 8 == 0x001) {
                 // Return data from slv 1 (APBUART)
                 apbuart.write(va & 0x0ff, value);        
@@ -163,7 +163,9 @@ class APBCTRL : public IMemoryBank {
 
         u32 get_base() const override { return base; }
 
-        u32 get_limit() const override { return base + size; }
+        u64 get_end_exclusive() const override { return (u64)base + size; }
+        
+        u32 get_size() const override { return size; }
         
         void check_range(u32 addr) const {
             if (!contains(addr))

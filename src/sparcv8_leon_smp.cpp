@@ -263,7 +263,7 @@ int main(int argc, char **argv) {
     mctrl.debug_list_banks();
 
     // Find end of ram so we can set the stack pointers correctly when we reset the CPUs
-    auto end_of_ram = mctrl.find_bank(0x40000000)->get_limit();
+    auto end_of_ram = mctrl.find_bank(0x40000000)->get_end_exclusive();
 
     // Get the devices we need to interact with
     auto& uart = apbctrl.GetUART();
@@ -299,8 +299,8 @@ int main(int argc, char **argv) {
 
         
         // OS boot process step 1: Set stack pointer to end of ram
-        cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer
-        cpu->write_reg(end_of_ram, INREG6); // Write frame pointer
+        cpu->write_reg((u32)end_of_ram - 0x180, OUTREG6); // Write stack pointer
+        cpu->write_reg((u32)end_of_ram, INREG6); // Write frame pointer
         
         if(debug_server)
             cpu->set_gdb_stub(gdb_stub.get());

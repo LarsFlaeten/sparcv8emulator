@@ -47,7 +47,7 @@ MCtrlTest::~MCtrlTest()
 
 void MCtrlTest::SetUp()
 {
-   
+    mctrl.clear_banks();
 
  
 }
@@ -55,6 +55,20 @@ void MCtrlTest::SetUp()
 void MCtrlTest::TearDown()
 {
 }
+
+TEST_F(MCtrlTest, TestAddBanks)
+{
+    // Should throw:
+    mctrl.attach_bank<RamBank>(0x40000000, 16 * 1024 * 1024);
+    ASSERT_ANY_THROW(mctrl.attach_bank<RamBank>(0x40100000, 16 * 1024 * 1024));
+    
+    // Should be ok to add two right after another
+    mctrl.attach_bank<RamBank>(0x60000000, 16 * 1024 * 1024);
+    ASSERT_NO_THROW(mctrl.attach_bank<RamBank>(0x61000000, 16 * 1024 * 1024));
+
+    
+}
+
 
 TEST_F(MCtrlTest, TestROMBehavior)
 {

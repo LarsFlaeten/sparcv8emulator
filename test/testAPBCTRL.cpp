@@ -83,8 +83,11 @@ TEST_F(APBCTRLTest, AHB_setup)
     }
 
     // Unaligned read/write should throw
-    EXPECT_THROW(mctrl.read32(0x80000001), std::runtime_error);
-    EXPECT_THROW(mctrl.write32(0x80000007, 0xcafebabe), std::runtime_error);
+    // No, not anymore, we removed alignment checks except in the instructions
+    EXPECT_NO_THROW(mctrl.read32(0x80000001, false));
+    EXPECT_NO_THROW(mctrl.write32(0x80000007, 0xcafebabe, false));
+    //EXPECT_THROW(mctrl.read32(0x80000001), std::runtime_error);
+    //EXPECT_THROW(mctrl.write32(0x80000007, 0xcafebabe), std::runtime_error);
    
     // read/write 8 and 16 should throw for the IO type APBCtrl
     EXPECT_THROW(mctrl.read8(0x80000000), std::logic_error);

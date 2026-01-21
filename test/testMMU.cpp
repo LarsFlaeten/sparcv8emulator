@@ -106,6 +106,8 @@ MMUTest::~MMUTest()
 
 void MMUTest::SetUp()
 {
+    mctrl.clear_banks();
+
     mctrl.attach_bank<RamBank>(0x60000000, 0x01000000);
     mctrl.attach_bank<RamBank>(0x00000000, 1024 * 1024);
     
@@ -113,6 +115,8 @@ void MMUTest::SetUp()
     // Read the ELF and get the entry point, then reset
     u32 entry_va = 0x0; 
     cpu.reset(entry_va);
+
+    
      
 }
 
@@ -294,7 +298,13 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite)
 {   
     auto& mmu = cpu.get_mmu();
 
-    mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
+    auto& b = mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
+    
+    fprintf(stderr, "bank base=%08x size=%zx limit32=%08x end64=%llx\n",
+        b.get_base(),
+        b.get_size(),
+        b.get_end_exclusive(),               // if you still have it
+        (unsigned long long)(uint64_t(b.get_base()) + uint64_t(b.get_size())));
     
     mctrl.write32(0xfffffff0, 0x07401039);
 
@@ -320,7 +330,12 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite2)
 {   
     auto& mmu = cpu.get_mmu();
 
-    mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
+    auto& b = mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
+    fprintf(stderr, "bank base=%08x size=%zx limit32=%08x end64=%llx\n",
+        b.get_base(),
+        b.get_size(),
+        b.get_end_exclusive(),               // if you still have it
+        (unsigned long long)(uint64_t(b.get_base()) + uint64_t(b.get_size())));
     
     // MMU shuld be off for this test, as we mix bypass
     // and normal MMU ops (without virtual mapping):
@@ -892,7 +907,7 @@ TEST_F(MMUTest, MMUTables)
 
 
 
-	mmu_table_init(mctrl, mctrl.find_bank(0x60000000)->get_limit());
+	mmu_table_init(mctrl, (u32)mctrl.find_bank(0x60000000)->get_end_exclusive());
 	mmu_init(mmu);
 
 

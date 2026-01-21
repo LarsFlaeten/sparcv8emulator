@@ -11,6 +11,10 @@
 #include <algorithm>
 #include <iomanip>
 #include <string>
+#include <atomic>
+#ifndef NDEBUG
+#include <cassert>
+#endif
 
 #include "../common.h"
 
@@ -44,7 +48,9 @@ public:
     virtual u8 read8(u32 addr) const = 0;
     virtual void write8(u32 addr, u8 val) = 0;
     virtual u32 get_base() const = 0;
-    virtual u32 get_limit() const = 0;
+    virtual u64 get_end_exclusive() const = 0;
+    virtual u32 get_size() const = 0;
+    
     virtual void lock() {}; // For lockable banks (ROM-type)
     
     // Gets a pointer to the host data buffer
@@ -172,7 +178,7 @@ public:
     }
 
     bool contains(u32 addr) const override {
-        return addr >= base && addr < base + N;
+        return (uint64_t(addr) - uint64_t(base)) < uint64_t(N);
     }
 
     u8 read8(u32 addr) const override {
@@ -190,7 +196,8 @@ public:
     }
 
     u32 get_base() const override { return base; }
-    u32 get_limit() const override { return base + N; }
+    u64 get_end_exclusive() const override { return (u64)base + (u64)N; }
+    u32 get_size() const override { return N; }
     void lock() override { writeable = false; }
 
     u32* get_ptr() override { return reinterpret_cast<u32*>(data.data());}
@@ -209,10 +216,24 @@ private:
 class RamBank : public IMemoryBank {
 public:
     RamBank(u32 base, size_t size, Endian endian = Endian::Big)
-        : IMemoryBank(endian), base(base), size(size), data(size, 0) {}
+        : IMemoryBank(endian), base(base), size(size), data(size, 0) {
+        
+        if (bankEndian == Endian::Big) {
+            read16_fn_  = &RamBank::read16_be;
+            read32_fn_  = &RamBank::read32_be;
+            write16_fn_ = &RamBank::write16_be;
+            write32_fn_ = &RamBank::write32_be;
+        } else {
+            read16_fn_  = &RamBank::read16_le;
+            read32_fn_  = &RamBank::read32_le;
+            write16_fn_ = &RamBank::write16_le;
+            write32_fn_ = &RamBank::write32_le;
+        }
+
+    }
 
     bool contains(u32 addr) const override {
-        return addr >= base && addr < base + size;
+        return (uint64_t(addr) - uint64_t(base)) < uint64_t(size);
     }
 
     u8 read8(u32 addr) const noexcept override  {
@@ -227,7 +248,42 @@ public:
         data[addr - base] = val;
     }
 
-     u16 read16(u32 addr, bool align = true) const override {
+    u16 read16(u32 addr, bool align = true) const override {
+        return (this->*read16_fn_)(addr, align);
+    }
+
+    void write16(u32 addr, u16 val, bool align = true) override {
+        #ifndef NDEBUG
+        auto off64 = uint64_t(addr) - uint64_t(base);
+        if (off64 + 3 >= size) {
+            fprintf(stderr,
+                "RamBank OOB write16: addr=%08x base=%08x off=%llx mem_size=%zu\n",
+                addr, base, (unsigned long long)off64, size);
+            std::abort();
+        }
+        #endif
+        (this->*write16_fn_)(addr, val, align);
+    }
+
+    u32 read32(u32 addr, bool align = true) const override {
+        return (this->*read32_fn_)(addr, align);
+    }
+
+    void write32(u32 addr, u32 val, bool align = true) override {
+        #ifndef NDEBUG
+        auto off64 = uint64_t(addr) - uint64_t(base);
+        if (off64 + 3 >= size) {
+            fprintf(stderr,
+                "RamBank OOB write32: addr=%08x base=%08x off=%llx mem_size=%zu\n",
+                addr, base, (unsigned long long)off64, size);
+            std::abort();
+        }
+        #endif
+        (this->*write32_fn_)(addr, val, align);
+    }
+    
+
+    u16 read16_be(u32 addr, bool align = true) const {
         std::lock_guard<std::mutex> lk(global_ram_mtx);
         
 #ifndef NDEBUG
@@ -235,14 +291,14 @@ public:
 #endif
         const u32 off = addr - base;
 #ifndef NDEBUG
-        if (off + 1 >= mem_.size()) std::abort();
+        if (off + 1 >= data.size()) std::abort();
 #endif
         const u8* p = &data[off];
         // SPARC RAM as big-endian
         return (u16(p[0]) << 8) | u16(p[1]);
     }
 
-    void write16(u32 addr, u16 val, bool align = true) override {
+    void write16_be(u32 addr, u16 val, bool align = true) {
         std::lock_guard<std::mutex> lk(global_ram_mtx);
         
 #ifndef NDEBUG
@@ -250,14 +306,14 @@ public:
 #endif
         const u32 off = addr - base;
 #ifndef NDEBUG
-        if (off + 1 >= mem_.size()) std::abort();
+        if (off + 1 >= data.size()) std::abort();
 #endif
         u8* p = &data[off];
         p[0] = u8((val >> 8) & 0xff);
         p[1] = u8((val >> 0) & 0xff);
     }
 
-    u32 read32(u32 addr, bool align = true) const override {
+    u32 read32_be(u32 addr, bool align = true) const {
         std::lock_guard<std::mutex> lk(global_ram_mtx);
         
         // assume align already handled above; if you keep align param:
@@ -271,7 +327,7 @@ public:
         return (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]);
     }
 
-    void write32(u32 addr, u32 val, bool align = true) override {
+    void write32_be(u32 addr, u32 val, bool align = true) {
         std::lock_guard<std::mutex> lk(global_ram_mtx);
         
 #ifndef NDEBUG
@@ -285,8 +341,67 @@ public:
         p[3] = (val >>  0) & 0xff;
     }
 
+    u16 read16_le(u32 addr, bool align = true) const {
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
+        
+#ifndef NDEBUG
+        if (align && (addr & 1)) std::abort();
+#endif
+        const u32 off = addr - base;
+#ifndef NDEBUG
+        if (off + 1 >= data.size()) std::abort();
+#endif
+        const u8* p = &data[off];
+        // SPARC RAM as big-endian
+        return (u16(p[1]) << 8) | u16(p[0]);
+    }
+
+    void write16_le(u32 addr, u16 val, bool align = true) {
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
+        
+#ifndef NDEBUG
+        if (align && (addr & 1)) std::abort();
+#endif
+        const u32 off = addr - base;
+#ifndef NDEBUG
+        if (off + 1 >= data.size()) std::abort();
+#endif
+        u8* p = &data[off];
+        p[1] = u8((val >> 8) & 0xff);
+        p[0] = u8((val >> 0) & 0xff);
+    }
+
+    u32 read32_le(u32 addr, bool align = true) const {
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
+        
+        // assume align already handled above; if you keep align param:
+#ifndef NDEBUG
+        if (align && (addr & 3)) std::abort();
+#endif
+        const u32 off = addr - base;              // or however you map
+        const u8* p = &data[off];                  // mem_ is contiguous u8 storage
+
+        return (u32(p[3]) << 24) | (u32(p[2]) << 16) | (u32(p[1]) << 8) | u32(p[0]);
+    }
+
+    void write32_le(u32 addr, u32 val, bool align = true) {
+        std::lock_guard<std::mutex> lk(global_ram_mtx);
+        
+#ifndef NDEBUG
+        if (align && (addr & 3)) std::abort();
+#endif
+        const u32 off = addr - base;
+        u8* p = &data[off];
+        p[3] = (val >> 24) & 0xff;
+        p[2] = (val >> 16) & 0xff;
+        p[1] = (val >>  8) & 0xff;
+        p[0] = (val >>  0) & 0xff;
+    }
+
+
     u32 get_base() const override { return base; }
-    u32 get_limit() const override { return base + size; }
+    u64 get_end_exclusive() const override { return (u64)base + size; }
+    u32 get_size() const override { return size; }
 
     u32* get_ptr() override { return reinterpret_cast<u32*>(data.data());}
 
@@ -322,6 +437,16 @@ private:
     std::vector<u8> data;
 
     mutable std::mutex global_ram_mtx;
+
+    using Read16Fn  = u16 (RamBank::*)(u32,bool) const;
+    using Read32Fn  = u32 (RamBank::*)(u32,bool) const;
+    using Write16Fn = void (RamBank::*)(u32,u16,bool);
+    using Write32Fn = void (RamBank::*)(u32,u32,bool);
+
+    Read16Fn  read16_fn_;
+    Read32Fn  read32_fn_;
+    Write16Fn write16_fn_;
+    Write32Fn write32_fn_;
 
     void check_range(u32 addr) const {
         if (!contains(addr))
@@ -376,18 +501,24 @@ private:
 
 class MCtrl {
 public:
+    MCtrl() : instance_id_(next_instance_id()) {}
+
+    uint64_t instance_id() const noexcept { return instance_id_; }
+    
+
     template<typename BankType, typename... Args>
     BankType& attach_bank(Args&&... args) {
         auto bank = std::make_unique<BankType>(std::forward<Args>(args)...);
 
         for (const auto& existing : banks) {
-            if (ranges_overlap(bank->get_base(), bank->get_limit(),
-                               existing->get_base(), existing->get_limit())) {
+            if (ranges_overlap_u64(bank->get_base(), bank->get_end_exclusive(),
+                               existing->get_base(), existing->get_end_exclusive())) {
                 throw std::runtime_error("Bank region overlaps with existing memory");
             }
         }
 
         banks.push_back(std::move(bank));
+        ++generation_;
 
         auto& b = dynamic_cast<BankType&>(*banks.back());
         return b;
@@ -463,7 +594,6 @@ public:
         auto b = find_bank_or_null(addr);
         if(!b)
             throw std::out_of_range("[MCTRL] Out of range: 0x" + to_hex(addr));
-        
         b->write32(addr, val, align);
     }
 
@@ -591,16 +721,85 @@ public:
         return bank->atomic_casa32(paddr, expected, desired, swapped);
     }
 
+    // Thread local cache of last bank, since we are often hammering the
+    // same area
     IMemoryBank* find_bank_or_null(u32 addr) const noexcept {
-        for (const auto& bank : banks) {
-            if (bank->contains(addr)) return bank.get();
+        struct Cache {
+            uint64_t owner_id = 0;
+            uint64_t gen = 0;
+            IMemoryBank* b = nullptr;
+            u32 start = 0, size = 0;
+        };
+
+        thread_local Cache c;
+
+        const uint64_t my_id = instance_id();
+
+        // Single predictable guard
+        if (__builtin_expect(c.owner_id != my_id || c.gen != generation_, 0)) {
+            fprintf(stderr, "cache invalidate: this=%ld old_owner=%ld old_gen=%llu new_gen=%llu\n",
+            my_id, c.owner_id,
+            (unsigned long long)c.gen,
+            (unsigned long long)generation_);
+            c.owner_id = my_id;
+            c.gen = generation_;
+            c.b = nullptr;
+            c.start = c.size = 0;
         }
+
+        #ifndef NDEBUG
+        if (c.b) {
+            const u32 b0 = c.b->get_base();
+            const u32 bs = (u32)c.b->get_size();
+            if (b0 != c.start || bs != c.size) {
+                fprintf(stderr,
+                    "CACHE CORRUPT: addr=%08x this=%p gen=%llu "
+                    "c.b=%p b.base=%08x b.size=%08x  cached.base=%08x cached.size=%08x\n",
+                    addr, (void*)this, (unsigned long long)c.gen,
+                    (void*)c.b, b0, bs, c.start, c.size);
+                std::abort();
+            }
+        }
+        #endif
+        
+        // Super-fast hit check without virtual call:
+        if (c.b && addr >= c.start && (addr - c.start < c.size)) {        
+            return c.b;
+        }
+        //if (c.b && c.b->contains(addr))
+        //    return c.b;
+        
+
+        for (const auto& bank : banks) {
+            if (bank->contains(addr)) {
+                auto p = bank.get();
+                c.b = p;
+                c.start = p->get_base();
+                c.size = p->get_size();
+                #ifndef NDEBUG
+                if (!(addr >= c.start && (addr - c.start) < c.size)) {
+                    fprintf(stderr, "BAD RANGE: addr=%08x base=%08x size=%08x bank=%p\n",
+                            addr, c.start, c.size, (void*)c.b);
+                    std::abort();
+                }
+                #endif
+                return p;
+            }
+        }
+        c.b = nullptr;
+        c.start = 0;
+        c.size = 0;
         return nullptr;
     }
 
     IMemoryBank* find_bank(u32 addr) const {
         if (auto* b = find_bank_or_null(addr)) return b;
         throw std::out_of_range("No bank for addr");
+    }
+
+    void clear_banks() {
+       banks.clear();
+        ++generation_;
     }
 
     void debug_list_banks() const {
@@ -611,7 +810,7 @@ public:
         for (size_t i = 0; i < banks.size(); ++i) {
             const auto& bank = banks[i];
             u32 start = bank->get_base();
-            u32 end   = bank->get_limit() - 1;
+            u64 end   = bank->get_end_exclusive() - 1;
             size_t size    = end - start + 1;
             std::string size_str = (size >= (1024 * 1024)) ?
                 std::to_string(size / (1024 * 1024)) + " MB" :
@@ -643,6 +842,13 @@ public:
     }
 private:
     std::vector<std::unique_ptr<IMemoryBank>> banks;
+    u64 generation_ = 1;
+    uint64_t instance_id_;
+
+    static uint64_t next_instance_id() {
+        static std::atomic<uint64_t> g{1};
+        return g.fetch_add(1, std::memory_order_relaxed);
+    }
 
 #ifdef PROFILE_MEM_ACCESS
 private:
@@ -655,9 +861,9 @@ public:
 private:
 #endif
 
-    static bool ranges_overlap(u32 a_start, u32 a_end,
-                                u32 b_start, u32 b_end) {
-        return (a_start < b_end) && (b_start < a_end);
+    static bool ranges_overlap_u64(u32 a_start, u64 a_end,
+                               u32 b_start, u64 b_end) {
+        return (u64(a_start) < b_end) && (u64(b_start) < a_end);
     }
 
     static std::string to_hex(u32 val) {

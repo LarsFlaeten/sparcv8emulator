@@ -236,7 +236,8 @@ public:                                 // PCI cfg is allways little endian
     }
 
     u32 get_base() const override { return base; }
-    u32 get_limit() const override { return base + size; }
+    u64 get_end_exclusive() const override { return (u64)base + size; }
+    u32 get_size() const override { return size; }
 
     u32* get_ptr() override { throw std::runtime_error("Cannot use get_ptr on pci cfg/io.");}
 

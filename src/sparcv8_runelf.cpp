@@ -124,7 +124,7 @@ int main(int argc, char **argv)
     u32 entry_va = 0x0; 
     u32 word_count = ReadElf(fname, mctrl, entry_va, true, std::cout); 
     
-    u32 end_of_ram = mctrl.find_bank(0x00000000)->get_limit();
+    u32 end_of_ram = mctrl.find_bank(0x00000000)->get_end_exclusive();
 
     
 

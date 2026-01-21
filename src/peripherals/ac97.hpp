@@ -162,7 +162,8 @@ public:
     virtual u32* get_ptr() {throw std::runtime_error("get_ptr not implemented for PCIMMIO.");};
 
     u32 get_base() const override { return base_addr_; }
-    u32 get_limit() const override { return base_addr_ + size_; }
+    u64 get_end_exclusive() const override { return (u64)base_addr_ + (u64)size_; }
+    u32 get_size() const override { return size_; }
 
 };
 
