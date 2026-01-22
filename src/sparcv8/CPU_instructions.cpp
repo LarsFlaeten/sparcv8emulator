@@ -709,25 +709,41 @@ void CPU::SWAP (pDecode_t d)
     if (verbose)
         os << std::format("{:#08x} swap     [{:#08x}], {} = {:#08x}\n", d->pc, d->ev, DispRegStr(d->rd), d->value );
 
-    if (d->ev & LOBITS2)
+    if (d->ev & LOBITS2) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
-    else {
-        // Copy data to swap register
-        *p_swap_reg = d->value;
-
-        // Issue the read
-        if(( load32(d->ev, d->rd, 0, false) < 0) && !mmu.GetNoFault())
-            trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
-        else {   
-            // Write the data back
-            if((store32(d->ev, GLOBALREG8) < 0) && !mmu.GetNoFault())
-                trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
-            else { 
-                d->pc = d->npc;
-                d->npc += 4;
-            }
-        }
+        return;
     }
+    
+    // Get the physical address:
+    u32 paddr = 0x0U;
+
+    if(mmu.GetEnabled()) {
+        bool super = (d->p->s == 0x1U);
+        auto translate_res = mmu.translate_va(d->ev, super, intent_load, !mmu.GetNoFault());
+        if(!translate_res.ok) {
+            trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+            return;    
+        }
+
+        paddr = translate_res.pa;
+    } else
+        paddr = d->ev;
+
+    // Copy data to swap register for the sake of good order
+    // Allthough we dont use it
+    *p_swap_reg = d->value;
+
+    auto r = mmu.GetMCTRL().atomic_swap32(paddr, d->value);
+    write_reg(r.old, d->rd);
+
+    if(!r.ok && !mmu.GetNoFault()) {
+        trap(d,  SPARC_DATA_ACCESS_EXCEPTION);
+        return;
+    }
+    
+    d->pc = d->npc;
+    d->npc += 4;
+    
 }
 
 // ------------------------------------------------
@@ -757,9 +773,38 @@ void CPU::SWAPA (pDecode_t d)
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
         return;
     } else {
+        // TODO:
+        // Force cache miss:
+        if(forced_cache_miss) {
+            // Flush cache
+        }
+
+        // Get the physical address:
+        u32 paddr = 0x0U;
+
+        if(mmu.GetEnabled()) {
+            bool super = (d->p->s == 0x1U);
+            auto translate_res = mmu.translate_va(d->ev, super, intent_load, !mmu.GetNoFault());
+            if(!translate_res.ok) {
+                trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+                return;    
+            }
+
+            paddr = translate_res.pa;
+        } else
+            paddr = d->ev;
+
         // Copy data to swap register
         *p_swap_reg = d->value;
 
+        auto r = mmu.GetMCTRL().atomic_swap32(paddr, d->value);
+        write_reg(r.old, d->rd);
+
+        if(!r.ok && !mmu.GetNoFault()) {
+            trap(d,  SPARC_DATA_ACCESS_EXCEPTION);
+            return;
+        }
+        /*
         // Issue the read
         if(( load32(d->ev, d->rd, 0, forced_cache_miss) < 0) && !mmu.GetNoFault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
@@ -772,6 +817,10 @@ void CPU::SWAPA (pDecode_t d)
                 d->npc += 4;
             }
         }
+        */
+
+        d->pc = d->npc;
+        d->npc += 4;
     }
 
 }
@@ -792,7 +841,7 @@ void CPU::LDSTUB (pDecode_t d)
     u32 paddr = 0x0U;
 
     if(mmu.GetEnabled()) {
-        auto translate_res = mmu.translate_va(d->ev, super, intent_load, true);
+        auto translate_res = mmu.translate_va(d->ev, super, intent_load, !mmu.GetNoFault());
         if(!translate_res.ok) {
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
             return;    
