@@ -31,6 +31,45 @@ void CPU::CASA (pDecode_t d)
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
     }
 
+    bool super = false;
+    if( imm_asi == 0xB) {
+        super = true;
+    } else if (imm_asi == 0xA) {
+        super = false;
+    } else {
+        throw not_implemented_leon_exception("ASI != 0xb|0xa not implemented for CASA");
+    }
+
+    u32 expected;
+    read_reg(rs2 & LOBITS5, &expected);
+
+    u32 paddr_old = 0x0;
+    if(mmu.GetEnabled()) {
+        bool super = (d->p->s == 0x1U);
+        auto translate_res = mmu.translate_va(rs1_addr, super, intent_load, !mmu.GetNoFault());
+        if(!translate_res.ok) {
+            trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
+            return;    
+        }
+
+        paddr_old = translate_res.pa;
+    } else
+        paddr_old = rs1_addr;
+
+    bool swapped = false;
+    u32 desired = 0x0;
+    read_reg(d->rd & LOBITS5, &desired);
+
+    auto r = mmu.GetMCTRL().atomic_casa32(paddr_old, expected, desired, &swapped);
+
+    if(!r.ok && !mmu.GetNoFault())
+        trap(d,  SPARC_DATA_ACCESS_EXCEPTION);
+    
+    // We write to [rd], swapped or not
+    write_reg(r.old, d->rd);
+    
+
+    /*
     u32 rs2_value;
     read_reg(rs2 & LOBITS5, &rs2_value);
    
@@ -89,7 +128,10 @@ void CPU::CASA (pDecode_t d)
     
     d->pc = d->npc;
     d->npc += 4;
+    */
 
+    d->pc = d->npc;
+    d->npc += 4;
 
 
 }
