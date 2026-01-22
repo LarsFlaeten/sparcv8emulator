@@ -169,6 +169,16 @@ TEST_F(INSTRTest, swap)
     do_test_assertg7("swap.aout");
 } 
 
+TEST_F(INSTRTest, swapa)
+{
+    do_test_assertg7("swapa.aout");
+} 
+
+TEST_F(INSTRTest, casa)
+{
+    do_test_assertg7("casa.aout");
+} 
+
 TEST_F(INSTRTest, tadd)
 {
     do_test_assertg7("tadd.aout");
