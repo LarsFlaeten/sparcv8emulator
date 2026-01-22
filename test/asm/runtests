@@ -9,7 +9,7 @@
 #
 
 testlist="sethi and or xor shift add sub \
-          ld fld fbfcc st swap ldstub mul div bicc \
+          ld fld fbfcc st swap swapa ldstub mul div bicc \
           rd_wr call jmpl ticc mulscc \
           save_rest tadd tsub endian \
           casa"
