@@ -737,10 +737,10 @@ public:
 
         // Single predictable guard
         if (__builtin_expect(c.owner_id != my_id || c.gen != generation_, 0)) {
-            fprintf(stderr, "cache invalidate: this=%ld old_owner=%ld old_gen=%llu new_gen=%llu\n",
-            my_id, c.owner_id,
-            (unsigned long long)c.gen,
-            (unsigned long long)generation_);
+            //fprintf(stderr, "cache invalidate: this=%ld old_owner=%ld old_gen=%llu new_gen=%llu\n",
+            //my_id, c.owner_id,
+            //(unsigned long long)c.gen,
+            //(unsigned long long)generation_);
             c.owner_id = my_id;
             c.gen = generation_;
             c.b = nullptr;
