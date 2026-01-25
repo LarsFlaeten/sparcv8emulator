@@ -216,7 +216,6 @@ void IRQMP::write(u32 offset, u32 value) {
                         MPSTAT &= ~(1 << i); // Only write 0 to mpstat if we actually woke up
                         
                         //std::cout << "[IRQMP] Waking up cpu " << int(i) << "\n";
-                        lock.unlock();
                         cpu_ptrs_[i]->wakeup();
                         
                     }
