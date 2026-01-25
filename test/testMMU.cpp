@@ -300,7 +300,7 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite)
 
     auto& b = mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
     
-    fprintf(stderr, "bank base=%08x size=%zx limit32=%08x end64=%llx\n",
+    fprintf(stderr, "bank base=%08x size=%08x limit64=%lx end64=%llx\n",
         b.get_base(),
         b.get_size(),
         b.get_end_exclusive(),               // if you still have it
@@ -331,7 +331,7 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite2)
     auto& mmu = cpu.get_mmu();
 
     auto& b = mctrl.attach_bank<RamBank>(0xfff00000, 0x100000);
-    fprintf(stderr, "bank base=%08x size=%zx limit32=%08x end64=%llx\n",
+    fprintf(stderr, "bank base=%08x size=%08x limit64=%lx end64=%llx\n",
         b.get_base(),
         b.get_size(),
         b.get_end_exclusive(),               // if you still have it
