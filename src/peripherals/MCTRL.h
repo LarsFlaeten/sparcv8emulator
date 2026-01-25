@@ -57,13 +57,16 @@ public:
     virtual u32* get_ptr() = 0;
 
     // Atomics with RAM access (default: not supported)
-    virtual AtomicResult atomic_ldstub8(uint32_t paddr) { return {false, 0}; }
-    virtual AtomicResult atomic_swap32 (uint32_t paddr, uint32_t newv) { return {false, 0}; }
+    virtual AtomicResult atomic_ldstub8(uint32_t paddr) { throw std::runtime_error("LDSTUB on nonram bank");  return {false, 0}; }
+    virtual AtomicResult atomic_swap32 (uint32_t paddr, uint32_t newv) { throw std::runtime_error("SWAP on nonram bank"); return {false, 0}; }
+    
+    /*
     virtual AtomicResult atomic_casa32 (uint32_t paddr, uint32_t expected, uint32_t desired, bool* swapped) {
+        throw std::runtime_error("CASA on nonram bank");
         if (swapped) *swapped = false;
         return {false, 0};
     }
-
+    */
     virtual u16 read16(u32 addr, bool align = true) const {
         #ifndef NDEBUG
         if (align && (addr & 1))
@@ -157,9 +160,36 @@ public:
             write32(addr + 4, hi);
         }
     }
+
+    // Derivde must override these if locks are used
+    virtual u8 read8_nolock(u32 addr) const noexcept {
+        return read8(addr);
+    }
+
+    virtual void write8_nolock(u32 addr, u8 val) noexcept {
+        write8(addr, val);
+        return;
+    }
+
+    virtual u32 read32_nolock(u32 addr, bool align = true) const noexcept {
+        return read32(addr, align);
+    }
+
+    virtual void write32_nolock(u32 addr, u32 val, bool align = true) noexcept{
+        write32(addr, val, align);
+        return;
+    }
+
+
+
     Endian get_endian() const { return bankEndian; }
 
+    virtual std::mutex& get_mutex(u32 paddr) {return mtx;}
+   
+
 protected:
+    std::mutex  mtx = {}; // Dummy mutex
+
     Endian bankEndian;
 
     static std::string to_hex(u32 val) {
@@ -405,6 +435,10 @@ public:
 
     u32* get_ptr() override { return reinterpret_cast<u32*>(data.data());}
 
+    std::mutex& get_mutex(u32 addr) override { 
+        return global_ram_mtx; 
+    }
+
     AtomicResult atomic_ldstub8(uint32_t paddr) override {
         std::lock_guard lk(global_ram_mtx);
         uint8_t old = read8_nolock(paddr);
@@ -419,6 +453,7 @@ public:
         return {true, old};
     }
 
+    /*
     AtomicResult atomic_casa32(uint32_t paddr, uint32_t expected, uint32_t desired, bool* swapped) override {
         std::lock_guard lk(global_ram_mtx);
         uint32_t old = read32_nolock(paddr);
@@ -430,7 +465,7 @@ public:
         }
         return {true, old};
     }
-
+    */
 private:
     u32 base;
     size_t size;
@@ -453,15 +488,18 @@ private:
             throw std::out_of_range("RAM access out of range");
     }
 
-    u8 read8_nolock(u32 addr) const noexcept {
+    
+  public: 
+
+    virtual u8 read8_nolock(u32 addr) const noexcept override {
         return data[addr - base];
     }
 
-    void write8_nolock(u32 addr, u8 val) noexcept {
+    virtual void write8_nolock(u32 addr, u8 val) noexcept override {
         data[addr - base] = val;
     }
 
-    u32 read32_nolock(u32 addr, bool align = true) const noexcept {
+    virtual u32 read32_nolock(u32 addr, bool align = true) const noexcept override{
         #ifndef NDEBUG
         if (align && (addr & 3))
             assert(false);
@@ -477,7 +515,7 @@ private:
         }
     }
 
-    virtual void write32_nolock(u32 addr, u32 val, bool align = true) noexcept {
+    virtual void write32_nolock(u32 addr, u32 val, bool align = true) noexcept override {
         #ifndef NDEBUG
         if (align && (addr & 3))
             assert(false);
@@ -715,10 +753,16 @@ public:
         return bank->atomic_swap32(paddr, newv);
     }
 
+    /*
     AtomicResult atomic_casa32(uint32_t paddr, uint32_t expected, uint32_t desired, bool* swapped) noexcept {
         auto* bank = find_bank_or_null(paddr);
         if (!bank) { if (swapped) *swapped = false; return {false, 0}; }
         return bank->atomic_casa32(paddr, expected, desired, swapped);
+    }
+    */
+
+    IMemoryBank* get_bank(u32 paddr) {
+        return find_bank_or_null(paddr);
     }
 
     // Thread local cache of last bank, since we are often hammering the
@@ -844,6 +888,8 @@ private:
     std::vector<std::unique_ptr<IMemoryBank>> banks;
     u64 generation_ = 1;
     uint64_t instance_id_;
+
+    std::mutex mtx = {};
 
     static uint64_t next_instance_id() {
         static std::atomic<uint64_t> g{1};

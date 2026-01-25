@@ -3,6 +3,8 @@
 #include <iostream>
 #include <iomanip>
 
+#include <format>
+
 constexpr u32 L3_PAGE_MASK = 0xfffff000;
 constexpr u32 L2_PAGE_MASK = 0xfffc0000;
 constexpr u32 L1_PAGE_MASK = 0xff000000;
@@ -243,6 +245,132 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
     return PTE;
 }
 
+AtomicResult MMU::atomic_swap32(u32 vaddr, bool supervisor, u32 value) {
+    u32 paddr = 0x0;
+    if(GetEnabled()) {
+        auto tr = translate_va(vaddr, supervisor, intent_load, !GetNoFault());
+        if(!tr.ok) {
+            return {false, 0x0U};    
+        }
+
+        // Check perms for write too, since swap is rw
+        auto ft = check_perms(vaddr,tr.pte, intent_store, supervisor, tr.level, !GetNoFault());
+        if(ft != 0) {
+            return {false, 0x0U};       
+        }
+
+        paddr = tr.pa;
+    } else
+        paddr = vaddr;
+
+    auto r = mctrl.atomic_swap32(paddr, value);
+    return r;
+}
+
+AtomicResult MMU::atomic_casa32(u32 vaddr, bool supervisor, u32 expected, u32 desired, bool& swapped) {
+    AtomicResult r = {};
+    
+    u32 paddr_old = 0x0;
+    
+    MMUTranslateResult tr = {};
+
+    if(GetEnabled()) {
+        tr = translate_va(vaddr, supervisor, intent_load, !GetNoFault());
+        if(!tr.ok) {
+            r.ok = false;
+            return r;    
+        }
+
+        paddr_old = tr.pa;
+    } else
+        paddr_old = vaddr;
+
+    // Get mtx for the page/bank in question, and lock it
+    auto pbank = mctrl.get_bank(paddr_old);
+    if(!pbank) {// No physical bank at this address..
+        r.ok = false;
+        return r;  
+    }
+    auto& mtx = pbank->get_mutex(paddr_old);
+    std::lock_guard<std::mutex> lk(mtx);
+
+    // Do the casa:
+    r.ok = true;
+    r.old = pbank->read32_nolock(paddr_old);
+    if (r.old == expected) {
+        // Check permissions for store also
+        if(GetEnabled()) {
+            auto ft = check_perms(vaddr, tr.pte, intent_store, supervisor, tr.level, !GetNoFault());
+            if(ft != 0) {
+                r.ok = false;
+                return r;    
+            }
+        }
+        pbank->write32_nolock(paddr_old, desired);
+        swapped = true;
+    }
+
+    return r;
+}
+
+u8  MMU::check_perms(u32 vaddr, u32 pte, intent rw, bool supervisor, u8 level, bool report_fault) noexcept {
+    u8 FT = 0;
+    u8 ACC = (pte >> 2) & 0x7;
+    auto AT = get_access_type(rw, supervisor);
+    u32 ET = pte & SRMMU_ET_MASK;
+
+    if((ET == 1 && level == 3) || ET == 3) {
+        FT = 4; // Translation error
+    }
+
+
+    if(ET == 0)
+        FT = 1; // Invalid address
+    else { 
+        // Check against access controls
+        // SRMMU page 257 table
+        if(AT == 0) {
+            if( ACC == 4) FT = 2;
+            if( ACC == 6 || ACC == 7) FT = 3;
+        } else if(AT == 1) {
+            if( ACC == 4) FT = 2;
+        } else if(AT == 2) {
+            if( ACC == 0 || ACC == 1 || ACC == 5) FT = 2;
+            if( ACC == 6 || ACC == 7 ) FT = 3;
+        } else if(AT == 3) {
+            if( ACC == 0 || ACC == 1 || ACC == 5) FT = 2;
+        } else if(AT == 4) {
+            if( ACC == 0 || ACC == 2 || ACC == 4 || ACC == 5) FT = 2;
+            if( ACC == 6 || ACC == 7 ) FT = 3;
+        } else if(AT == 5) {
+            if( ACC == 0 || ACC == 2 || ACC == 4 || ACC == 6) FT = 2;
+        } else if(AT == 6) {
+            if( ACC == 0 || ACC == 1 || ACC == 2 || ACC == 4 || ACC == 5) FT = 2;
+            if( ACC == 6 || ACC == 7 ) FT = 3;
+        } else if(AT == 7) {
+            if( ACC==0 || ACC==1 || ACC==2 || ACC==4 || ACC == 5 || ACC == 6) FT = 2;
+        } 
+    }
+
+     // Signal fault 
+    if(FT != 0) {
+        //std::cerr << "MMU Fault, virt_addr = 0x" << std::hex << virt_addr << ", lvl: " << std::dec << (int)level << ", intent=" << rw << " (" << rw_str(rw) << "), AT = " << AT << " (" << at_str(AT) << "), ACC = " << ACC << " (" << acc_str(ACC, supervisor) << "), FT = " << FT << " (" << ft_str(FT) << ")\n";
+        if(report_fault) {
+            MMUFault f{
+                    .far = vaddr,
+                    .ft = FT, 
+                    .at = AT,
+                    .level = level,
+                    .fav = true,
+                };
+
+            set_fault(f);    
+        }
+    }
+
+    return FT;
+}
+
 
 MMUTranslateResult MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool report_faults) {
      
@@ -276,63 +404,14 @@ MMUTranslateResult MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool
         }
     }
     
-    u32 ET = pte & SRMMU_ET_MASK;
-
+    
     // Fault handling:    
-    u8 FT = 0; // Fault type      
-    u8 ACC = (pte >> 2) & 0x7;
-    auto AT = get_access_type(rw, supervisor);
-
-
-    if((ET == 1 && level == 3) || ET == 3) {
-        FT = 4; // Translation error
-    }
-
-    if(ET == 0)
-        FT = 1; // Invalid address
-    else { 
-        // Check against access controls
-        // SRMMU page 257 table
-        if(AT == 0) {
-            if( ACC == 4) FT = 2;
-            if( ACC == 6 || ACC == 7) FT = 3;
-        } else if(AT == 1) {
-            if( ACC == 4) FT = 2;
-        } else if(AT == 2) {
-            if( ACC == 0 || ACC == 1 || ACC == 5) FT = 2;
-            if( ACC == 6 || ACC == 7 ) FT = 3;
-        } else if(AT == 3) {
-            if( ACC == 0 || ACC == 1 || ACC == 5) FT = 2;
-        } else if(AT == 4) {
-            if( ACC == 0 || ACC == 2 || ACC == 4 || ACC == 5) FT = 2;
-            if( ACC == 6 || ACC == 7 ) FT = 3;
-        } else if(AT == 5) {
-            if( ACC == 0 || ACC == 2 || ACC == 4 || ACC == 6) FT = 2;
-        } else if(AT == 6) {
-            if( ACC == 0 || ACC == 1 || ACC == 2 || ACC == 4 || ACC == 5) FT = 2;
-            if( ACC == 6 || ACC == 7 ) FT = 3;
-        } else if(AT == 7) {
-            if( ACC==0 || ACC==1 || ACC==2 || ACC==4 || ACC == 5 || ACC == 6) FT = 2;
-        } 
-    }
+    u8 FT = check_perms(vaddr, pte, rw, supervisor, level, report_faults);
+    
     // Signal fault 
     if(FT != 0) {
-        //std::cerr << "MMU Fault, virt_addr = 0x" << std::hex << virt_addr << ", lvl: " << std::dec << (int)level << ", intent=" << rw << " (" << rw_str(rw) << "), AT = " << AT << " (" << at_str(AT) << "), ACC = " << ACC << " (" << acc_str(ACC, supervisor) << "), FT = " << FT << " (" << ft_str(FT) << ")\n";
-        if(report_faults) {
-            MMUFault f{
-                    .far = vaddr,
-                    .ft = FT, 
-                    .at = AT,
-                    .level = level,
-                    .fav = true,
-                };
-
-            set_fault(f);    
-        }
-
-        return {false, 0x0, level};
+        return {false, 0x0, level, 0x0};
     }
-
 
     // We have a valid PTE, Assemble physical address
     u32 PPN = (pte & ~0xff) >> 8;
@@ -346,6 +425,6 @@ MMUTranslateResult MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool
     }
     u32 phys_addr = (va | (PPN << 12));
 
-    return {true, phys_addr, level};
+    return {true, phys_addr, level, pte};
 }
 

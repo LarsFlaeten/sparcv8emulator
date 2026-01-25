@@ -70,6 +70,7 @@ struct MMUTranslateResult {
     bool ok;
     u32 pa;
     u8 level;
+    u32 pte;
 };
 
 
@@ -182,6 +183,10 @@ public:
         dtlb.flush();
     }
 
+    AtomicResult atomic_casa32(u32 vaddr, bool supervisor, u32 expected, u32 desired, bool& swapped);
+
+    AtomicResult atomic_swap32(u32 vaddr, bool supervisor, u32 value);
+
     inline u32 MemAccessBypassRead4(u32 pa) const noexcept {
         u32 out;
         auto r = mctrl.try_read32(pa, out, false);
@@ -195,6 +200,8 @@ public:
         mctrl.try_write32(pa, value);
         return;
     }
+
+    u8  check_perms(u32 vaddr, u32 pte, intent rw, bool supervisor, u8 level, bool report_fault) noexcept;
 
     inline u8 get_access_type(intent rw, bool supervisor) {
         u8 AT = 0;

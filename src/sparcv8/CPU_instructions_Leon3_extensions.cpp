@@ -25,113 +25,43 @@ void CPU::CASA (pDecode_t d)
  
     // The instruction is privileged but setting
     // ASI = 0xA (user data) will allow it to be used in user mode.
-    if ((d->p->s == 0) && (imm_asi != 0xA)) 
+    if ((d->p->s == 0) && (imm_asi != 0xA)) {
         trap (d, SPARC_PRIVILEGED_INSTRUCTION);
-    else if (rs1_addr & LOBITS2) {
+        return;
+    } else if (rs1_addr & LOBITS2) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
-    }
-
-    bool super = false;
-    if( imm_asi == 0xB) {
-        super = true;
-    } else if (imm_asi == 0xA) {
-        super = false;
-    } else {
-        throw not_implemented_leon_exception("ASI != 0xb|0xa not implemented for CASA");
-    }
-
-    u32 expected;
-    read_reg(rs2 & LOBITS5, &expected);
-
-    u32 paddr_old = 0x0;
-    if(mmu.GetEnabled()) {
-        bool super = (d->p->s == 0x1U);
-        auto translate_res = mmu.translate_va(rs1_addr, super, intent_load, !mmu.GetNoFault());
-        if(!translate_res.ok) {
-            trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
-            return;    
-        }
-
-        paddr_old = translate_res.pa;
-    } else
-        paddr_old = rs1_addr;
-
-    bool swapped = false;
-    u32 desired = 0x0;
-    read_reg(d->rd & LOBITS5, &desired);
-
-    auto r = mmu.GetMCTRL().atomic_casa32(paddr_old, expected, desired, &swapped);
-
-    if(!r.ok && !mmu.GetNoFault())
-        trap(d,  SPARC_DATA_ACCESS_EXCEPTION);
-    
-    // We write to [rd], swapped or not
-    write_reg(r.old, d->rd);
-    
-
-    /*
-    u32 rs2_value;
-    read_reg(rs2 & LOBITS5, &rs2_value);
-   
-    // Get value pointed to by rs1
-    u32 rs1_value = 0; // To avoid warning..
-    u32 mret;
-    bool super = false;
-    if( imm_asi == 0xB) {
-        super = true;
-    } else if (imm_asi == 0xA) {
-        super = false;
-    } else {
-        throw not_implemented_leon_exception("ASI != 0xb|0xa not implemented for CASA");
-        mret = -1;
-    }
-        
-    mret = mmu.MemAccess<intent_load>(rs1_addr, rs1_value, CROSS_ENDIAN, super);
- 
-    if(mret < 0) {
-        if(!mmu.GetNoFault())
-            trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         return;
     }
 
-    //if (verbose)
-    //    os << std::format("  --> casa cmp   {:#08x} and {:#08x}\n", rs1_value, rs2_value);
-    //    os << std::format("      Value from reg:  rs2={}:                {:#08x}\n", DispRegStr(rs2), rs2_value);
-    //    os << std::format("      Value from mem:  rs1={}: [{:#08x}] = {:#08x}\n", DispRegStr(d->rs1), rs1_addr, rs1_value);
-
-
-     
-    // CMP. If equal, SWAP r_rd and rs1
-    if(rs1_value == rs2_value) {
-
-        
-        u32 rd_value;
-        read_reg(d->rd & LOBITS5, &rd_value);
-        //os << std::format("      Value from reg:   rd={}:                {:#08x}\n", DispRegStr(d->rd), rd_value);
-
-       // Write back swapped
-        write_reg(rs1_value, d->rd & LOBITS5);
-        mret = mmu.MemAccess<intent_store>(rs1_addr, rd_value, CROSS_ENDIAN, super); 
-        if(mret < 0) {
-            if(!mmu.GetNoFault())
-                trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
-            return;
-        }
-
-       //os << std::format("      ..swapped rd and rs1 \n", DispRegStr(d->rd),  rs1_value);
+    bool super = false;
+    if( imm_asi == 0xB) {
+        super = true;
+    } else if (imm_asi == 0xA) {
+        super = false;
     } else {
-        // Only RD changed by content of rs1
-        write_reg(rs1_value, d->rd & LOBITS5);
-        //os << std::format("      writing {:#08x} to rd:{}\n", rs1_value, DispRegStr(d->rd));
- 
+        throw not_implemented_leon_exception("ASI != 0xb|0xa not implemented for CASA");
+    }
+
+    // Set up for atomic CASA
+    u32 expected;
+    read_reg(rs2 & LOBITS5, &expected);
+
+    u32 desired = 0x0;
+    read_reg(d->rd & LOBITS5, &desired);
+
+    bool swapped = false;
+
+    auto r = mmu.atomic_casa32(rs1_addr, super, expected, desired, swapped);
+
+    if(!r.ok && !mmu.GetNoFault()) {
+        trap(d,  SPARC_DATA_ACCESS_EXCEPTION);
+        return;
     }
     
+    // We write to [rd], swapped or not
+    write_reg(r.old, d->rd & LOBITS5);
+    
+    // Proceed
     d->pc = d->npc;
     d->npc += 4;
-    */
-
-    d->pc = d->npc;
-    d->npc += 4;
-
-
 }
