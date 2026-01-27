@@ -589,6 +589,9 @@ TEST_F(FPUTest, FOP2_FCMPD_FCMPED)
     ASSERT_EQ((cpu.get_fsr() >> 14) & LOBITS3, 6); // ftt == 6 (Invalid FP reg)
     cpu.reset(0);
 
+    set_double(f1, 2);
+    set_double(f2, 4);
+    set_double(f3, 6);
     do_fop2_instr(opf, 4, 9);
     ASSERT_EQ(cpu.get_trap_type(), SPARC_FP_EXCEPTION);
     ASSERT_EQ((cpu.get_fsr() >> 14) & LOBITS3, 6); // ftt == 6 (Invalid FP reg)
@@ -596,6 +599,9 @@ TEST_F(FPUTest, FOP2_FCMPD_FCMPED)
     
 
     // Compare f1 and f2, should be LARGER (fcc == 2)
+    set_double(f1, 2);
+    set_double(f2, 4);
+    set_double(f3, 6);
     do_fop2_instr(opf, 2, 4);
     ASSERT_EQ(cpu.get_trap_type(), 0);
     ASSERT_EQ((cpu.get_fsr() >> 10) & 0x3, 2);
@@ -625,11 +631,17 @@ TEST_F(FPUTest, FOP2_FCMPD_FCMPED)
     ASSERT_EQ((cpu.get_fsr() >> 14) & LOBITS3, 6); // ftt == 6 (Invalid FP reg)
     cpu.reset(0);
 
+    set_double(f1, 2);
+    set_double(f2, 4);
+    set_double(f3, 6);
     do_fop2_instr(opf, 4, 9);
     ASSERT_EQ(cpu.get_trap_type(), SPARC_FP_EXCEPTION);
     ASSERT_EQ((cpu.get_fsr() >> 14) & LOBITS3, 6); // ftt == 6 (Invalid FP reg)
     cpu.reset(0);
 
+    set_double(f1, 2);
+    set_double(f2, 4);
+    set_double(f3, 6);
     // Compare f1 and f2, should be LARGER (fcc == 2)
     do_fop2_instr(opf, 2, 4);
     ASSERT_EQ(cpu.get_trap_type(), 0);
