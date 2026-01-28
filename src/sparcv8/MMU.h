@@ -1,9 +1,16 @@
 #ifndef _MMU_H_
 #define _MMU_H_
 
-#include "../peripherals/MCTRL.h"
+#include <cstdint>
+#include <array>
 
+
+#include "../peripherals/MCTRL.h"
 #include "CPU_defines.h"
+
+#ifndef NDEBUG
+#include "../mutexprofiler.hpp"
+#endif
 
 /* Declare facilities for detecting and dealing with different byteorder */
 #include <endian.h>
@@ -24,8 +31,6 @@
 
 enum intent { intent_load=0, intent_store=1, intent_execute=2 };
 
-#include <cstdint>
-#include <array>
 
 constexpr int TLB_ENTRIES = 16; // emulate LEON3 default
 
@@ -182,6 +187,10 @@ public:
         itlb.flush();
         dtlb.flush();
     }
+
+    #ifndef NDEBUG
+    CpuMutexProfiles mtx_profiles_ = {};
+    #endif
 
     AtomicResult atomic_casa32(u32 vaddr, bool supervisor, u32 expected, u32 desired, bool& swapped);
 

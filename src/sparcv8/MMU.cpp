@@ -292,8 +292,12 @@ AtomicResult MMU::atomic_casa32(u32 vaddr, bool supervisor, u32 expected, u32 de
         return r;  
     }
     auto& mtx = pbank->get_mutex(paddr_old);
-    std::lock_guard<std::mutex> lk(mtx);
 
+#ifndef NDEBUG
+    ProfiledLock lk(mtx, mtx_profiles_.ram);
+#elif
+    std::lock_guard<std::mutex> lk(mtx);
+#endif
     // Do the casa:
     r.ok = true;
     r.old = pbank->read32_nolock(paddr_old);

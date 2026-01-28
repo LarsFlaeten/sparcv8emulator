@@ -287,9 +287,6 @@ class CPU
         void    set_break_on_timer_interrupt(bool val) {
             break_on_timer_interrupt = val;
         }
-        
-    public:
-        
 
 	private:
 	// Common instructions

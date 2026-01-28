@@ -1,5 +1,4 @@
 // Implementeation of a Leon SMP system
-// No gdb stub support for multiple threads implemented yet
 
 // std
 #include <iostream>
@@ -20,6 +19,7 @@
 
 #include "readelf.h"
 #include "debug.h"
+#include "mutexprofiler.hpp"
 
 #include "cv_log.hpp"
 
@@ -97,6 +97,30 @@ void print_config(const EmulatorConfig& config) {
               << (config.realtime_pacing ? "enabled" : "disabled") << "\n";
     std::cout << "==============================\n";
 }
+
+#ifndef NDEBUG
+static inline double ns_to_ms(u64 ns) { return double(ns) / 1e6; }
+
+
+void dump_ram_mutex_profile(std::vector<CpuMutexProfiles>& profiles) {
+    for (int i = 0; i < profiles.size(); ++i) {
+        const auto& p = profiles[i].ram;
+        const u64 acq = p.acquisitions.load(std::memory_order_relaxed);
+        const u64 w   = p.wait_ns.load(std::memory_order_relaxed);
+        const u64 h   = p.hold_ns.load(std::memory_order_relaxed);
+        const u64 mw  = p.max_wait_ns.load(std::memory_order_relaxed);
+        const u64 mh  = p.max_hold_ns.load(std::memory_order_relaxed);
+
+        printf("[CPU%d][RAM] acq=%llu wait=%.3fms hold=%.3fms avg_wait=%.1fns avg_hold=%.1fns max_wait=%.3fms max_hold=%.3fms\n",
+            i,
+            (unsigned long long)acq,
+            ns_to_ms(w), ns_to_ms(h),
+            acq ? double(w)/double(acq) : 0.0,
+            acq ? double(h)/double(acq) : 0.0,
+            ns_to_ms(mw), ns_to_ms(mh));
+    }
+}
+#endif
 
 struct thread_tick_summary {
     int target_instructions = 0;
@@ -373,3 +397,4 @@ int main(int argc, char **argv) {
     
 
 }
+
