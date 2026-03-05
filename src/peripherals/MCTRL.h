@@ -161,13 +161,23 @@ public:
         }
     }
 
-    // Derivde must override these if locks are used
+    // Derived must override these if locks are used
     virtual u8 read8_nolock(u32 addr) const noexcept {
         return read8(addr);
     }
 
     virtual void write8_nolock(u32 addr, u8 val) noexcept {
         write8(addr, val);
+        return;
+    }
+
+    // Derivde must override these if locks are used
+    virtual u16 read16_nolock(u32 addr, bool align = true) const noexcept {
+        return read16(addr, align);
+    }
+
+    virtual void write16_nolock(u32 addr, u16 val, bool align = true) noexcept {
+        write16(addr, val, align);
         return;
     }
 
@@ -267,14 +277,10 @@ public:
     }
 
     u8 read8(u32 addr) const noexcept override  {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        //check_range(addr); // We dont check range, tha dress has allready been throug find_bank
         return data[addr - base];
     }
 
     void write8(u32 addr, u8 val) noexcept override {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        //check_range(addr); // We dont check range, tha dress has allready been throug find_bank
         data[addr - base] = val;
     }
 
@@ -314,8 +320,6 @@ public:
     
 
     u16 read16_be(u32 addr, bool align = true) const {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        
 #ifndef NDEBUG
         if (align && (addr & 1)) std::abort();
 #endif
@@ -329,8 +333,6 @@ public:
     }
 
     void write16_be(u32 addr, u16 val, bool align = true) {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        
 #ifndef NDEBUG
         if (align && (addr & 1)) std::abort();
 #endif
@@ -344,8 +346,6 @@ public:
     }
 
     u32 read32_be(u32 addr, bool align = true) const {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        
         // assume align already handled above; if you keep align param:
 #ifndef NDEBUG
         if (align && (addr & 3)) std::abort();
@@ -358,8 +358,6 @@ public:
     }
 
     void write32_be(u32 addr, u32 val, bool align = true) {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        
 #ifndef NDEBUG
         if (align && (addr & 3)) std::abort();
 #endif
@@ -372,8 +370,6 @@ public:
     }
 
     u16 read16_le(u32 addr, bool align = true) const {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        
 #ifndef NDEBUG
         if (align && (addr & 1)) std::abort();
 #endif
@@ -387,8 +383,6 @@ public:
     }
 
     void write16_le(u32 addr, u16 val, bool align = true) {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        
 #ifndef NDEBUG
         if (align && (addr & 1)) std::abort();
 #endif
@@ -402,8 +396,6 @@ public:
     }
 
     u32 read32_le(u32 addr, bool align = true) const {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        
         // assume align already handled above; if you keep align param:
 #ifndef NDEBUG
         if (align && (addr & 3)) std::abort();
@@ -415,8 +407,6 @@ public:
     }
 
     void write32_le(u32 addr, u32 val, bool align = true) {
-        std::lock_guard<std::mutex> lk(global_ram_mtx);
-        
 #ifndef NDEBUG
         if (align && (addr & 3)) std::abort();
 #endif
