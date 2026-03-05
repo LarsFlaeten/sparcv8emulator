@@ -4,6 +4,7 @@
 using namespace std::chrono;
 
 #include <pthread.h>
+#include <cmath>
 
 void set_thread_name(const std::string& name) {
     pthread_setname_np(pthread_self(), name.c_str());
@@ -87,9 +88,8 @@ BusClock::Stats BusClock::getStats() const {
 
 void BusClock::run() {
     set_thread_name("bus_clock");
-    using clock = high_resolution_clock;
-    auto next = clock::now();
-
+    using clock = std::chrono::steady_clock;
+    
     double freq;
     {
         //std::lock_guard<std::mutex> lock(mtx_);
@@ -97,101 +97,100 @@ void BusClock::run() {
         freq = clock_freq_hz_;
     }
 
-    std::cout << "[BUS CLOCK] Starting at " << std::to_string((int)freq) << " hz\n";
+    std::cout << "[BUS CLOCK] Starting at " << std::fixed << std::setprecision(3)
+              << freq << " hz\n";
 
-    const double tick_period_ns = 1e9 / freq;
+    const double ticks_per_ns = freq / 1e9;
 
-    // performance tracking
+    // UART divider (compute once)
+    const uint32_t uart_div_target = std::max<uint32_t>(1, (uint32_t)(freq / 10'000.0));
+    uint32_t uart_div = 0;
+
+    // host pacing quantum (tune)
+    const auto host_quantum = 100us;
+
+    // batching clamp: max ticks per host wakeup
+    const uint64_t max_due_ticks = 50'000; // tune; 5 MHz => 50k ticks == 10ms worth
+
+    // perf stats
     uint64_t loop_count = 0;
     auto last_measure = clock::now();
     double min_ns = std::numeric_limits<double>::max();
     double max_ns = 0.0;
     double sum_ns = 0.0;
-    double wait_ns = 0.0;
-    double sum_wait_ns = 0.0;
 
-    while (running_) {
-        auto start = clock::now();
+    auto last = clock::now();
+
+        while (running_) {
+        auto iter_start = clock::now();
 
         if (auto* dbg = DebugStopController::Global()) dbg->checkpoint(wtoken);
-        
-        
-        // Handle tick and check timer interrupt in one go    
-        timer_.lock();
-        if(timer_.tick_and_check_interrupt_unlocked(true)) {
-            
-            // Activate IRQ barrier:
-            {
-                std::unique_lock(irq_barrier_.mtx);
-                // Activate global barrier
-                irq_barrier_.active = true;
-                irq_barrier_.release = false;
-            }
-            
-            // Trigger the irq. Qny sleeping CPUs will be awaken
-            irqmp_.trigger_irq(8);
-            
-            {
-                std::lock_guard lock(mtx_);
+
+        // compute due ticks from wall time
+        auto now = clock::now();
+        auto dt_ns = duration_cast<nanoseconds>(now - last).count();
+        last = now;
+
+        uint64_t due = (uint64_t)std::llround((double)dt_ns * ticks_per_ns);
+        if (due > max_due_ticks) due = max_due_ticks;
+
+        // Do due bus ticks
+        for (uint64_t i = 0; i < due; ++i) {
+            // timer tick (lock only if you must)
+            timer_.lock();
+            const bool fire_timer_irq = timer_.tick_and_check_interrupt_unlocked(true);
+            timer_.unlock();
+
+            if (fire_timer_irq) {
+                { std::unique_lock lk(irq_barrier_.mtx);
+                  irq_barrier_.active = true;
+                  irq_barrier_.release = false;
+                }
+
+                irqmp_.trigger_irq(8);
                 tick_count_.fetch_add(1, std::memory_order_relaxed);
+                cv_.notify_all();
             }
 
-            cv_.notify_all();
-
-        }
-        timer_.unlock();
-        
-        // 50,000,000 Hz / 5000 = 10,000 Hz  (10 kHz UART tick)
-        uint32_t div = freq/10'000;
-        
-        static uint32_t uart_div = 0;
-        if (++uart_div >= div) {  // every div bus-clock ticks
-            uart_div = 0;
-
-            uart_.tick_scheduled();   // RX polling + TX retrigger
-            if (uart_.CheckIRQ())
-                irqmp_.trigger_irq(4);
+            if (++uart_div >= uart_div_target) {
+                uart_div = 0;
+                uart_.tick_scheduled();
+                if (uart_.CheckIRQ())
+                    irqmp_.trigger_irq(4);
+            }
         }
 
-        auto end = clock::now();
-        double loop_time_ns = duration_cast<nanoseconds>(end - start).count();
+        // stats measure "work" per host iteration
+        auto iter_end = clock::now();
+        double work_ns = duration_cast<nanoseconds>(iter_end - iter_start).count();
+        sum_ns += work_ns;
+        min_ns = std::min(min_ns, work_ns);
+        max_ns = std::max(max_ns, work_ns);
+        loop_count++;
 
-        // stats collection
-        sum_ns += loop_time_ns;
-        if (loop_time_ns < min_ns) min_ns = loop_time_ns;
-        if (loop_time_ns > max_ns) max_ns = loop_time_ns;
-        loop_count += 1;
-
-        auto elapsed = duration_cast<nanoseconds>(end - last_measure).count();
-        if (elapsed >= 100'000'000) { // 100 ms window
-            double avg_ns = sum_ns / (loop_count);
+        auto elapsed = duration_cast<nanoseconds>(iter_end - last_measure).count();
+        if (elapsed >= 100'000'000) {
+            double avg_ns = sum_ns / loop_count;
             double rate_hz = loop_count * 1e9 / elapsed;
-            double avg_wait_ns = sum_wait_ns / (loop_count);
 
-            {
-                cvlog::LockGuard lock(stats_mtx_);
-                stats_.avg_loop_time_ns = avg_ns;
-                stats_.min_loop_time_ns = min_ns;
-                stats_.max_loop_time_ns = max_ns;
-                stats_.measured_rate_hz = rate_hz;
-                stats_.avg_wait_time_ns = avg_wait_ns;
-                stats_.total_loops += loop_count;
+            { cvlog::LockGuard lock(stats_mtx_);
+              stats_.avg_loop_time_ns = avg_ns;
+              stats_.min_loop_time_ns = min_ns;
+              stats_.max_loop_time_ns = max_ns;
+              stats_.measured_rate_hz = rate_hz;
+              stats_.total_loops += loop_count;
             }
 
             loop_count = 0;
             sum_ns = 0.0;
             min_ns = std::numeric_limits<double>::max();
             max_ns = 0.0;
-            sum_wait_ns = 0.0;
-            last_measure = end;
+            last_measure = iter_end;
         }
 
-        // precise pacing
-        
-        wait_ns = tick_period_ns - loop_time_ns;
-        sum_wait_ns += wait_ns;
-        next += nanoseconds((long)wait_ns);
-        std::this_thread::sleep_until(next);
+        // yield to OS (coarse pacing)
+        std::this_thread::sleep_for(host_quantum);
+
     }
 }
 
