@@ -168,6 +168,17 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
                 os << std::format("INT  {:#x} PC={:#08x} NPC={:#08x}\n", irl, pc, npc);
 
             trap_type = irl + SPARC_INTERRUPT;
+
+            if (irl == 13) {
+                std::cout
+                    << "[CPU" << cpu_id_ << "] TAKE IRQ13"
+                    << " ET=" << p->et
+                    << " PIL=" << int(p->pil)
+                    << " PSR=0x" << std::hex << d->psr
+                    << std::dec
+                    << "\n";
+            }
+
             intc.clear_irq(irl, this->cpu_id_);
 
             // Do we clear IRL here, or handle that in interrupt handler?
@@ -218,6 +229,22 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         // Check interrupt controller for pending interrupts and take any,
         // as long as there are not ongoing trap handling
         u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id_);
+        static thread_local bool printed_masked_13 = false;
+
+        if (_incoming_irl == 13 &&
+            !(p->et && (13 > p->pil)) &&
+            !printed_masked_13)
+        {
+            printed_masked_13 = true;
+            std::cout
+                << "[CPU" << cpu_id_ << "] IRQ13 PENDING but MASKED"
+                << " ET=" << p->et
+                << " PIL=" << int(p->pil)
+                << " PSR=0x" << std::hex << d->psr
+                << std::dec
+                << "\n";
+        }
+
         if(_incoming_irl>0 && trap_type == 0) {
             if(_incoming_irl > irl) {
                 set_irl(_incoming_irl); // We take this interrupt
@@ -459,6 +486,8 @@ void CPU::trap(pDecode_t d, u32 trap_no)
 
 void CPU::enter_powerdown()
 {
+    //std::cout << "[CPU" << cpu_id_ << "] taking a nap..\n";
+    
     std::unique_lock<std::mutex> lock(power_mtx);
 
     powerdown_flag.store(true, std::memory_order_release);
@@ -489,6 +518,7 @@ void CPU::enter_powerdown()
 
 void CPU::wakeup()
 {
+    //std::cout << "[CPU" << cpu_id_ << "] wakeup!\n";
     wakeup_flag.store(true, std::memory_order_release);
     power_cv.notify_one();
 }
