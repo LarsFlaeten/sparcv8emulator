@@ -8,7 +8,7 @@
 #include "../peripherals/MCTRL.h"
 #include "CPU_defines.h"
 
-#ifndef NDEBUG
+#if defined(PROFILE_LOCKS)
 #include "../mutexprofiler.hpp"
 #endif
 
@@ -188,7 +188,7 @@ public:
         dtlb.flush();
     }
 
-    #ifndef NDEBUG
+    #if defined(PROFILE_LOCKS)
     CpuMutexProfiles mtx_profiles_ = {};
     #endif
 
@@ -322,42 +322,51 @@ public:
             phys_addr = virt_addr;
         }
 
+        // Get mtx for the page/bank in question, and lock it
+        auto pbank = mctrl.get_bank(phys_addr);
+        if(!pbank) {// No physical bank at this address..
+            return bus_fault();  
+        }
+        auto& mtx = pbank->get_mutex(phys_addr);
+
+#ifdef PROFILE_LOCKS
+        ProfiledLock lk(mtx, mtx_profiles_.ram);
+#else
+        std::lock_guard<std::mutex> lk(mtx);
+#endif
+
         if constexpr (rw==intent_store)
         {
-            MemBusStatus st = MemBusStatus::Ok;
             switch(size) {
                 case(1):
-                    st = mctrl.try_write8(phys_addr, value);
+                    pbank->write8_nolock(phys_addr, value);
                     break;
                 case(2):
-                    st = mctrl.try_write16(phys_addr, value, false);
+                    pbank->write16_nolock(phys_addr, value, false);
                     break;
                 case(4):
-                    st = mctrl.try_write32(phys_addr, value, false);
+                    pbank->write32_nolock(phys_addr, value, false);
                     break;
                 default:
                     throw std::runtime_error("Error write size != {1,2,4}");
             }
-            if(st != MemBusStatus::Ok) return bus_fault();
+            
         }
         else // read or execute
         {
-            MemBusStatus st = MemBusStatus::Ok;
-            
             switch(size) {
                 case(1):
-                    st = mctrl.try_read8(phys_addr, value);
+                    value = pbank->read8_nolock(phys_addr);
                     break;
                 case(2):
-                    st = mctrl.try_read16(phys_addr, value, false);
+                    value = pbank->read16_nolock(phys_addr, false);
                     break;
                 case(4):
-                    st = mctrl.try_read32(phys_addr, value, false);
+                    value = pbank->read32_nolock(phys_addr, false);
                     break;
                 default:
                     throw std::runtime_error("Error read size != {1,2,4}");
             }
-            if (st != MemBusStatus::Ok) return bus_fault();
         }
         
         return 0;

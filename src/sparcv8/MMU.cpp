@@ -246,6 +246,8 @@ u32 MMU::get_PTE(u32 virt_addr, u8& level) {
 }
 
 AtomicResult MMU::atomic_swap32(u32 vaddr, bool supervisor, u32 value) {
+    AtomicResult r = {};
+    
     u32 paddr = 0x0;
     if(GetEnabled()) {
         auto tr = translate_va(vaddr, supervisor, intent_load, !GetNoFault());
@@ -263,7 +265,24 @@ AtomicResult MMU::atomic_swap32(u32 vaddr, bool supervisor, u32 value) {
     } else
         paddr = vaddr;
 
-    auto r = mctrl.atomic_swap32(paddr, value);
+    // Get mtx for the page/bank in question, and lock it
+    auto pbank = mctrl.get_bank(paddr);
+    if(!pbank) {// No physical bank at this address..
+        r.ok = false;
+        return r;  
+    }
+    auto& mtx = pbank->get_mutex(paddr);
+
+#ifdef PROFILE_LOCKS
+    ProfiledLock lk(mtx, mtx_profiles_.ram);
+#else
+    std::lock_guard<std::mutex> lk(mtx);
+#endif
+
+    r.old = pbank->read32_nolock(paddr);          // BE handling here
+    pbank->write32_nolock(paddr, value);
+    r.ok = true;
+
     return r;
 }
 
@@ -293,9 +312,9 @@ AtomicResult MMU::atomic_casa32(u32 vaddr, bool supervisor, u32 expected, u32 de
     }
     auto& mtx = pbank->get_mutex(paddr_old);
 
-#ifndef NDEBUG
+#ifdef PROFILE_LOCKS
     ProfiledLock lk(mtx, mtx_profiles_.ram);
-#elif
+#else
     std::lock_guard<std::mutex> lk(mtx);
 #endif
     // Do the casa:
