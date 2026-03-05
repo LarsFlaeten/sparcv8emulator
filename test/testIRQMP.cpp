@@ -209,6 +209,50 @@ TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
 
 }
 
+TEST_F(IRQMPTest, ICLEAR_clears_ipend_bits_1_to_15_only) {
+    IRQMP intc(3);
+
+    // 1) Seed IPEND with a known pattern: all bits 0..15 set.
+    // (Bit 0 is "reserved" but we set it to verify it is NOT cleared.)
+    intc.write(IRQMP_IPEND_OS, 0x0000FFFFu);
+
+    ASSERT_EQ(intc.read(IRQMP_IPEND_OS) & 0x0000FFFFu, 0x0000FFFFu);
+
+    // 2) Writing 0 to ICLEAR has no effect.
+    intc.write(IRQMP_ICLEAR_OS, 0x00000000u);
+    ASSERT_EQ(intc.read(IRQMP_IPEND_OS) & 0x0000FFFFu, 0x0000FFFFu);
+
+    // 3) Clear a single bit in range 1..15 (example: bit 13)
+    intc.write(IRQMP_ICLEAR_OS, (1u << 13));
+    {
+        u32 ipend = intc.read(IRQMP_IPEND_OS);
+        ASSERT_EQ((ipend & (1u << 13)), 0u);          // bit 13 cleared
+        ASSERT_NE((ipend & (1u << 12)), 0u);          // neighbor unchanged
+        ASSERT_NE((ipend & (1u << 14)), 0u);          // neighbor unchanged
+        ASSERT_NE((ipend & (1u << 0)),  0u);          // bit 0 unchanged (reserved)
+    }
+
+    // 4) Clear multiple bits in range 1..15 at once
+    const u32 multi = (1u << 1) | (1u << 7) | (1u << 15);
+    intc.write(IRQMP_ICLEAR_OS, multi);
+    {
+        u32 ipend = intc.read(IRQMP_IPEND_OS);
+        ASSERT_EQ((ipend & (1u << 1)),  0u);
+        ASSERT_EQ((ipend & (1u << 7)),  0u);
+        ASSERT_EQ((ipend & (1u << 15)), 0u);
+
+        // Still keep reserved bit 0 set.
+        ASSERT_NE((ipend & (1u << 0)), 0u);
+    }
+
+    // 5) Extended interrupt bits (16+) are ignored in your emulator.
+    // Verify writing them does NOT affect lower 0..15 bits.
+    const u32 before = intc.read(IRQMP_IPEND_OS) & 0x0000FFFFu;
+    intc.write(IRQMP_ICLEAR_OS, 0xFFFF0000u);
+    const u32 after  = intc.read(IRQMP_IPEND_OS) & 0x0000FFFFu;
+    ASSERT_EQ(after, before);
+}
+
 // From linux 5.10.216/leon_amba.h
 #define LEON3_IRQMPSTATUS_CPUNR     28
 #define LEON3_IRQMPSTATUS_BROADCAST 27
@@ -265,28 +309,28 @@ TEST_F(IRQMPTest, BroadcastRegMask)
 }
 
 
-TEST_F(IRQMPTest, SMP_init)
-{
+    TEST_F(IRQMPTest, SMP_init)
+    {
 
-    IRQMP intc(3);
+        IRQMP intc(3);
 
-    // Read MPSTAT
-    u32 mpstat = intc.read(0x10);
-    u8 numcpus = ((mpstat >> LEON3_IRQMPSTATUS_CPUNR) & 0xf) + 1;
-    bool broadcast = (mpstat >> LEON3_IRQMPSTATUS_BROADCAST) & 0x1;
-    ASSERT_EQ(numcpus, 3);
-    ASSERT_TRUE(broadcast);
+        // Read MPSTAT
+        u32 mpstat = intc.read(0x10);
+        u8 numcpus = ((mpstat >> LEON3_IRQMPSTATUS_CPUNR) & 0xf) + 1;
+        bool broadcast = (mpstat >> LEON3_IRQMPSTATUS_BROADCAST) & 0x1;
+        ASSERT_EQ(numcpus, 3);
+        ASSERT_TRUE(broadcast);
 
-    bool eirq = (mpstat >> 26) & 0x1;
-    ASSERT_FALSE(eirq);
+        bool eirq = (mpstat >> 26) & 0x1;
+        ASSERT_FALSE(eirq);
 
-    // Check that only cpu 0 is running, 1 and 2 should be in powerdown
-    ASSERT_EQ(mpstat & 0x1, 0); // 0 = running
-    ASSERT_EQ((mpstat >> 1) & 0x1, 1); // 1 = powerdown
-    ASSERT_EQ((mpstat >> 2) & 0x1, 1); // 1 = powerdown
-    
+        // Check that only cpu 0 is running, 1 and 2 should be in powerdown
+        ASSERT_EQ(mpstat & 0x1, 0); // 0 = running
+        ASSERT_EQ((mpstat >> 1) & 0x1, 1); // 1 = powerdown
+        ASSERT_EQ((mpstat >> 2) & 0x1, 1); // 1 = powerdown
+        
 
-}
+    }
 
 TEST_F(IRQMPTest, SMP_correctPIMASK)
 {

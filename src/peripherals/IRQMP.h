@@ -93,6 +93,20 @@ class IRQMP {
             return buf;
         }
 
+        void dump_state() const {
+            std::shared_lock lock(mtx);
+            std::cout << "[IRQMP] ILEVEL=0x" << std::hex << ILEVEL
+                    << " IPEND=0x" << IPEND
+                    << " BRDCST=0x" << BRDCST
+                    << std::dec << "\n";
+            for (u8 c = 0; c < num_cpus_; ++c) {
+                std::cout << "  cpu" << int(c)
+                        << " MASK=0x" << std::hex << PIMASK[c]
+                        << " PIFORCE=0x" << PIFORCE[c]
+                        << std::dec << "\n";
+            }
+        }
+
 };
 
 
