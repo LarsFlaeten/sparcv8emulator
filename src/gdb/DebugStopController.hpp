@@ -11,6 +11,13 @@
 class DebugStopController {
 public:
 
+    using WakeFn = void(*)(void*);
+
+    struct WakeHook {
+        WakeFn fn;
+        void*  ctx;
+    };
+
     // --- Global optional install ---
     static void InstallGlobal(DebugStopController* c) {
         global_.store(c, std::memory_order_release);
@@ -41,6 +48,11 @@ public:
 
     DebugStopController() = default;
 
+    void add_wake_hook(WakeFn fn, void* ctx) {
+        std::lock_guard lk(mtx_);
+        wake_hooks_.push_back(WakeHook{fn, ctx});
+    }
+
     // Register a worker thread that must participate in stop-the-world.
     // Call once per CPU thread + bus thread (and any other mutating thread).
     WorkerToken register_worker(std::string name) {
@@ -64,11 +76,20 @@ public:
 
         reason_.store(static_cast<uint8_t>(reason), std::memory_order_release);
 
+        std::vector<WakeHook> hooks_copy;
+
         // Wake sleepers so they can observe stop.
         {
             std::lock_guard lk(mtx_);
             stop_epoch_++;
+            hooks_copy = wake_hooks_;     // copy under lock
         }
+
+        // Wake *all* potential sleepers (outside lock!)
+        for (auto& h : hooks_copy) {
+            h.fn(h.ctx);
+        }
+        
         cv_.notify_all();
         return true;
     }
@@ -182,6 +203,8 @@ private:
 
     // Used to break waits cleanly across resume/stop cycles.
     uint64_t stop_epoch_ = 0;
+
+    std::vector<WakeHook> wake_hooks_;
 
 public:
 
