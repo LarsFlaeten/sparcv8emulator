@@ -41,7 +41,11 @@ struct ShutdownControl{
 
 
 
+// Its ugly, but we need a few globals for the signal handlers
+// TODO: Make this better....
 ShutdownControl* global_shutdown = nullptr;
+GlobalIRQBarrier* g_irq_b = nullptr;
+std::vector<std::unique_ptr<CPU>>* g_cpus = nullptr;
 
 void signal_handler(int signal) 
 {
@@ -57,8 +61,17 @@ void signal_handler(int signal)
                 //std::unique_lock<std::mutex> lock(global_syncstate->mtx);
                 //cvlog::UniqueLock lock(global_syncstate->mtx);
                 global_shutdown->shutdown_cpus = true;
+                
+                // Set interrupt on all cpus, as the timer will not be able to
+                // stop them anymore
+                if(g_cpus) {
+                    for(auto& cpu : *g_cpus)
+                        cpu->interrupt();
+                }
             }
-            //throw std::runtime_error("SIGINT");
+
+            // Notify cpus hanging on the barrier:
+            g_irq_b->cv_exit.notify_all();
             break;
         case(SIGTERM):
             if(global_shutdown != nullptr) {
@@ -98,13 +111,13 @@ void print_config(const EmulatorConfig& config) {
     std::cout << "==============================\n";
 }
 
-#ifndef NDEBUG
+#if defined(PROFILE_LOCKS)
 static inline double ns_to_ms(u64 ns) { return double(ns) / 1e6; }
 
 
-void dump_ram_mutex_profile(std::vector<CpuMutexProfiles>& profiles) {
-    for (int i = 0; i < profiles.size(); ++i) {
-        const auto& p = profiles[i].ram;
+void dump_ram_mutex_profile(std::vector<std::unique_ptr<CPU>>& cpus) {
+    for (int i = 0; i < static_cast<int>(cpus.size()); ++i) {
+        const auto& p = cpus[i]->get_mmu().mtx_profiles_.ram;
         const u64 acq = p.acquisitions.load(std::memory_order_relaxed);
         const u64 w   = p.wait_ns.load(std::memory_order_relaxed);
         const u64 h   = p.hold_ns.load(std::memory_order_relaxed);
@@ -136,6 +149,7 @@ void cpu_thread(CPU& cpu, GlobalIRQBarrier& barrier, APBCTRL& apbctrl, ShutdownC
     std::vector<thread_tick_summary> tick_summaries;
 #endif
 
+    
     // We start in powerdown for all cpus:
     std::cout << "[CPU THREAD " << (int)cpu.get_cpu_id() << "] CPU " << (int)cpu.get_cpu_id() << " entering holding pattern.\n";
     cpu.enter_powerdown();
@@ -185,9 +199,13 @@ void cpu_thread(CPU& cpu, GlobalIRQBarrier& barrier, APBCTRL& apbctrl, ShutdownC
                 barrier.cv_exit.notify_all();
             } else {
                 // Wait until release = true
-                barrier.cv_exit.wait(lock, [&]{ return barrier.release; });
+                barrier.cv_exit.wait(lock, [&]{ return barrier.release || sdc.shutdown_cpus; });
             }
         } else {
+            std::cerr << "Error - exited cpu run cycle without barrier active\n";
+            print_run_summary(rs, cpu.get_cpu_id());
+            cpu.get_intc_ref().dump_state();
+            cpu.dump_regs();
             throw std::runtime_error("Should not ever be here");
         }
 
@@ -210,6 +228,16 @@ void cpu_thread(CPU& cpu, GlobalIRQBarrier& barrier, APBCTRL& apbctrl, ShutdownC
     std::cout << "Min: " << min_tick_inst << "\n";
  #endif   
 
+}
+
+static void wake_cpu_barrier(void* ctx) {
+    auto* b = static_cast<GlobalIRQBarrier*>(ctx);
+    if(b->arrived > 0) {
+        b->release = true;
+        b->active = false;
+        b->arrived = 0;
+    }
+    b->cv_exit.notify_all();
 }
 
 
@@ -305,6 +333,8 @@ int main(int argc, char **argv) {
     // Create the cpus
     config.num_cpus = num_cpus_requested;
     std::vector<std::unique_ptr<CPU>> cpus{};
+    g_cpus = &cpus;
+    
     // Set up gdb stub
     auto gdb_stub = std::make_unique<GdbStub>(cpus);  
     
@@ -344,6 +374,10 @@ int main(int argc, char **argv) {
     std::cout << "Creating global irq barrier with " << (int)config.num_cpus << " cpus\n";
     GlobalIRQBarrier irq_barrier{};
     irq_barrier.total_cpus = config.num_cpus;
+    g_irq_b = &irq_barrier;
+
+    // Debugstop controller needs to be able to wake irq barrier
+    dbg.add_wake_hook(&wake_cpu_barrier, &irq_barrier);
 
     std::cout << "Creating bus clock\n";
     auto bus = std::make_unique<BusClock>(intc, timer, uart, irq_barrier);
@@ -389,6 +423,12 @@ int main(int argc, char **argv) {
     #ifdef PROFILE_MEM_ACCESS
     mctrl.print_profile();
     #endif
+
+    #ifdef PROFILE_LOCKS
+    dump_ram_mutex_profile(cpus);
+    #endif
+
+    intc.dump_state();
 
     std::cout << "** Emulation complete.\n";
 
