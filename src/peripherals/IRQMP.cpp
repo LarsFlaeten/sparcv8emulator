@@ -34,8 +34,10 @@ void IRQMP::trigger_irq(u32 IRL) {
     u8 irl = IRL & 0xFU;
 
     {
+#ifdef IRQMP_DEBUG
         if(irl == 13)
             std::cout << "[IRQMP] Trigger irl 13 from trigger_irq\n";
+#endif
         std::unique_lock lock(mtx);
         
         // First, check if the irl is marked as broadcast
@@ -89,15 +91,17 @@ unsigned IRQMP::get_next_pending_irq(u8 cpu_id) const {
 }
 
 void IRQMP::clear_irq(uint32_t IRL, uint8_t cpu_id) {
+#ifdef IRQMP_DEBUG
     if (IRL == 13) {
-    std::cout
-        << "[IRQMP] clear_irq: cpu=" << int(cpu_id)
-        << " IRL=13"
-        << " PIFORCE_before=0x" << std::hex << PIFORCE[cpu_id]
-        << " IPEND_before=0x" << IPEND
-        << std::dec
-        << "\n";
+        std::cout
+            << "[IRQMP] clear_irq: cpu=" << int(cpu_id)
+            << " IRL=13"
+            << " PIFORCE_before=0x" << std::hex << PIFORCE[cpu_id]
+            << " IPEND_before=0x" << IPEND
+            << std::dec
+            << "\n";
     }
+#endif
 
     std::unique_lock lock(mtx);
     uint8_t irl = IRL & 0xf;
@@ -110,14 +114,16 @@ void IRQMP::clear_irq(uint32_t IRL, uint8_t cpu_id) {
         IPEND &= ~bit;
     }
 
+#ifdef IRQMP_DEBUG
     if (IRL == 13) {
-    std::cout
-        << "[IRQMP] clear_irq: cpu=" << int(cpu_id)
-        << " PIFORCE_after=0x" << std::hex << PIFORCE[cpu_id]
-        << " IPEND_after=0x" << IPEND
-        << std::dec
-        << "\n";
+        std::cout
+            << "[IRQMP] clear_irq: cpu=" << int(cpu_id)
+            << " PIFORCE_after=0x" << std::hex << PIFORCE[cpu_id]
+            << " IPEND_after=0x" << IPEND
+            << std::dec
+            << "\n";
     }
+#endif
 }
 
 u32 IRQMP::read(u32 offset) const {
@@ -181,31 +187,19 @@ void IRQMP::write(u32 offset, u32 value) {
     } else if(offset >= 0x80 && offset < 0xA0) {
         u32 n = (offset - 0x80)/4;
 
-        // ---- DEBUG: PIFORCE write (IRQ13 only) ----
+        PIFORCE[n] |= value;
+#ifdef IRQMP_DEBUG
         if (value & (1u << 13)) {
             std::cout
                 << "[IRQMP] PIFORCE write: cpu=" << n
                 << " value=0x" << std::hex << value
-                << " old=0x" << PIFORCE[n]
+                << " old=0x" << (PIFORCE[n] & ~value)
                 << " mask=0x" << PIMASK[n]
+                << " new=0x" << PIFORCE[n]
                 << std::dec
                 << "\n";
         }
-        //std::cout << "Write IRQ 0x80 + n*4, PIFORCE[" << n << "] = " << std::hex << value << std::dec << "\n";
-        /*
-        if((value >> 13) & 0x1U)
-                std::cout << "[IRQMP] IRQ 13 -> IFORCE for CPU" << (int)n << "\n";
-        if(PIFORCE[n] != 0)
-                std::cout << "[IRQMP] Warn, PIFORCE allready set for CPU" << (int)n << "\n";
-        */
-        PIFORCE[n] |= value;
-        if (value & (1u << 13)) {
-            std::cout
-                << "[IRQMP] PIFORCE latched: cpu=" << n
-                << " new=0x" << std::hex << PIFORCE[n]
-                << std::dec
-                << "\n";
-        }
+#endif
         // Wake up the CPU if it has unmasked this IRL
         if((value) & PIMASK[n]) {
             //std::cout << "[IRQMP] Waking up CPU" << (int)n << "\n";
@@ -219,26 +213,32 @@ void IRQMP::write(u32 offset, u32 value) {
     switch(offset) {
         case(IRQMP_ILEVEL_OS):
             ILEVEL = value;
-            std::cout << "[IRQMP] Write ILEVEL" << std::hex << ILEVEL << std::dec << "\n";
-            
+#ifdef IRQMP_DEBUG
+            std::cout << "[IRQMP] Write ILEVEL=0x" << std::hex << ILEVEL << std::dec << "\n";
+#endif
             return;
         case(IRQMP_IPEND_OS):
+#ifdef IRQMP_DEBUG
             if((value >> 13) & 0x1U)
                 std::cout << "[IRQMP] IRQ 13 -> IPEND\n";
+#endif
             IPEND = value;
             return;
         case(IRQMP_IFORCE_OS):
+#ifdef IRQMP_DEBUG
             if((value >> 13) & 0x1U)
                 std::cout << "[IRQMP] IRQ 13 -> IFORCE 0x8\n";
-           
+#endif
             IFORCE |= value;
             return;
         case(IRQMP_ICLEAR_OS): {
+#ifdef IRQMP_DEBUG
             if (value) {
                 std::cout << "[IRQMP] ICLEAR write=0x" << std::hex << value
                         << " (IPEND before=0x" << IPEND << ")"
                         << std::dec << "\n";
             }
+#endif
             ICLEAR = value;
             const u32 mask = value & 0x0000FFFEu;
             IPEND &= ~mask;

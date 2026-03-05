@@ -169,6 +169,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 
             trap_type = irl + SPARC_INTERRUPT;
 
+#ifdef IRQMP_DEBUG
             if (irl == 13) {
                 std::cout
                     << "[CPU" << cpu_id_ << "] TAKE IRQ13"
@@ -178,6 +179,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
                     << std::dec
                     << "\n";
             }
+#endif
 
             intc.clear_irq(irl, this->cpu_id_);
 
@@ -229,8 +231,8 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         // Check interrupt controller for pending interrupts and take any,
         // as long as there are not ongoing trap handling
         u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id_);
+#ifdef IRQMP_DEBUG
         static thread_local bool printed_masked_13 = false;
-
         if (_incoming_irl == 13 &&
             !(p->et && (13 > p->pil)) &&
             !printed_masked_13)
@@ -244,6 +246,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
                 << std::dec
                 << "\n";
         }
+#endif
 
         if(_incoming_irl>0 && trap_type == 0) {
             if(_incoming_irl > irl) {
