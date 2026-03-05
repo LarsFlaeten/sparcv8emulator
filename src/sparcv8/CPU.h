@@ -65,6 +65,21 @@ enum TerminateReason {
     POWER_DOWN = 7
 };
 
+static inline const char* to_string(TerminateReason r) {
+    switch (r) {
+        case NORMAL:            return "NORMAL";
+        case INSTRUCTION:       return "INSTRUCTION";
+        case BREAK:             return "BREAK";
+        case STEP:              return "STEP";
+        case TRAP_CONDITIONAL:  return "TRAP_CONDITIONAL";
+        case UNIMPLEMENTED:     return "UNIMPLEMENTED";
+        case RECV_SIGINT:       return "RECV_SIGINT";
+        case TIMER_INTERRUPT:   return "TIMER_INTERRUPT";
+        case POWER_DOWN:        return "POWER_DOWN";
+        default:                return "UNKNOWN_TERMINATE_REASON";
+    }
+}
+
 // Defer structure definition
 class CPU;
 class IRQMP;
@@ -120,6 +135,29 @@ struct RunSummary {
     u32 last_opcode;
 };
 
+static inline void print_run_summary(
+    const RunSummary& rs,
+    int cpu_id = -1
+) {
+    if (cpu_id >= 0) {
+        printf(
+            "[CPU%d] RunSummary: reason=%s (%d), instr=%llu, last_opcode=0x%08x\n",
+            cpu_id,
+            to_string(rs.reason),
+            static_cast<int>(rs.reason),
+            static_cast<unsigned long long>(rs.instr_count),
+            rs.last_opcode
+        );
+    } else {
+        printf(
+            "RunSummary: reason=%s (%d), instr=%llu, last_opcode=0x%08x\n",
+            to_string(rs.reason),
+            static_cast<int>(rs.reason),
+            static_cast<unsigned long long>(rs.instr_count),
+            rs.last_opcode
+        );
+    }
+}
 
 class CPU 
 {    
@@ -278,6 +316,7 @@ class CPU
         void    register_bus_tick_function(std::function<void()> f) {
             bus_tick_func = std::move(f);
         }
+        IRQMP&  get_intc_ref() {return intc;}
 
         void enter_powerdown();    // handles sleeping
         
