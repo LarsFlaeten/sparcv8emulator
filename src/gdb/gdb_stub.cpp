@@ -133,6 +133,8 @@ void GdbStub::handle_packet(const std::string& pkt) {
     else if(pkt.size() == 1 && static_cast<unsigned char>(pkt[0]) == 0x03) {
         // Interrupt from the remote!
         std::cout << "[GDB] Received Ctr+C from remote!\n";
+        cpus[0]->get_intc_ref().dump_state();
+            
         if (auto* dsc = DebugStopController::Global()) {
             dsc->request_stop(DebugStopController::StopReason::CtrlC);
             dsc->wait_until_all_stopped();
