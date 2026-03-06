@@ -3,9 +3,6 @@
 
 #include <exception>
 
-#define PROFILE_LOCKS
-
-
 
 #define NWINDOWS                           8
 

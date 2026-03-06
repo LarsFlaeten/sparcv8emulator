@@ -19,18 +19,6 @@
 
 #include "../gdb/DebugStopController.hpp"
 
-struct GlobalIRQBarrier {
-    std::mutex mtx;
-    std::condition_variable cv_enter;
-    std::condition_variable cv_exit;
-
-    int total_cpus;
-    int arrived = 0;
-    bool active = false;   // set when timer IRQ fires
-    bool release = false;  // set when all CPUs passed
-};
-
-
 class BusClock {
 public:
     struct Stats {
@@ -45,7 +33,7 @@ public:
         friend std::ostream& operator<<(std::ostream& os, const Stats& s);
     };
 
-    BusClock(IRQMP& intc, GPTIMER& timer, APBUART& uart, GlobalIRQBarrier& irq_barrier);
+    BusClock(IRQMP& intc, GPTIMER& timer, APBUART& uart);
     ~BusClock();
 
     void start();
@@ -84,7 +72,6 @@ private:
     IRQMP& irqmp_;
     GPTIMER& timer_;
     APBUART& uart_;
-    GlobalIRQBarrier& irq_barrier_;
 
     DebugStopController::WorkerToken wtoken;
     

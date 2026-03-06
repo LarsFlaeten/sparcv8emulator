@@ -28,8 +28,8 @@ std::ostream& operator<<(std::ostream& os, const BusClock::Stats& s)
     return os;
 }
 
-BusClock::BusClock(IRQMP& irqmp, GPTIMER& timer, APBUART& uart, GlobalIRQBarrier& irq_barrier)
-    : irqmp_(irqmp), timer_(timer), uart_(uart), irq_barrier_(irq_barrier)
+BusClock::BusClock(IRQMP& irqmp, GPTIMER& timer, APBUART& uart)
+    : irqmp_(irqmp), timer_(timer), uart_(uart)
 {
     // Register worker
     if (auto* dbg = DebugStopController::Global())
@@ -142,11 +142,6 @@ void BusClock::run() {
             timer_.unlock();
 
             if (fire_timer_irq) {
-                { std::unique_lock lk(irq_barrier_.mtx);
-                  irq_barrier_.active = true;
-                  irq_barrier_.release = false;
-                }
-
                 irqmp_.trigger_irq(8);
                 tick_count_.fetch_add(1, std::memory_order_relaxed);
                 cv_.notify_all();

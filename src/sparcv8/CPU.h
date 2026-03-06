@@ -196,7 +196,6 @@ class CPU
        	std::ostream& os;
         bool running = false;
         bool verbose = false;
-        bool break_on_timer_interrupt = false; 
         bool power_down_enabled = false; 
         std::atomic<bool> powerdown_flag{false};
         std::atomic<bool> wakeup_flag{false};
@@ -322,10 +321,6 @@ class CPU
         
         void wakeup();             // called by IRQMP
 
-
-        void    set_break_on_timer_interrupt(bool val) {
-            break_on_timer_interrupt = val;
-        }
 
 	private:
 	// Common instructions

@@ -4,9 +4,6 @@
 #include <iostream>
 #include <stdexcept>
 #include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <atomic>
 
 #include <signal.h>
 
@@ -30,61 +27,27 @@ void set_thread_name(const std::string& name) {
     pthread_setname_np(pthread_self(), name.c_str());
 }
 
-struct ShutdownControl{
-    /*cvlog::Mutex mtx{"SynxState.mtx"};
-    cvlog::CV cv_start{"cv_start"};
-    cvlog::CV cv_done{"cv_done"};
-    bool start_tick = false;
-    int active_cpus = 0;*/
-    std::atomic<bool> shutdown_cpus = false;
-};
-
-
-
-// Its ugly, but we need a few globals for the signal handlers
-// TODO: Make this better....
-ShutdownControl* global_shutdown = nullptr;
-GlobalIRQBarrier* g_irq_b = nullptr;
+// Global cpu list for signal handler
 std::vector<std::unique_ptr<CPU>>* g_cpus = nullptr;
 
-void signal_handler(int signal) 
+void signal_handler(int signal)
 {
     std::cout << "Signal " << signal << " caught..\n";
     switch(signal) {
         case(SIGINT):
-            if(global_shutdown != nullptr) {
-                if(auto dsc = DebugStopController::Global()) {
-                    std::cout << "[MAIN] Releasing threads from stop-the-world\n";
-                    dsc->resume();
-                }
-                std::cout << "[MAIN] Setting global state to shutdown\n";
-                //std::unique_lock<std::mutex> lock(global_syncstate->mtx);
-                //cvlog::UniqueLock lock(global_syncstate->mtx);
-                global_shutdown->shutdown_cpus = true;
-                
-                // Set interrupt on all cpus, as the timer will not be able to
-                // stop them anymore
-                if(g_cpus) {
-                    for(auto& cpu : *g_cpus)
-                        cpu->interrupt();
-                }
-            }
-
-            // Notify cpus hanging on the barrier:
-            g_irq_b->cv_exit.notify_all();
-            break;
         case(SIGTERM):
-            if(global_shutdown != nullptr) {
-                std::cout << "Setting global state to shutdown\n";
-                //std::unique_lock<std::mutex> lock(global_syncstate->mtx);
-                //cvlog::UniqueLock lock(global_syncstate->mtx);
-                global_shutdown->shutdown_cpus = true;
+            if(auto dsc = DebugStopController::Global()) {
+                std::cout << "[MAIN] Releasing threads from stop-the-world\n";
+                dsc->resume();
             }
-            //throw std::runtime_error("SIGINT");
+            if(g_cpus) {
+                for(auto& cpu : *g_cpus)
+                    cpu->interrupt();
+            }
             break;
         default:
-            std::cout << "Unhandle signal.\n";
-            break;       
+            std::cout << "Unhandled signal.\n";
+            break;
     }
 }
 
@@ -135,109 +98,22 @@ void dump_ram_mutex_profile(std::vector<std::unique_ptr<CPU>>& cpus) {
 }
 #endif
 
-struct thread_tick_summary {
-    int target_instructions = 0;
-    int actual_instructions = 0;
-    TerminateReason reason = TerminateReason::UNIMPLEMENTED;
-};
+void cpu_thread(CPU& cpu) {
+    set_thread_name(std::format("cpu{}", cpu.get_cpu_id()));
 
-void cpu_thread(CPU& cpu, GlobalIRQBarrier& barrier, APBCTRL& apbctrl, ShutdownControl& sdc) {
-    
-    set_thread_name(std::format("cpu{}",cpu.get_cpu_id()));
-    IRQMP& intc = apbctrl.GetIntc();
-#ifdef PROFILE_CPU_THREAD
-    std::vector<thread_tick_summary> tick_summaries;
-#endif
-
-    
-    // We start in powerdown for all cpus:
     std::cout << "[CPU THREAD " << (int)cpu.get_cpu_id() << "] CPU " << (int)cpu.get_cpu_id() << " entering holding pattern.\n";
     cpu.enter_powerdown();
     std::cout << "[CPU THREAD " << (int)cpu.get_cpu_id() << "] CPU " << (int)cpu.get_cpu_id() << " Starting up.\n";
 
     RunSummary rs{};
-
-    while(true) {
-
-        if (sdc.shutdown_cpus)
-            break;
-        
-        
-        
-        try {
-            cpu.run(0, &rs);
-#ifdef PROFILE_CPU_THREAD
-            tick_summaries.emplace_back(0, rs.instr_count, rs.reason);
-#endif
-        } catch (const std::runtime_error& e) {
-            std::cout << e.what() << "\n";
-            //debug_dumpmemv(cpu.get_pc());
-            debug_mmu_tables();
-            debug_registerdump(cpu);
-            throw std::runtime_error("Aborting...");
-        }
-
-        if((rs.reason == TerminateReason::NORMAL) 
-            || (rs.reason == TerminateReason::RECV_SIGINT)
-            || (rs.reason == TerminateReason::UNIMPLEMENTED))
-            break;
-
-        // If we came here, the cpu got a timer interrupt and exited its run loop
-        // If global interrupt barrier is active, enter it:
-        if (barrier.active) {
-            std::unique_lock lock(barrier.mtx);
-
-            barrier.arrived++;
-
-            // If this CPU is the last:
-            int active_cpus = intc.get_number_active_cpus();
-            if (barrier.arrived == active_cpus) {
-                barrier.release = true;
-                barrier.active = false;
-                barrier.arrived = 0;
-                // Wake ALL waiting CPUs
-                barrier.cv_exit.notify_all();
-            } else {
-                // Wait until release = true
-                barrier.cv_exit.wait(lock, [&]{ return barrier.release || sdc.shutdown_cpus; });
-            }
-        } else {
-            std::cerr << "Error - exited cpu run cycle without barrier active\n";
-            print_run_summary(rs, cpu.get_cpu_id());
-            cpu.get_intc_ref().dump_state();
-            cpu.dump_regs();
-            throw std::runtime_error("Should not ever be here");
-        }
-
-
+    try {
+        cpu.run(0, &rs);
+    } catch (const std::runtime_error& e) {
+        std::cout << e.what() << "\n";
+        debug_mmu_tables();
+        debug_registerdump(cpu);
+        throw std::runtime_error("Aborting...");
     }
-
-#ifdef PROFILE_CPU_THREAD
-    std::cout << "Stats from thread " << cpu.get_cpu_id() << ", " << tick_summaries.size() << " ticks\n";
-    int max_tick_inst = tick_summaries[0].actual_instructions;
-    int min_tick_inst = tick_summaries[0].actual_instructions;
-    int i = 0;
-    for(const auto& t : tick_summaries) {
-        if(t.actual_instructions > max_tick_inst)
-            max_tick_inst = t.actual_instructions;
-        if(t.actual_instructions < min_tick_inst)
-            min_tick_inst = t.actual_instructions;
-        //std::cout << "Tick :" << ++i << "\t " << t.actual_instructions << "/" << t.target_instructions << " - " << rs_reason_str(t.reason) << "\n";
-    }
-    std::cout << "Max: " << max_tick_inst << "\n";
-    std::cout << "Min: " << min_tick_inst << "\n";
- #endif   
-
-}
-
-static void wake_cpu_barrier(void* ctx) {
-    auto* b = static_cast<GlobalIRQBarrier*>(ctx);
-    if(b->arrived > 0) {
-        b->release = true;
-        b->active = false;
-        b->arrived = 0;
-    }
-    b->cv_exit.notify_all();
 }
 
 
@@ -345,7 +221,6 @@ int main(int argc, char **argv) {
         cpu->reset(entry_va);
 
 
-        cpu->set_break_on_timer_interrupt(true);
         cpu->enable_power_down(true);
         
 
@@ -367,20 +242,8 @@ int main(int argc, char **argv) {
     print_config(config);
 
     
-    // Syncronization and threads
-    ShutdownControl sdc{};
-    global_shutdown = &sdc;
-    
-    std::cout << "Creating global irq barrier with " << (int)config.num_cpus << " cpus\n";
-    GlobalIRQBarrier irq_barrier{};
-    irq_barrier.total_cpus = config.num_cpus;
-    g_irq_b = &irq_barrier;
-
-    // Debugstop controller needs to be able to wake irq barrier
-    dbg.add_wake_hook(&wake_cpu_barrier, &irq_barrier);
-
     std::cout << "Creating bus clock\n";
-    auto bus = std::make_unique<BusClock>(intc, timer, uart, irq_barrier);
+    auto bus = std::make_unique<BusClock>(intc, timer, uart);
     
     // Set up frequencies:
     double f = 5'000'000.0;
@@ -390,7 +253,7 @@ int main(int argc, char **argv) {
     std::cout << "Creating " << (int)config.num_cpus << " cpu threads\n";
     std::vector<std::thread> threads;
     for (unsigned int i = 0; i < config.num_cpus; ++i) {
-        threads.emplace_back(cpu_thread, std::ref(*cpus[i]), std::ref(irq_barrier), std::ref(apbctrl), std::ref(sdc));
+        threads.emplace_back(cpu_thread, std::ref(*cpus[i]));
     }
 
     

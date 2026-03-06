@@ -250,15 +250,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 
         if(_incoming_irl>0 && trap_type == 0) {
             if(_incoming_irl > irl) {
-                set_irl(_incoming_irl); // We take this interrupt
-                
-                // In SMP, we break out in timer interrupts, and wait until we are started again
-                if((irl == 8)) {
-                    if(break_on_timer_interrupt) {
-                        rs.reason = TerminateReason::TIMER_INTERRUPT;
-                        break;
-                    }
-                }
+                set_irl(_incoming_irl);
             }
         }
 
