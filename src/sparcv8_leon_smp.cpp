@@ -327,7 +327,9 @@ int main(int argc, char **argv) {
     dump_ram_mutex_profile(cpus);
     #endif
 
+#ifdef IRQMP_DEBUG
     intc.dump_state();
+#endif
 
     const auto t_end = std::chrono::steady_clock::now();
     const double elapsed_s = std::chrono::duration<double>(t_end - t_start).count();
