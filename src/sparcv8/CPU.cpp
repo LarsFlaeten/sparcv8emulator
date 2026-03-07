@@ -150,13 +150,17 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 
     u64 count = 0;
     //u32 word_count;
-    
+
+    // Cache debug controller pointer — avoids an atomic load every instruction.
+    // Set before run(), won't change mid-run in practice.
+    DebugStopController* const dbg = DebugStopController::Global();
+
     // Start executing program
     running = true;
     while ((ExecCount == 0) ? 1 : (count < (u64)ExecCount)) {
 
         // Halt here if stopped by debug context:
-        if (auto* dbg = DebugStopController::Global()) dbg->checkpoint(wtoken);
+        if (dbg) dbg->checkpoint(wtoken);
 
 #ifdef PERFORMANCE_MONITOR
 		lt.start();
