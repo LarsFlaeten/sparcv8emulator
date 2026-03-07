@@ -51,7 +51,7 @@ protected:
        
         cpu.decode(&d);
         
-        d.function(&cpu, &d);
+        (cpu.*d.function)(&d);
         cpu.write_back(&d); 
     }
 
@@ -104,7 +104,7 @@ TEST_F(LDSTFSRTest, C128A0DC)
 
     cpu.decode(&d);
     
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d);
     ASSERT_EQ(cpu.get_trap_type(), 0);
 

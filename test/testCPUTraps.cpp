@@ -46,7 +46,7 @@ protected:
        
         cpu.decode(&d);
         
-        d.function(&cpu, &d);
+        (cpu.*d.function)(&d);
         cpu.write_back(&d); 
     }
 

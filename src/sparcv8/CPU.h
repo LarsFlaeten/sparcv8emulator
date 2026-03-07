@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <iostream>
-#include <functional>
 #include <stdexcept>
 #include <vector>
 #include <map>
@@ -93,8 +92,7 @@ struct  DecodeStruct;
 
 
 typedef struct DecodeStruct *pDecode_t;
-typedef void (*p_func) (pDecode_t);
-typedef std::function<void(CPU*,pDecode_t)> pc_func;
+typedef void (CPU::*pc_func)(pDecode_t);
 
 enum WriteBackType {
     NO_WRITEBACK =      0,
@@ -104,7 +102,7 @@ enum WriteBackType {
 
 struct DecodeStruct {
     u32 opcode;              // Instruction opcode
-    std::function<void(CPU*, pDecode_t)> function;            // Pointer to inst.c function
+    pc_func function;                                          // Pointer to inst.c function
     u32 rd;                  // rd register number
     u32 rs1;                 // rs1 register number
     u32 rs1_value;           // rs1 register value
@@ -241,7 +239,7 @@ class CPU
             decode (d);
 
             // ---- Execute ----
-            d->function(this, d);
+            (this->*d->function)(d);
 
             // ---- Writeback ----
             write_back(d);

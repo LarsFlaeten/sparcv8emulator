@@ -163,7 +163,7 @@ TEST_F(CPUMemTest, Loads_LD) {
     EXPECT_EQ(d.imm_disp_rs2, LOCALREG5);
     EXPECT_EQ(d.ev, 0x300);
     
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
@@ -179,7 +179,7 @@ TEST_F(CPUMemTest, Loads_LD) {
     // No change to opcode
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x300);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
@@ -224,7 +224,7 @@ TEST_F(CPUMemTest, Loads_LDD) {
     EXPECT_EQ(d.imm_disp_rs2, LOCALREG5);
     EXPECT_EQ(d.ev, 0x300);
     
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
@@ -244,7 +244,7 @@ TEST_F(CPUMemTest, Loads_LDD) {
     // No change to opcode
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x300);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
@@ -308,7 +308,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     EXPECT_EQ(d.imm_disp_rs2, LOCALREG5);
     EXPECT_EQ(d.ev, 0x300);
     
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
@@ -319,7 +319,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x301, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x301);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xfe);
@@ -327,7 +327,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x302, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x302);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xba);
@@ -335,7 +335,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x303, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x303);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xbe);
@@ -343,7 +343,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x304, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x304);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xba);
@@ -351,7 +351,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x305, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x305);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xdb);
@@ -359,7 +359,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x306, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x306);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xad);
@@ -367,7 +367,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x307, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x307);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xff);
@@ -393,7 +393,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     EXPECT_EQ(d.imm_disp_rs2, LOCALREG5);
     EXPECT_EQ(d.ev, 0x300);
     
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
 
     // The value from 0x300 should now be in LOCALREG0 (rd):
@@ -404,7 +404,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     /*cpu.WriteReg(0x301, LOCALREG4);
     cpu.Decode(&d);
     EXPECT_EQ(d.ev, 0x301);
-    d.function(&cpu, &d); // This shouuld throw, unaligned
+    (cpu.*d.function)(&d); // This shouuld throw, unaligned
     cpu.WriteBack(&d); 
     cpu.ReadReg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xfeba);*/
@@ -413,7 +413,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x302, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x302);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xbabe);
@@ -422,7 +422,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x304, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x304);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xbadb);
@@ -431,7 +431,7 @@ TEST_F(CPUMemTest, Loads_LDUH) {
     cpu.write_reg(0x306, LOCALREG4);
     cpu.decode(&d);
     EXPECT_EQ(d.ev, 0x306);
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     cpu.read_reg(LOCALREG0, &res);
     EXPECT_EQ(res, 0xadff);
@@ -483,7 +483,7 @@ TEST_F(CPUMemTest, RD_ASR17) {
     
  
     
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
     u32 res;
     cpu.read_reg(GLOBALREG4, &res);
@@ -494,7 +494,7 @@ TEST_F(CPUMemTest, RD_ASR17) {
 
     CPU cpu3(mctrl, intc, 3);
     cpu3.decode(&d);
-    d.function(&cpu3, &d);
+    (cpu3.*d.function)(&d);
     cpu3.write_back(&d); 
  
     cpu3.read_reg(GLOBALREG4, &res);

@@ -70,7 +70,7 @@ TEST_F(LEON3Test, ASR17Values)
     EXPECT_EQ(d.rd, GLOBALREG4);
     EXPECT_EQ(d.rs1, 17);
     
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
 
     // Check asr17 values now in G4:
@@ -90,7 +90,7 @@ TEST_F(LEON3Test, ASR17Values)
     EXPECT_EQ(d.rd, GLOBALREG1);
     EXPECT_EQ(d.rs1, 17);
     
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
     cpu.write_back(&d); 
 
     // Check asr17 values now in G1:
@@ -149,7 +149,7 @@ TEST_F(LEON3Test, CASA_swap)
     cpu.read_reg(INREG3, &check);
     EXPECT_EQ(check, 0x3ffffe00);
 
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
 
     // Check compare and swap has been performed:
     u32 l3val; cpu.read_reg(LOCALREG3, &l3val);
@@ -213,7 +213,7 @@ TEST_F(LEON3Test, CASA_noswap)
     cpu.read_reg(INREG3, &check);
     EXPECT_EQ(check, 0x3ffffe00);
 
-    d.function(&cpu, &d);
+    (cpu.*d.function)(&d);
 
     // Check compare and swap has not been performed:
     u32 l3val; cpu.read_reg(LOCALREG3, &l3val);
