@@ -53,24 +53,16 @@ void signal_handler(int signal)
 
 struct EmulatorConfig {
     unsigned int num_cpus = 8;
-    double tickrate_hz = 1000.0;       // 1 ms tick
-    double emulated_freq_hz = 10e6;    // 10 MHz CPU
-    bool realtime_pacing = true;
+    // System clock frequency reported to Linux via GPTIMER SRELOAD.
+    // Must match GPTIMER default SRELOAD (0x31=49) → (49+1)*1MHz = 50 MHz.
+    double system_freq_hz = 50'000'000.0;
 };
 
 void print_config(const EmulatorConfig& config) {
     std::cout << "\n=== Emulator Configuration ===\n";
-    std::cout << std::fixed << std::setprecision(2);
-
+    std::cout << std::fixed << std::setprecision(0);
     std::cout << "Number of CPUs:       " << config.num_cpus << "\n";
-    std::cout << "CPU Frequency:        " << config.emulated_freq_hz << " Hz\n";
-    std::cout << "Tick Rate:            " << config.tickrate_hz << " Hz\n";
-    std::cout << "Instructions per Tick:"
-              << " " << static_cast<int>(config.emulated_freq_hz / config.tickrate_hz) << "\n";
-    std::cout << "Tick Duration:        "
-              << (1e6 / config.tickrate_hz) << " µs\n";
-    std::cout << "Real-time pacing:     "
-              << (config.realtime_pacing ? "enabled" : "disabled") << "\n";
+    std::cout << "System frequency:     " << config.system_freq_hz << " Hz\n";
     std::cout << "==============================\n";
 }
 
@@ -245,10 +237,8 @@ int main(int argc, char **argv) {
     std::cout << "Creating bus clock\n";
     auto bus = std::make_unique<BusClock>(intc, timer, uart);
     
-    // Set up frequencies:
-    double f = 5'000'000.0;
-    bus->setFrequency(f);
-    timer.set_system_freq(f);
+    bus->setFrequency(config.system_freq_hz);
+    timer.set_system_freq(config.system_freq_hz);
    
     std::cout << "Creating " << (int)config.num_cpus << " cpu threads\n";
     std::vector<std::thread> threads;

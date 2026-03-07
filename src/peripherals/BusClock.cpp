@@ -107,10 +107,10 @@ void BusClock::run() {
     uint32_t uart_div = 0;
 
     // host pacing quantum (tune)
-    const auto host_quantum = 100us;
+    const auto host_quantum = 1ms;
 
-    // batching clamp: max ticks per host wakeup
-    const uint64_t max_due_ticks = 50'000; // tune; 5 MHz => 50k ticks == 10ms worth
+    // batching clamp: max ticks per host wakeup — cap at 20ms worth of ticks
+    const uint64_t max_due_ticks = (uint64_t)(freq * 0.020);
 
     // perf stats
     uint64_t loop_count = 0;
@@ -134,26 +134,30 @@ void BusClock::run() {
         uint64_t due = (uint64_t)std::llround((double)dt_ns * ticks_per_ns);
         if (due > max_due_ticks) due = max_due_ticks;
 
-        // Do due bus ticks
+        // Do due bus ticks — hold the timer lock for the whole batch,
+        // releasing briefly only when we need to fire an IRQ.
+        timer_.lock();
         for (uint64_t i = 0; i < due; ++i) {
-            // timer tick (lock only if you must)
-            timer_.lock();
             const bool fire_timer_irq = timer_.tick_and_check_interrupt_unlocked(true);
-            timer_.unlock();
 
             if (fire_timer_irq) {
+                timer_.unlock();
                 irqmp_.trigger_irq(8);
                 tick_count_.fetch_add(1, std::memory_order_relaxed);
                 cv_.notify_all();
+                timer_.lock();
             }
 
             if (++uart_div >= uart_div_target) {
                 uart_div = 0;
+                timer_.unlock();
                 uart_.tick_scheduled();
                 if (uart_.CheckIRQ())
                     irqmp_.trigger_irq(4);
+                timer_.lock();
             }
         }
+        timer_.unlock();
 
         // stats measure "work" per host iteration
         auto iter_end = clock::now();
