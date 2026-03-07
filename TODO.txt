@@ -9,15 +9,15 @@ X Better/real interrupt controller, with broadcast
 - Improve speed
 X FPU implemented and tested
 X SVGA controller
-(X) Multiple CPUS
+X Multiple CPUS
 - Save and restore state
-- CTRL+C behviour when debugging
+X CTRL+C behviour when debugging
 X Busclock and powerdown
 - Ac97 playback
 - VGA pci
 - Doom
-- gdb for SMP
+X gdb for SMP
 - CPU mem cache & profile mem access
-- time is too slow
+X time is too slow
 
 
