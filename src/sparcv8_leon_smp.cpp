@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <thread>
+#include <chrono>
 
 #include <signal.h>
 
@@ -107,7 +108,21 @@ void cpu_thread(CPU& cpu) {
 
     RunSummary rs{};
     try {
-        cpu.run(0, &rs);
+        // Run in bursts with a per-CPU stagger delay between each burst.
+        // This persistently desynchronizes CPU threads, which are otherwise
+        // re-synchronized every timer tick by the IRQ8 broadcast wakeup.
+        // Without this, all CPUs tend to execute in lockstep, making the
+        // leon_cross_call deadlock (multiple CPUs simultaneously acquiring
+        // cross_call_lock with PIL=15) much more likely than on real hardware.
+        static constexpr int BURST = 100'000;
+        while (true) {
+            cpu.run(BURST, &rs);
+            if (rs.reason != TerminateReason::INSTRUCTION)
+                break;
+            if (cpu.get_cpu_id() > 0)
+                std::this_thread::sleep_for(
+                    std::chrono::microseconds(cpu.get_cpu_id() * 200));
+        }
     } catch (const std::runtime_error& e) {
         std::cout << e.what() << "\n";
         debug_mmu_tables();
