@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <array>
+#include <atomic>
 
 
 #include "../peripherals/MCTRL.h"
@@ -45,7 +46,17 @@ public:
 
     void debug_dump(const std::string& label = "TLB") const;
 
+#ifdef PERF_STATS
+    struct TLBStats {
+        std::atomic<uint64_t> hits{0};
+        std::atomic<uint64_t> misses{0};
+    };
+    mutable TLBStats stats_;
+public:
+    const TLBStats& get_stats() const { return stats_; }
 private:
+#endif
+
     struct Entry {
         u32 vaddr_tag = 0;
         u32 mask = 0;
@@ -331,6 +342,21 @@ public:
 
 #ifdef PROFILE_LOCKS
         ProfiledLock lk(mtx, mtx_profiles_.ram);
+#elif defined(PERF_STATS)
+        // Probe contention via try_lock before blocking
+        {
+            auto* rb = dynamic_cast<RamBank*>(pbank);
+            if (rb) {
+                if (!mtx.try_lock()) {
+                    rb->perf_lock_contended();
+                    mtx.lock();
+                }
+                rb->perf_lock_acquired();
+            } else {
+                mtx.lock();
+            }
+        }
+        std::unique_lock<std::mutex> lk(mtx, std::adopt_lock);
 #else
         std::lock_guard<std::mutex> lk(mtx);
 #endif

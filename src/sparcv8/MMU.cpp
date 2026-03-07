@@ -30,11 +30,17 @@ bool TLB::lookup(u32 context, u32 vaddr, u32& pte_out, u8& level_out) const {
             entry.last_used = ++use_counter;
             pte_out = entry.pte;
             level_out = entry.level;
+#ifdef PERF_STATS
+            stats_.hits.fetch_add(1, std::memory_order_relaxed);
+#endif
             return (entry.pte & ~0x3) || entry.level;
         }
     }
     pte_out = 0;
     level_out = 0;
+#ifdef PERF_STATS
+    stats_.misses.fetch_add(1, std::memory_order_relaxed);
+#endif
     return false;
 }
 

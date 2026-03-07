@@ -4,6 +4,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <thread>
+#include <chrono>
+#include <iomanip>
 
 #include <signal.h>
 
@@ -66,6 +68,45 @@ void print_config(const EmulatorConfig& config) {
     std::cout << "==============================\n";
 }
 
+#if defined(PERF_STATS)
+void dump_perf_stats(std::vector<std::unique_ptr<CPU>>& cpus, MCtrl& mctrl) {
+    // TLB stats (aggregate across all CPUs)
+    uint64_t total_i_hits = 0, total_i_misses = 0;
+    uint64_t total_d_hits = 0, total_d_misses = 0;
+
+    for (auto& cpu : cpus) {
+        const auto& itlb = cpu->get_mmu().get_itlb().get_stats();
+        const auto& dtlb = cpu->get_mmu().get_dtlb().get_stats();
+        total_i_hits   += itlb.hits  .load(std::memory_order_relaxed);
+        total_i_misses += itlb.misses.load(std::memory_order_relaxed);
+        total_d_hits   += dtlb.hits  .load(std::memory_order_relaxed);
+        total_d_misses += dtlb.misses.load(std::memory_order_relaxed);
+    }
+
+    auto hit_rate = [](uint64_t h, uint64_t m) -> double {
+        return (h + m) ? 100.0 * double(h) / double(h + m) : 0.0;
+    };
+
+    printf("[PERF] ITLB: hits=%llu misses=%llu hit_rate=%.2f%%\n",
+        (unsigned long long)total_i_hits, (unsigned long long)total_i_misses,
+        hit_rate(total_i_hits, total_i_misses));
+    printf("[PERF] DTLB: hits=%llu misses=%llu hit_rate=%.2f%%\n",
+        (unsigned long long)total_d_hits, (unsigned long long)total_d_misses,
+        hit_rate(total_d_hits, total_d_misses));
+
+    // RAM mutex contention
+    auto* rb = dynamic_cast<RamBank*>(mctrl.get_bank(0x40000000));
+    if (rb) {
+        const auto& rs = rb->get_ram_stats();
+        const uint64_t acq  = rs.lock_acquired .load(std::memory_order_relaxed);
+        const uint64_t cont = rs.lock_contended.load(std::memory_order_relaxed);
+        printf("[PERF] RAM lock: acquired=%llu contended=%llu contention_rate=%.2f%%\n",
+            (unsigned long long)acq, (unsigned long long)cont,
+            acq ? 100.0 * double(cont) / double(acq) : 0.0);
+    }
+}
+#endif
+
 #if defined(PROFILE_LOCKS)
 static inline double ns_to_ms(u64 ns) { return double(ns) / 1e6; }
 
@@ -110,6 +151,7 @@ void cpu_thread(CPU& cpu) {
 
 
 int main(int argc, char **argv) {
+    const auto t_start = std::chrono::steady_clock::now();
     CVLOG_MUTE();
     
     DebugStopController dbg;
@@ -273,6 +315,10 @@ int main(int argc, char **argv) {
 
     DebugStopController::Global()->dump_stderr();
 
+    #ifdef PERF_STATS
+    dump_perf_stats(cpus, mctrl);
+    #endif
+
     #ifdef PROFILE_MEM_ACCESS
     mctrl.print_profile();
     #endif
@@ -283,7 +329,11 @@ int main(int argc, char **argv) {
 
     intc.dump_state();
 
-    std::cout << "** Emulation complete.\n";
+    const auto t_end = std::chrono::steady_clock::now();
+    const double elapsed_s = std::chrono::duration<double>(t_end - t_start).count();
+    std::cout << std::fixed << std::setprecision(2)
+              << "** Wall time: " << elapsed_s << " s\n"
+              << "** Emulation complete.\n";
 
     DebugStopController::UninstallGlobal(&dbg);
     return 0;

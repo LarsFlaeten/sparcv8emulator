@@ -425,9 +425,22 @@ public:
 
     u32* get_ptr() override { return reinterpret_cast<u32*>(data.data());}
 
-    std::mutex& get_mutex(u32 addr) override { 
-        return global_ram_mtx; 
+    std::mutex& get_mutex(u32 addr) override {
+        return global_ram_mtx;
     }
+
+#ifdef PERF_STATS
+    struct RamStats {
+        std::atomic<uint64_t> lock_acquired{0};
+        std::atomic<uint64_t> lock_contended{0};  // try_lock failed → had to block
+    };
+    mutable RamStats ram_stats_;
+public:
+    const RamStats& get_ram_stats() const { return ram_stats_; }
+    void perf_lock_acquired()  { ram_stats_.lock_acquired .fetch_add(1, std::memory_order_relaxed); }
+    void perf_lock_contended() { ram_stats_.lock_contended.fetch_add(1, std::memory_order_relaxed); }
+private:
+#endif
 
     AtomicResult atomic_ldstub8(uint32_t paddr) override {
         std::lock_guard lk(global_ram_mtx);

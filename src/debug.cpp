@@ -150,9 +150,9 @@ void debug_mmu_tlbs() {
         return;
     }
 
-    auto itlb = debug_mmu_ptr->get_itlb();
+    auto& itlb = debug_mmu_ptr->get_itlb();
     itlb.debug_dump("iTLB");
-    auto dtlb = debug_mmu_ptr->get_dtlb();
+    auto& dtlb = debug_mmu_ptr->get_dtlb();
     dtlb.debug_dump("dTLB");
 }
 
