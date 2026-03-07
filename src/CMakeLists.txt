@@ -27,7 +27,6 @@ add_executable(${EXENAME2SMP} sparcv8_leon_smp.cpp readelf.cpp debug.cpp)
 target_compile_options(${EXENAME2SMP} PUBLIC -std=c++23 -Wall)
 target_link_libraries(${EXENAME2SMP} sparcv8 peripherals gdbstub SDL2)
 
-option(PERF_STATS "Enable TLB hit/miss and RAM mutex contention counters" OFF)
 if(PERF_STATS)
     target_compile_definitions(${EXENAME2SMP} PRIVATE PERF_STATS)
     target_compile_definitions(sparcv8 PRIVATE PERF_STATS)

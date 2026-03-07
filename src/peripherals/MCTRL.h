@@ -502,19 +502,16 @@ private:
         data[addr - base] = val;
     }
 
-    virtual u32 read32_nolock(u32 addr, bool align = true) const noexcept override{
+    virtual u32 read32_nolock(u32 addr, bool align = true) const noexcept override {
         #ifndef NDEBUG
         if (align && (addr & 3))
             assert(false);
         #endif
-        u8 b0 = read8_nolock(addr);
-        u8 b1 = read8_nolock(addr + 1);
-        u8 b2 = read8_nolock(addr + 2);
-        u8 b3 = read8_nolock(addr + 3);
+        const u8* p = &data[addr - base];
         if (bankEndian == Endian::Big) {
-            return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+            return (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]);
         } else {
-            return (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
+            return (u32(p[3]) << 24) | (u32(p[2]) << 16) | (u32(p[1]) << 8) | u32(p[0]);
         }
     }
 
@@ -523,16 +520,17 @@ private:
         if (align && (addr & 3))
             assert(false);
         #endif
+        u8* p = &data[addr - base];
         if (bankEndian == Endian::Big) {
-            write8_nolock(addr,     (val >> 24) & 0xFF);
-            write8_nolock(addr + 1, (val >> 16) & 0xFF);
-            write8_nolock(addr + 2, (val >> 8)  & 0xFF);
-            write8_nolock(addr + 3,  val        & 0xFF);
+            p[0] = (val >> 24) & 0xFF;
+            p[1] = (val >> 16) & 0xFF;
+            p[2] = (val >>  8) & 0xFF;
+            p[3] =  val        & 0xFF;
         } else {
-            write8_nolock(addr,      val        & 0xFF);
-            write8_nolock(addr + 1, (val >> 8)  & 0xFF);
-            write8_nolock(addr + 2, (val >> 16) & 0xFF);
-            write8_nolock(addr + 3, (val >> 24) & 0xFF);
+            p[0] =  val        & 0xFF;
+            p[1] = (val >>  8) & 0xFF;
+            p[2] = (val >> 16) & 0xFF;
+            p[3] = (val >> 24) & 0xFF;
         }
     }
 

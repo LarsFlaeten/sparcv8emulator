@@ -18,6 +18,8 @@ set(LIB_INSTALL_DIR "lib" CACHE STRING "Library directory name (lib/lib32/lib64)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 add_definitions("-fPIC -std=c++23")
 
+option(PERF_STATS "Enable TLB hit/miss and RAM mutex contention counters" OFF)
+
 # Sub dirs
 add_subdirectory(src)
 
