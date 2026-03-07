@@ -9,8 +9,9 @@ void CPU::LDF_impl(pDecode_t d)
 {
     bool super = (psr >> 7) & 0x1;
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} ldf       [{:#08x}], %f{}\n", d->pc, d->ev, d->rd);
+#endif
     
     if (d->p->ef == 0) {
         trap(d,  SPARC_FP_DISABLED   );
@@ -34,8 +35,9 @@ void CPU::LDDF_impl(pDecode_t d)
 {
     bool super = (psr >> 7) & 0x1;
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} lddf       [{:#08x}], %f{}\n", d->pc, d->ev, d->rd);
+#endif
     
     if (d->p->ef == 0) {
         trap(d,  SPARC_FP_DISABLED   );
@@ -68,8 +70,9 @@ void CPU::LDDF_impl(pDecode_t d)
 // Reads a new fsr value from memory address pointed by rs1 and rs2 and stores it into fsr
 void CPU::LDFSR_impl (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} ldfsr    [{:#08x}] => $fsr\n", d->pc, d->ev);
+#endif
 
     if (d->p->ef == 0) {
         trap (d,  SPARC_FP_DISABLED   );
@@ -93,8 +96,9 @@ void CPU::STF_impl(pDecode_t d)
 {
     bool super = (psr >> 7) & 0x1;
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} stf       %f{}, [{:#08x}]\n", d->pc, d->rd, d->ev);
+#endif
     
     if (d->p->ef == 0) {
         trap(d,  SPARC_FP_DISABLED   );
@@ -116,8 +120,9 @@ void CPU::STDF_impl(pDecode_t d)
 {
     bool super = (psr >> 7) & 0x1;
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} stdf       %f{}, [{:#08x}]\n", d->pc, d->rd, d->ev);
+#endif
     
     if (d->p->ef == 0) {
         trap(d,  SPARC_FP_DISABLED   );
@@ -148,8 +153,9 @@ void CPU::STDF_impl(pDecode_t d)
 // Reads the fsr value and stores it in memory address pointed by rs1 and rs2
 void CPU::STFSR_impl (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} stfsr    {} = {:#08x}\n", d->pc, DispRegStr(d->ev), fsr);
+#endif
 
     if (d->p->ef == 0) {
         trap (d,  SPARC_FP_DISABLED   );
@@ -227,8 +233,9 @@ void CPU::FBFCC_impl(pDecode_t d)
     
     u8 fcc = (fsr >> 10) & 0x3;
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} fbfcc    cond = {}, fcc = {}\n", d->pc, cond_str(cond), fcc_str(fcc));
+#endif
 
 
     bool branch = false;
@@ -396,11 +403,13 @@ void CPU::FOP1_impl(pDecode_t d)
             return;
     }
 
-    if(verbose) {
+#ifdef CPU_VERBOSE
+    {
         // TODO: Unary ops not printed correct here
         os << std::format("{:#08x} fop1      %f{} {} %f{} -> %f{}\n", d->pc, d->rs1, fops(opf), rs2, d->rd);
         //os << "  (" << f1 << "f " << fops(opf) << " " << f2 << "f = " << fret << "f\n";
     }
+#endif
 
     if(dbl) {
         // Check uneven regs for double ops. For smuld, fitod, fstod only check rd
@@ -494,10 +503,12 @@ void CPU::FOP2_impl(pDecode_t d)
 
         auto fcc = get_fcc(f1, f2);
 
-        if(verbose) {
+#ifdef CPU_VERBOSE
+        {
             os << std::format("{:#08x} fop2      %f{} {} %f{} (-> fcc = {})\n", d->pc, d->rs1, fops(opf), rs2, fcc);
             //os << "  (" << f1 << "f " << fops(opf) << " " << f2 << "f = " << fret << "f\n";
         }
+#endif
 
         switch(opf) {
 
@@ -557,10 +568,12 @@ void CPU::FOP2_impl(pDecode_t d)
 
         auto fcc = get_fccd(f1, f2);
 
-        if(verbose) {
+#ifdef CPU_VERBOSE
+        {
             os << std::format("{:#08x} fop2      %f{} {} %f{} (-> fcc = {})\n", d->pc, d->rs1, fops(opf), rs2, fcc);
             //os << "  (" << f1 << "f " << fops(opf) << " " << f2 << "f = " << fret << "f\n";
         }
+#endif
 
         switch(opf) {
 

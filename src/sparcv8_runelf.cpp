@@ -51,19 +51,18 @@ int main(int argc, char **argv)
     int    PrintCount       = 0;
     bool    Disassemble      = false;
     int    NumRunInst       = FOREVER;
-    bool    verbose          = false;
 
     std::ofstream   os;
     int    option;
 
-    bool debug_server = false; 
+    bool debug_server = false;
     int debug_port = 0; // To avoid warning
-    bool write_to_file = false; 
-    // Process the command line options 
-    while ((option = getopt(argc, argv, "f:vdn:b:g:o:c")) != EOF)
+    bool write_to_file = false;
+    // Process the command line options
+    while ((option = getopt(argc, argv, "f:dn:b:g:o:c")) != EOF)
         switch(option) {
         case 'o':
-            os.open(optarg, std::ios_base::out); 
+            os.open(optarg, std::ios_base::out);
             if (!os.is_open()) {
                 std::cerr << "*** main(): Unable to open file " << optarg << " for writing\n";
                 exit(1);
@@ -79,9 +78,6 @@ int main(int argc, char **argv)
         case 'd':
             Disassemble = true;
             break;
-        case 'v':
-            verbose = true;
-            break;
         case 'n':
             NumRunInst = strtol(optarg, NULL, 0);
             if (NumRunInst < FOREVER)
@@ -95,9 +91,8 @@ int main(int argc, char **argv)
         case '?':
         default:
             fprintf(stderr, 
-                    "Usage: %s [-v] [-d] [-n <num instructions>] [-b <breakpoint addr>] [-f <filename>] [-o <filename>] \n"
+                    "Usage: %s [-d] [-n <num instructions>] [-b <breakpoint addr>] [-f <filename>] [-o <filename>] \n"
                     "\n"
-                    "    -v Turn on Verbose display\n"
                     "    -d Disassemble mode\n"
                     "    -n Specify number of instructions to run (default: run until UNIMP)\n"
                     "    -f Specify executable ELF file (default main.out)\n"
@@ -134,7 +129,6 @@ int main(int argc, char **argv)
     for(int i = 0; i < num_cpus; ++i) {
         std::cout << "Creating CPU, id=" << i << "\n";
         auto& cpu = cpus.emplace_back(std::make_unique<CPU>(mctrl, intc, i, write_to_file ? os : std::cout));
-        cpu->set_verbose(verbose);
         cpu->reset(entry_va);
         // OS boot process step 1: Set stack pointer to end of ram
         cpu->write_reg(end_of_ram - 0x180, OUTREG6); // Write stack pointer

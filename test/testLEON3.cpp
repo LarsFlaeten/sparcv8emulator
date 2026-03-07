@@ -36,7 +36,6 @@ LEON3Test::LEON3Test()
     : intc(1), cpu(mctrl, intc, 0)
 
 {  
-    cpu.set_verbose(true);
     cpu.reset(0x0);
     
     mctrl.attach_bank<RamBank>(0xf0400000, 1*1024*1024); // 1 MB @ 0x0

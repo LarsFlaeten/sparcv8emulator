@@ -96,9 +96,6 @@ typedef struct DecodeStruct *pDecode_t;
 typedef void (*p_func) (pDecode_t);
 typedef std::function<void(CPU*,pDecode_t)> pc_func;
 
-typedef std::function<void()> bus_tick_func;
-
-
 enum WriteBackType {
     NO_WRITEBACK =      0,
     WRITEBACKREG =      1
@@ -195,8 +192,7 @@ class CPU
         // Emulator control and debugging
        	std::ostream& os;
         bool running = false;
-        bool verbose = false;
-        bool power_down_enabled = false; 
+        bool power_down_enabled = false;
         std::atomic<bool> powerdown_flag{false};
         std::atomic<bool> wakeup_flag{false};
 
@@ -210,9 +206,7 @@ class CPU
         
         std::string DispRegStr (u32 regnum);
 
-        std::function<void()> bus_tick_func{};
-        
-        bool _interrupt; 
+        bool _interrupt;
         MMU mmu;  
         IRQMP& intc;      
    public:
@@ -304,17 +298,12 @@ class CPU
 
         // Emulator control and debugging
         void interrupt() { _interrupt = true; }
-        void    set_verbose(bool v) { verbose = v; }
-        bool    get_verbose() const {return verbose;}
         MMU&    get_mmu() {return mmu;}
         std::ostream& get_ostream() const { return os; }
         void    set_gdb_stub(GdbStub* stub) {gdb_stub = stub;}
         void    enable_power_down(bool pd) {power_down_enabled = pd;}
         void    dump_regs (bool transpose = false); 
         //void    disp_read_reg (const u32 reg_no, u32 *value); 
-        void    register_bus_tick_function(std::function<void()> f) {
-            bus_tick_func = std::move(f);
-        }
         IRQMP&  get_intc_ref() {return intc;}
 
         void enter_powerdown();    // handles sleeping

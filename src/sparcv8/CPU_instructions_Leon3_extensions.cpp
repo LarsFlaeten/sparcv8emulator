@@ -20,8 +20,9 @@ void CPU::CASA (pDecode_t d)
     auto rs2 = d->imm_disp_rs2 & 0x1f; // Rs2 in 5 least sig bits
     auto imm_asi = (d->imm_disp_rs2 >> 5 ) & 0xff ; // asi in next 8 bits
 
-    if (verbose)
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} casa    {} [{:#08x}] cmp {}, rd {} asi={:#08x}\n", d->pc, DispRegStr(d->rs1), d->rs1_value, DispRegStr(rs2), DispRegStr(d->rd), imm_asi);
+#endif
  
     // The instruction is privileged but setting
     // ASI = 0xA (user data) will allow it to be used in user mode.

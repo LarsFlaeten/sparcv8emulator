@@ -4,10 +4,7 @@ add_subdirectory(peripherals)
 
 
 set(EXENAME sparcv8_runelf)
-set(EXENAME2 sparcv8_leon)
 set(EXENAME2SMP sparcv8_leon_smp)
-
-set(EXENAME3 console)
 
 
 # Sources
@@ -18,10 +15,6 @@ link_directories(${PROJECT_SOURCE_DIR}/libraries ${PROJECT_SOURCE_DIR}/lib)
 add_executable(${EXENAME} sparcv8_runelf.cpp readelf.cpp debug.cpp dis.cpp)
 target_compile_options(${EXENAME} PUBLIC -std=c++23 -Wall)
 target_link_libraries(${EXENAME} sparcv8 peripherals gdbstub SDL2)
-
-add_executable(${EXENAME2} sparcv8_leon.cpp readelf.cpp debug.cpp dis.cpp)
-target_compile_options(${EXENAME2} PUBLIC -std=c++23 -Wall)
-target_link_libraries(${EXENAME2} sparcv8 peripherals gdbstub SDL2)
 
 add_executable(${EXENAME2SMP} sparcv8_leon_smp.cpp readelf.cpp debug.cpp)
 target_compile_options(${EXENAME2SMP} PUBLIC -std=c++23 -Wall)

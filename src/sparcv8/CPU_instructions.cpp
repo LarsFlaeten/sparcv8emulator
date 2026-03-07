@@ -35,8 +35,9 @@ void CPU::CALL (pDecode_t d)
 {
     u32 temp;
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} call     {:#08x} to {:#08x}\n", d->pc, d->imm_disp_rs2, d->pc + (4 * d->imm_disp_rs2));
+#endif
 
     d->wb_type = WriteBackType::WRITEBACKREG;
     d->value = d->pc;
@@ -53,8 +54,9 @@ void CPU::BICC (pDecode_t d)
 {
     int branch, annul, temp;
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} b{} {:#d} cc={:#1x}\n", d->pc, cond_byte[d->rd & 0xf], (signed int)(sign_ext22(d->imm_disp_rs2*4)), (d->psr >> PSR_CC_CARRY) & LOBITS4);
+#endif
 
     branch = test_cc (d);
     annul = ((d->rd >> 4) & LOBITS1) && (((!branch) && ((d->rd & LOBITS3) != 0)) || ((d->rd & LOBITS3) == 0));
@@ -79,12 +81,14 @@ void CPU::SETHI (pDecode_t d)
     u32 temp;
 
     if (d->opcode == NOP) {
-        if (verbose) 
+#ifdef CPU_VERBOSE
             os << std::format("{:#08x} nop\n", d->pc);
+#endif
     } else {
         temp = d->imm_disp_rs2 << 10;
-        if (verbose) 
+#ifdef CPU_VERBOSE
             os << std::format("{:#08x} sethi    Opcode {:#08x} -> {} = {:#08x}\n", d->pc, d->opcode, DispRegStr(d->rd), temp);
+#endif
         d->wb_type = WriteBackType::WRITEBACKREG;
         d->value = temp;
     }
@@ -99,9 +103,10 @@ void CPU::SLL (pDecode_t d)
     d->wb_type = WriteBackType::WRITEBACKREG;
     d->value = d->rs1_value << (d->ev & LOBITS5);
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} sll       {} {:#08x} << {:#02x} = {:#08x} {}\n", d->pc, DispRegStr(d->rs1),
                  d->rs1_value, d->ev, d->value, DispRegStr(d->rd));
+#endif
 
     d->pc = d->npc;
     d->npc += 4;
@@ -114,9 +119,10 @@ void CPU::SRL (pDecode_t d)
     d->wb_type = WriteBackType::WRITEBACKREG;
     d->value = d->rs1_value >> (d->ev & LOBITS5);
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} srl       {} {:#08x} << {:#02x} = {:#08x} {}\n", d->pc, DispRegStr(d->rs1),
                  d->rs1_value, d->ev, d->value, DispRegStr(d->rd));
+#endif
 
     d->pc = d->npc;
     d->npc += 4;
@@ -129,9 +135,10 @@ void CPU::SRA (pDecode_t d)
     d->wb_type = WriteBackType::WRITEBACKREG;
     d->value = (d->rs1_value >> (d->ev & LOBITS5)) | (((d->rs1_value & BIT31) && d->ev) ? (0xffffffff << (32 - (d->ev & LOBITS5))) : 0);
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} sra       {} {:#08x} << {:#02x} = {:#08x} {}\n", d->pc, DispRegStr(d->rs1),
                  d->rs1_value, d->ev, d->value, DispRegStr(d->rd));
+#endif
 
     d->pc = d->npc;
     d->npc += 4;
@@ -142,19 +149,22 @@ void CPU::SRA (pDecode_t d)
 void CPU::RDY (pDecode_t d)
 {
     if (d->rs1 == 15 && d->rd == 0) {
-        if (verbose) 
+#ifdef CPU_VERBOSE
             os << std::format("{:#08x} stbar\n", d->pc);
+#endif
         nop();
     } else {
         if (d->rs1 == 0 && (d->op_2_3 & 0x2f) == 0x28) {
-            if (verbose) 
+#ifdef CPU_VERBOSE
                 os << std::format("{:#08x} rdy      {} = {:#08x}\n", d->pc, DispRegStr(d->rd), y_reg);
+#endif
             d->wb_type = WriteBackType::WRITEBACKREG;
             d->value = y_reg;
         } else if(d->rs1 == 17 && (d->op_2_3 & 0x2f) == 0x28) {
             // Leon specific, read CPU id, NWINDOWS etc from ASR17
-            if (verbose) 
+#ifdef CPU_VERBOSE
                 os << std::format("{:#08x} rd %asr17      {} = {:#08x}\n", d->pc, DispRegStr(d->rd), this->cpu_id_);
+#endif
             d->wb_type = WriteBackType::WRITEBACKREG;
             d->value = (this->cpu_id_ << 28) 
                 | (0x1 << 26)   // NOTAG / CASA
@@ -173,8 +183,9 @@ void CPU::RDY (pDecode_t d)
 
 void CPU::RDPSR (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} rdpsr    {} = {:#08x}\n", d->pc, DispRegStr(d->rd), d->psr);
+#endif
 
     if (d->p->s == 0) {
         trap (d, SPARC_PRIVILEGED_INSTRUCTION);
@@ -190,8 +201,9 @@ void CPU::RDPSR (pDecode_t d)
 
 void CPU::RDWIM (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} rdwim    {} = {:#08x}\n", d->pc, DispRegStr(d->rd), wim);
+#endif
 
     if (d->p->s == 0) {
         trap (d, SPARC_PRIVILEGED_INSTRUCTION);
@@ -208,8 +220,9 @@ void CPU::RDWIM (pDecode_t d)
 void CPU::RDTBR (pDecode_t d)
 {
 
-    if (verbose) 
-       os << std::format("{:#08x} rdtbr    {} = {:#08x}\n", d->pc, DispRegStr(d->rd), tbr);
+#ifdef CPU_VERBOSE
+        os << std::format("{:#08x} rdtbr    {} = {:#08x}\n", d->pc, DispRegStr(d->rd), tbr);
+#endif
 
     if (d->p->s == 0) {
         trap (d, SPARC_PRIVILEGED_INSTRUCTION);
@@ -227,8 +240,9 @@ void CPU::WRY (pDecode_t d)
 {
     if ((d->rd & LOBITS5) == 0) {
         y_reg = d->rs1_value ^ d->ev;
-        if (verbose) 
+#ifdef CPU_VERBOSE
             os << std::format("{:#08x} wry      = {:#08x}\n", d->pc, y_reg);
+#endif
     } else {
         // This is wr %asr!
         if(d->rd == 19) {
@@ -249,8 +263,9 @@ void CPU::WRY (pDecode_t d)
 
 void CPU::WRPSR (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} wrpsr    = {:#08x}\n", d->pc, d->rs1_value ^ d->ev);
+#endif
 
     if (((d->rs1_value ^ d->ev) & LOBITS5) >= NWINDOWS) { 
        //os << std::format("Ooops, rs1:{:#08x}, ev:{:#08x}, rs1^ev[4:0]:{:#08x}, NWIN:{:#08x}\n", d->rs1_value, d->ev, (d->rs1_value^d->ev)&LOBITS5, NWINDOWS);
@@ -281,8 +296,9 @@ void CPU::WRPSR (pDecode_t d)
 
 void CPU::WRWIM (pDecode_t d)
 {
-    if (verbose) 
-       os << std::format("{:#08x} wrwim    = {:#08x}\n", d->pc, d->rs1_value ^ d->ev);
+#ifdef CPU_VERBOSE
+        os << std::format("{:#08x} wrwim    = {:#08x}\n", d->pc, d->rs1_value ^ d->ev);
+#endif
 
     if (d->p->s == 0)
         trap (d, SPARC_PRIVILEGED_INSTRUCTION);
@@ -299,8 +315,9 @@ void CPU::WRWIM (pDecode_t d)
 
 void CPU::WRTBR (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} wrtbr    = {:#08x}\n", d->pc, d->rs1_value ^ d->ev);
+#endif
 
     if (d->p->s == 0) 
         trap (d, SPARC_PRIVILEGED_INSTRUCTION);
@@ -318,8 +335,9 @@ void CPU::JMPL (pDecode_t d)
     //u32 temp;
 
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} jmpl     rs1 {:#08x} + ev => nPC = {:#08x}\n", d->pc, d->rs1_value, d->npc);
+#endif
 
     if (d->ev & LOBITS2) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
@@ -342,8 +360,9 @@ void CPU::RETT (pDecode_t d)
     new_cwp = (d->p->cwp + 1) % NWINDOWS;
     //os << std::format("RETT, new cwp {:#x}\n", new_cwp);
  
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} rett     rs1 {:#08x} + ev => nPC = {:#08x} (new CWP = {:#08x})\n", d->pc, d->rs1_value, d->ev & ~LOBITS2, new_cwp);
+#endif
 
     if ( (d->p->et && !d->p->s) || (!d->p->et && !d->p->s))
         trap (d, SPARC_PRIVILEGED_INSTRUCTION);
@@ -385,7 +404,7 @@ void CPU::TICC (pDecode_t d)
                 return;
             } else {
                 std::cerr << "[CPU] Software breakpoint encountered, but gdb stub has no matching breakpoint.\n";
-                verbose = true; // Set this so we can see handling of the ta 1
+                // (was: verbose = true — compile with -DCPU_VERBOSE to trace trap handling)
             }
         }
     }
@@ -399,12 +418,14 @@ void CPU::TICC (pDecode_t d)
             tn = d->value;
             tn = 128 + ((tn +  d->rs1_value) & LOBITS7);
         }
-        if (verbose) 
+#ifdef CPU_VERBOSE
             os << std::format("{:#08x} t{} {:#08x} op={:#01x}\n", d->pc, cond_byte[d->rd & 0xf], tn, (d->rd & LOBITS4));
+#endif
         trap(d, tn);
     } else {
-        if (verbose) 
+#ifdef CPU_VERBOSE
             os << std::format("{:#08x} t{} {:#08x} op={:#01x}\n", d->pc, cond_byte[d->rd & 0xf], tn, (d->rd & LOBITS4));
+#endif
         d->pc = d->npc;
         d->npc += 4;
     }
@@ -417,8 +438,9 @@ void CPU::SAVE (pDecode_t d)
     u32 new_cwp = ((d->psr & LOBITS5) - 1) % NWINDOWS;
     //os << std::format("Save, new cwp {:#x}\n", new_cwp);
     
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} save     {:#08x}, {:#08x} (new CWP: {:#08x})\n", d->pc, d->rs1_value, d->ev, new_cwp);
+#endif
     if (((wim >> new_cwp) & LOBITS1) != 0)
         trap (d, SPARC_WINDOW_OVERFLOW);
     else {
@@ -437,8 +459,9 @@ void CPU::RESTORE (pDecode_t d)
     u32 new_cwp = ((d->psr & LOBITS5) + 1) % NWINDOWS;
     //os << std::format("Restore, new cwp {:#x}\n", new_cwp);
  
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} restore (new CWP: {:#08x})\n", d->pc, new_cwp);
+#endif
 
     if (((wim >> new_cwp) & LOBITS1) != 0)
         trap (d, SPARC_WINDOW_UNDERFLOW);
@@ -455,9 +478,11 @@ void CPU::RESTORE (pDecode_t d)
 
 void CPU::FLUSH (pDecode_t d)
 {
-    if (verbose) {
+#ifdef CPU_VERBOSE
+    {
         os << std::format("{:#08x} flush    [{:#08x}], {}\n", d->pc, d->ev, DispRegStr(d->rd));
     }
+#endif
     d->pc = d->npc;
     d->npc += 4;
 }
@@ -494,7 +519,7 @@ void CPU::MULSCC (pDecode_t d)
 
     y_reg = (y_reg >> 1) | ((d->rs1_value & 1) << 31);
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} mulscc   {} {:#08x}, {} {:#08x} -> {} = {:#08x} cc={:#1x}\n",
                  d->pc,  
                  DispRegStr(d->rs1), 
@@ -504,6 +529,7 @@ void CPU::MULSCC (pDecode_t d)
                  DispRegStr(d->rd), 
                  z,
                  (d->psr >> PSR_CC_CARRY) & LOBITS4);
+#endif
 
     d->pc = d->npc;
     d->npc += 4;
@@ -516,8 +542,9 @@ void CPU::MULSCC (pDecode_t d)
 
 void CPU::LD (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} ld       [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#endif
 
     if (d->ev & LOBITS2) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
@@ -535,8 +562,9 @@ void CPU::LD (pDecode_t d)
 
 void CPU::LDUB (pDecode_t d)
 {
-    if (verbose) 
-       os << std::format("{:#08x} ldub       [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#ifdef CPU_VERBOSE
+        os << std::format("{:#08x} ldub       [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#endif
 
     if((load8(d->ev, d->rd, 0, false) < 0) && !mmu.GetNoFault())
         trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
@@ -550,8 +578,9 @@ void CPU::LDUB (pDecode_t d)
 
 void CPU::LDUH (pDecode_t d)
 {
-    if (verbose) 
-       os << std::format("{:#08x} lduh      [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#ifdef CPU_VERBOSE
+        os << std::format("{:#08x} lduh      [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#endif
 
     if (d->ev & LOBITS1) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
@@ -569,8 +598,9 @@ void CPU::LDUH (pDecode_t d)
 
 void CPU::LDD (pDecode_t d)
 {
-    if (verbose) 
-       os << std::format("{:#08x} ldd      [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#ifdef CPU_VERBOSE
+        os << std::format("{:#08x} ldd      [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#endif
 
     if (d->rd & LOBITS1) {
         trap(d, SPARC_ILLEGAL_INSTRUCTION);
@@ -590,8 +620,9 @@ void CPU::LDD (pDecode_t d)
 
 void CPU::LDSB (pDecode_t d)
 {
-    if (verbose) 
-       os << std::format("{:#08x} ldsb     [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#ifdef CPU_VERBOSE
+        os << std::format("{:#08x} ldsb     [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#endif
 
     if((load8(d->ev, d->rd, 1, false) < 0) && !mmu.GetNoFault())
         trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
@@ -605,8 +636,9 @@ void CPU::LDSB (pDecode_t d)
 
 void CPU::LDSH (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} ldsh     [{:#08x}], %{}\n", d->pc, d->ev, DispRegStr(d->rd));
+#endif
 
     if (d->ev & LOBITS1) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
@@ -624,8 +656,9 @@ void CPU::LDSH (pDecode_t d)
 
 void CPU::ST (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} st       {}, [{:#08x}] = {:#08x}\n", d->pc, DispRegStr(d->rd), d->ev, d->value & LOWORDMASK);
+#endif
 
     if (d->ev & LOBITS2) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
@@ -643,8 +676,9 @@ void CPU::ST (pDecode_t d)
 
 void CPU::STB (pDecode_t d)
 {
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} stb      {}, [{:#08x}] = {:#08x}\n", d->pc, DispRegStr(d->rd), d->ev, d->value & LOBITS8);
+#endif
 
     if((store8(d->ev, d->rd) < 0) && !mmu.GetNoFault())
         trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
@@ -659,8 +693,9 @@ void CPU::STB (pDecode_t d)
 void CPU::STH (pDecode_t d)
 {
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} sth      {}, [{:#08x}] = {:#08x}\n", d->pc, DispRegStr(d->rd), d->ev, d->value & LOHWORDMASK);
+#endif
 
     if (d->ev & LOBITS1) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
@@ -678,13 +713,13 @@ void CPU::STH (pDecode_t d)
 
 void CPU::STD (pDecode_t d)
 {
-    u64 hold0;
-
-    if (verbose) {
-        hold0 = ((u64)d->value << (u64)32);
+#ifdef CPU_VERBOSE
+    {
+        u64 hold0 = ((u64)d->value << (u64)32);
         hold0 |= d->value1;
         os << std::format("{:#08x} std      {}, [{:#08x}] = {:#x}\n", d->pc, DispRegStr(d->rd), d->ev, hold0);
     }
+#endif
     if (d->rd & LOBITS1) {
         trap(d, SPARC_ILLEGAL_INSTRUCTION);
     } else if (d->ev & LOBITS3) {
@@ -706,8 +741,9 @@ void CPU::SWAP (pDecode_t d)
 {
     //u32 hold0;
 
-    if (verbose)
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} swap     [{:#08x}], {} = {:#08x}\n", d->pc, d->ev, DispRegStr(d->rd), d->value );
+#endif
 
     if (d->ev & LOBITS2) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
@@ -742,8 +778,9 @@ void CPU::SWAP (pDecode_t d)
 void CPU::SWAPA (pDecode_t d)
 {
     u32 asi = (d->opcode >> 5) & 0xFFU; 
-    if (verbose)
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} swapa    [{:#08x}], {} = {:#08x}, asi={}\n", d->pc, d->ev, DispRegStr(d->rd), d->value, asi );
+#endif
     
     
     
@@ -800,8 +837,9 @@ void CPU::LDSTUB (pDecode_t d)
 {
     //u32 value;
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} ldstub   [{:#08x}], {}\n", d->pc, d->ev, DispRegStr(d->rd));
+#endif
 
     // Here we do manual translate, and we do not use MMU generic
     // access funcs for read and write. This is to retain atomicity
@@ -882,7 +920,7 @@ void CPU::MUL (pDecode_t d)
         d->psr = (d->psr & ~(0xf << PSR_CC_CARRY)) | (cc << PSR_CC_CARRY);
     }
 
-    if (verbose)
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} {} {} {:#08x}, {} {:#08x} -> {} = {:#08x} {:#08x} cc={:#1x}\n",
                  d->pc, 
                  op_byte[d->op_2_3], 
@@ -894,6 +932,7 @@ void CPU::MUL (pDecode_t d)
                  y_reg, 
                  (u32)z,
                  (d->psr >> PSR_CC_CARRY) & LOBITS4);
+#endif
 
     d->wb_type = WriteBackType::WRITEBACKREG;
     d->value = (u32)(z & 0xffffffff);
@@ -914,15 +953,17 @@ void CPU::DIV (pDecode_t d)
     x = ((u64)y_reg << 32) | (u64)d->rs1_value;
     y = d->ev;
 
-    if (verbose)
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} {} {} {:#08x} {:#08x}, {} {:#08x} -> {} = ",
                  d->pc, op_byte[d->op_2_3], DispRegStr(d->rs1), 
                  (u32)(x>>32) & 0xffffffff, (u32)x & 0xffffffff,
                  !d->i ? DispRegStr(d->opcode & LOBITS5) : "", (u32)y & 0xffffffff, DispRegStr(d->rd));
+#endif
 
     if (y == 0) {
-        if (verbose)
+#ifdef CPU_VERBOSE
             os << std::format("??? cc=??\n");
+#endif
         trap (d, SPARC_DIVISION_BY_ZERO);
     } else {
         if (d->op_2_3 & LOBITS1) {
@@ -944,9 +985,10 @@ void CPU::DIV (pDecode_t d)
             d->psr = (d->psr & ~(LOBITS4 << PSR_CC_CARRY)) | (cc << PSR_CC_CARRY);
         }
 
-        if (verbose)
+#ifdef CPU_VERBOSE
             os << std::format("{:#08x} cc={:#1x}\n", (u32)z & 0xffffffff,
                                  (d->psr >> PSR_CC_CARRY) & LOBITS4);
+#endif
 
         d->wb_type = WRITEBACKREG;
         d->value = (u32)z &0xffffffff; 
@@ -991,7 +1033,8 @@ void CPU::ADD (pDecode_t d)
     cc = (cc & ~(1 << CC_ZERO))     | (((z == 0) ? 1 : 0) << CC_ZERO);
     cc = (cc & ~(1 << CC_NEGATIVE)) | (((z >> 31) & LOBITS1) << CC_NEGATIVE);
 
-    if (verbose) {
+#ifdef CPU_VERBOSE
+    {
         std::string tbyte;
 
         tbyte = (d->op_2_3 & 1) ? ((d->op_2_3 & 2) ? "tsubcctv" : "tsubcc  ") :
@@ -1008,6 +1051,7 @@ void CPU::ADD (pDecode_t d)
                  z,
                  ((d->op_2_3 & BIT4) || tag_inst) ? cc : (d->psr >> PSR_CC_CARRY) & LOBITS4);
     }
+#endif
 
     // TADDcTV or TSUBccTV trap on tagged overflow
     if (((d->op_2_3 & 0x22) == 0x22) && (cc & (1 << CC_OVERFLOW)))
@@ -1054,11 +1098,12 @@ void CPU::AND (pDecode_t d)
     if (d->op_2_3 & BIT4) 
         CalcCC(cc, z, d->psr);
 
-    if (verbose)
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} {} {} {:#08x}, {} {:#08x} -> {} = {:#08x} cc={:#1x}\n",
                  d->pc, op_byte[d->op_2_3], DispRegStr(d->rs1), x,
                  !d->i ? DispRegStr(d->opcode & LOBITS5) : "", y, DispRegStr(d->rd), z,
                  (d->psr >> PSR_CC_CARRY) & LOBITS4);
+#endif
 
     d->wb_type = WRITEBACKREG;
     d->value = z;

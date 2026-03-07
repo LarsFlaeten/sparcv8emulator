@@ -102,7 +102,6 @@ TEST_F(LDSTFSRTest, C128A0DC)
     d.p->s = 1; // Set supervisor mode 
     d.p->et = 1; // Enable traps 
 
-    cpu.set_verbose(true);     
     cpu.decode(&d);
     
     d.function(&cpu, &d);

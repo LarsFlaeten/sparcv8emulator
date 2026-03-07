@@ -47,8 +47,9 @@ void CPU::reset(u32 entry_va = 0x0)
     rs.instr_count = 0;
     rs.last_opcode = 0;
 
-    if(verbose)
+#ifdef CPU_VERBOSE
         os << "Resetting CPU, entry PC = 0x" << std::hex << entry_va << "\n";
+#endif
     
     pc  = entry_va;
     npc = pc + 4;;
@@ -187,8 +188,9 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 
         // Process interrupts if ther are no traps being handled
         if (trap_type == 0 && (p->et && (irl > p->pil))) {
-            if (verbose)
+#ifdef CPU_VERBOSE
                 os << std::format("INT  {:#x} PC={:#08x} NPC={:#08x}\n", irl, pc, npc);
+#endif
 
             trap_type = irl + SPARC_INTERRUPT;
 
@@ -247,10 +249,6 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
             }
         }
         
-        // Tick the bus, handling IO, interrupts etc
-        if(bus_tick_func)
-            bus_tick_func();
-
         // External request to interrupt this run tick
         if(_interrupt) {
             _interrupt = false;
@@ -322,8 +320,9 @@ void CPU::decode(pDecode_t d)
     u32 op3      = (d->opcode >> OP3STARTBIT) & LOBITS6;
     u32 I_idx, regvalue;
 
-    if (verbose) 
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x}: ", d->opcode);
+#endif
 
     // By default, no change to program counter and PSR, and
     // no writeback
@@ -444,7 +443,8 @@ void CPU::trap(pDecode_t d, u32 trap_no)
          return;
     }
 
-    if (verbose) {
+#ifdef CPU_VERBOSE
+    {
         if (tn < 0x40)
             os << std::format("                   TRAP {} ({:#x}) PC={:#08x} NPC={:#08x}\n", trap_str[tn], tn, pc, npc);
         else if (tn >= 0x40 && tn < 0x60)
@@ -454,6 +454,7 @@ void CPU::trap(pDecode_t d, u32 trap_no)
         else 
             os << std::format("                   TRAP Ticc ({:#x}) PC={:#08x} NPC={:#08x}\n", tn, pc, npc);
     }
+#endif
 /*
     // Set PS bit on PSR from S bit
     // (PS is supervisor bit on last (this) Trao)

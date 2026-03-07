@@ -36,8 +36,9 @@ void CPU::LDA_impl (pDecode_t d) {
     read_reg(rs2, &r2);
     u32 address = r1 + r2;
 
-    if(verbose)
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} {}      [{:#08x}] asi: {:#08x}, {}\n", d->pc, op, address, ASI, DispRegStr(d->rd));
+#endif
 
     u32 offset = 0x0;
  
@@ -151,8 +152,9 @@ void CPU::STA_impl (pDecode_t d) {
         return;
     }
 
-    if(verbose)
+#ifdef CPU_VERBOSE
         os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->pc, op, DispRegStr(d->rd), rd_value, address, ASI);
+#endif
             
     u32 offset = 0x0;
  

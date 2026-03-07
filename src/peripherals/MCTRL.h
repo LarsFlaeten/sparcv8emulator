@@ -2,6 +2,7 @@
 // Memory controller, and associated memory banks
 
 #include <cstdint>
+#include <array>
 #include <vector>
 #include <memory>
 #include <mutex>
@@ -425,8 +426,10 @@ public:
 
     u32* get_ptr() override { return reinterpret_cast<u32*>(data.data());}
 
+    static constexpr int NUM_SHARDS = 64;
+
     std::mutex& get_mutex(u32 addr) override {
-        return global_ram_mtx;
+        return shard_mtx_[(addr >> 12) & (NUM_SHARDS - 1)];
     }
 
 #ifdef PERF_STATS
@@ -443,15 +446,15 @@ private:
 #endif
 
     AtomicResult atomic_ldstub8(uint32_t paddr) override {
-        std::lock_guard lk(global_ram_mtx);
+        std::lock_guard lk(get_mutex(paddr));
         uint8_t old = read8_nolock(paddr);
         write8_nolock(paddr, 0xFF);
         return {true, (uint32_t)old};
     }
 
     AtomicResult atomic_swap32(uint32_t paddr, uint32_t newv) override {
-        std::lock_guard lk(global_ram_mtx);
-        uint32_t old = read32_nolock(paddr);          // BE handling here
+        std::lock_guard lk(get_mutex(paddr));
+        uint32_t old = read32_nolock(paddr);
         write32_nolock(paddr, newv);
         return {true, old};
     }
@@ -474,7 +477,7 @@ private:
     size_t size;
     std::vector<u8> data;
 
-    mutable std::mutex global_ram_mtx;
+    mutable std::array<std::mutex, NUM_SHARDS> shard_mtx_;
 
     using Read16Fn  = u16 (RamBank::*)(u32,bool) const;
     using Read32Fn  = u32 (RamBank::*)(u32,bool) const;
