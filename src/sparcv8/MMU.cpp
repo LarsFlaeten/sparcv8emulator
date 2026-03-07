@@ -282,7 +282,7 @@ AtomicResult MMU::atomic_swap32(u32 vaddr, bool supervisor, u32 value) {
 #ifdef PROFILE_LOCKS
     ProfiledLock lk(mtx, mtx_profiles_.ram);
 #else
-    std::lock_guard<std::mutex> lk(mtx);
+    std::unique_lock<std::shared_mutex> lk(mtx);
 #endif
 
     r.old = pbank->read32_nolock(paddr);          // BE handling here
@@ -321,7 +321,7 @@ AtomicResult MMU::atomic_casa32(u32 vaddr, bool supervisor, u32 expected, u32 de
 #ifdef PROFILE_LOCKS
     ProfiledLock lk(mtx, mtx_profiles_.ram);
 #else
-    std::lock_guard<std::mutex> lk(mtx);
+    std::unique_lock<std::shared_mutex> lk(mtx);
 #endif
     // Do the casa:
     r.ok = true;

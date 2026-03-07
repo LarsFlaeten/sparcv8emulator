@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <array>
 #include <atomic>
+#include <shared_mutex>
 
 
 #include "../peripherals/MCTRL.h"
@@ -340,61 +341,60 @@ public:
         }
         auto& mtx = pbank->get_mutex(phys_addr);
 
-#ifdef PROFILE_LOCKS
-        ProfiledLock lk(mtx, mtx_profiles_.ram);
-#elif defined(PERF_STATS)
-        // Probe contention via try_lock before blocking
+        if constexpr (rw == intent_store)
         {
-            auto* rb = dynamic_cast<RamBank*>(pbank);
-            if (rb) {
-                if (!mtx.try_lock()) {
-                    rb->perf_lock_contended();
+            // Exclusive lock for writes
+#if defined(PERF_STATS)
+            {
+                auto* rb = dynamic_cast<RamBank*>(pbank);
+                if (rb) {
+                    if (!mtx.try_lock()) {
+                        rb->perf_lock_contended();
+                        mtx.lock();
+                    }
+                    rb->perf_lock_acquired();
+                } else {
                     mtx.lock();
                 }
-                rb->perf_lock_acquired();
-            } else {
-                mtx.lock();
             }
-        }
-        std::unique_lock<std::mutex> lk(mtx, std::adopt_lock);
+            std::unique_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
 #else
-        std::lock_guard<std::mutex> lk(mtx);
+            std::unique_lock<std::shared_mutex> lk(mtx);
 #endif
+            switch(size) {
+                case(1): pbank->write8_nolock(phys_addr, value);           break;
+                case(2): pbank->write16_nolock(phys_addr, value, false);   break;
+                case(4): pbank->write32_nolock(phys_addr, value, false);   break;
+                default: throw std::runtime_error("Error write size != {1,2,4}");
+            }
+        }
+        else // read or execute: shared lock allows concurrent readers
+        {
+#if defined(PERF_STATS)
+            {
+                auto* rb = dynamic_cast<RamBank*>(pbank);
+                if (rb) {
+                    if (!mtx.try_lock_shared()) {
+                        rb->perf_lock_contended();
+                        mtx.lock_shared();
+                    }
+                    rb->perf_lock_acquired();
+                } else {
+                    mtx.lock_shared();
+                }
+            }
+            std::shared_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
+#else
+            std::shared_lock<std::shared_mutex> lk(mtx);
+#endif
+            switch(size) {
+                case(1): value = pbank->read8_nolock(phys_addr);           break;
+                case(2): value = pbank->read16_nolock(phys_addr, false);   break;
+                case(4): value = pbank->read32_nolock(phys_addr, false);   break;
+                default: throw std::runtime_error("Error read size != {1,2,4}");
+            }
+        }
 
-        if constexpr (rw==intent_store)
-        {
-            switch(size) {
-                case(1):
-                    pbank->write8_nolock(phys_addr, value);
-                    break;
-                case(2):
-                    pbank->write16_nolock(phys_addr, value, false);
-                    break;
-                case(4):
-                    pbank->write32_nolock(phys_addr, value, false);
-                    break;
-                default:
-                    throw std::runtime_error("Error write size != {1,2,4}");
-            }
-            
-        }
-        else // read or execute
-        {
-            switch(size) {
-                case(1):
-                    value = pbank->read8_nolock(phys_addr);
-                    break;
-                case(2):
-                    value = pbank->read16_nolock(phys_addr, false);
-                    break;
-                case(4):
-                    value = pbank->read32_nolock(phys_addr, false);
-                    break;
-                default:
-                    throw std::runtime_error("Error read size != {1,2,4}");
-            }
-        }
-        
         return 0;
     }
 
