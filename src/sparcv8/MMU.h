@@ -101,11 +101,22 @@ class MMU {
     MCtrl& mctrl;
     // MMUR REGS
     u32 control_reg;
-    u32 ccr, iccr, dccr;        
+    u32 ccr, iccr, dccr;
     u32 ctx_tbl_ptr;
     u32 ctx_n, last_ctx_n;
     u32 fault_status_reg;
     u32 fault_address_reg;
+
+    // L0 instruction fetch cache: skip translate_va + get_bank for consecutive
+    // fetches within the same virtual page (common for sequential execution).
+    struct FetchCache {
+        u32  vpage = ~0u;       // virtual page number (vaddr >> 12); ~0u = invalid
+        u32  pbase = 0;         // physical page base (paddr & ~0xFFF)
+        u32  ctx   = ~0u;       // MMU context at fill time
+        bool super = false;     // supervisor mode at fill time
+        IMemoryBank* bank = nullptr;
+    };
+    FetchCache fetch_cache_;
 
     public:
     MMU(MCtrl& mc) : mctrl(mc){
@@ -142,6 +153,8 @@ public:
     MCtrl&  GetMCTRL() {return mctrl;}
 
     void SetControlReg(u32 value) {
+        if ((value & 0x1) != (control_reg & 0x1))
+            fetch_cache_.vpage = ~0u; // Invalidate on MMU enable/disable transition
         control_reg = value;
     }
     u32 GetControlReg() {return control_reg;}
@@ -193,7 +206,8 @@ public:
         last_ctx_n = 0x0;
         fault_status_reg = 0x0;
         fault_address_reg = 0x0;
-        
+        fetch_cache_ = FetchCache{};
+
         itlb.flush();
         dtlb.flush();
     }
@@ -201,7 +215,8 @@ public:
     void nop() { return; }
 
     // FLush TLB
-    void flush() { 
+    void flush() {
+        fetch_cache_.vpage = ~0u; // Invalidate L0 fetch cache
         itlb.flush();
         dtlb.flush();
     }
@@ -314,23 +329,33 @@ public:
 
 
         u32 phys_addr = 0x0;
-        
-        if(GetEnabled()) {
+        const bool mmu_on = GetEnabled();
+
+        if(mmu_on) {
+            // L0 instruction fetch cache: bypass translate_va + get_bank for
+            // repeated fetches within the same virtual page (~1024 instructions/page).
+            if constexpr (rw == intent_execute) {
+                const u32 vpage = virt_addr >> 12;
+                if (__builtin_expect(
+                        fetch_cache_.vpage == vpage &&
+                        fetch_cache_.super == supervisor &&
+                        fetch_cache_.ctx   == ctx_n, 1)) {
+                    value = fetch_cache_.bank->read32_nolock(
+                        fetch_cache_.pbase | (virt_addr & 0xFFF), reverse);
+                    return 0;
+                }
+            }
 
             auto res = translate_va(virt_addr, supervisor, rw, report_faults);
-            
+
             if(!res.ok)
             {
                 u32 FT;
-                // We failed
-                // Get FT from fault status reg and return it
                 if(report_faults)
                     FT = (fault_status_reg >> 2) & 0b111;
                 else
                     FT = 1;
-
                 return -FT;
-
             }
 
             phys_addr = res.pa;
@@ -365,6 +390,16 @@ public:
         }
         else // read or execute: no host lock needed (concurrent reads safe; read-write races are SPARC UB)
         {
+            // Populate L0 fetch cache on instruction fetch miss
+            if constexpr (rw == intent_execute) {
+                if (mmu_on) {
+                    fetch_cache_.vpage = virt_addr >> 12;
+                    fetch_cache_.pbase = phys_addr & ~0xFFFu;
+                    fetch_cache_.ctx   = ctx_n;
+                    fetch_cache_.super = supervisor;
+                    fetch_cache_.bank  = pbank;
+                }
+            }
 #if defined(PERF_STATS)
             auto& mtx = pbank->get_mutex(phys_addr);
             pbank->perf_lock_shared(mtx);
