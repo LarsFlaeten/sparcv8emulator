@@ -134,11 +134,18 @@ void BusClock::run() {
         uint64_t due = (uint64_t)std::llround((double)dt_ns * ticks_per_ns);
         if (due > max_due_ticks) due = max_due_ticks;
 
-        // Do due bus ticks — hold the timer lock for the whole batch,
-        // releasing briefly only when we need to fire an IRQ.
+        // Advance the timer in batches delimited by UART tick events,
+        // using analytic prescaler math instead of a per-bus-tick loop.
         timer_.lock();
-        for (uint64_t i = 0; i < due; ++i) {
-            const bool fire_timer_irq = timer_.tick_and_check_interrupt_unlocked(true);
+        uint64_t remaining = due;
+        while (remaining > 0) {
+            // Advance up to the next UART tick boundary.
+            uint64_t to_uart = uart_div_target - uart_div;
+            uint64_t batch   = (remaining < to_uart) ? remaining : to_uart;
+
+            const bool fire_timer_irq = timer_.advance_unlocked(batch, true);
+            uart_div  += (uint32_t)batch;
+            remaining -= batch;
 
             if (fire_timer_irq) {
                 timer_.unlock();
@@ -148,7 +155,7 @@ void BusClock::run() {
                 timer_.lock();
             }
 
-            if (++uart_div >= uart_div_target) {
+            if (uart_div >= uart_div_target) {
                 uart_div = 0;
                 timer_.unlock();
                 uart_.tick_scheduled();

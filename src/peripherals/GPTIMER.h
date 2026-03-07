@@ -249,6 +249,58 @@ class GPTIMER : public apb_slave {
 
         }
 
+        // Advance the timer by n bus ticks without looping n times.
+        // Computes the number of prescaler ticks analytically, then applies
+        // them to each timer counter. Returns true if any timer IRQ fired.
+        // Caller must hold the timer lock.
+        bool advance_unlocked(uint64_t n, bool clear_irq) {
+            if (n == 0) return false;
+            if (!(timers[0].is_enabled() || timers[1].is_enabled()))
+                return false;
+
+            const uint32_t sreload = SRELOAD & 0xffff;
+            const uint32_t period  = sreload + 1; // bus ticks per prescaler tick
+            uint64_t prescaler_ticks = 0;
+
+            // Phase 1: consume the remainder of the current prescaler period.
+            if (SCALER == 0) {
+                // Prescaler fires on this tick.
+                prescaler_ticks++;
+                SCALER = sreload;
+                n--;
+            } else if (n <= SCALER) {
+                // All n ticks consumed before the next prescaler tick.
+                SCALER -= (uint32_t)n;
+                n = 0;
+            } else {
+                // Advance to end of current prescaler period.
+                n -= SCALER + 1;
+                prescaler_ticks++;
+                SCALER = sreload;
+            }
+
+            // Phase 2: handle any remaining full prescaler periods.
+            if (n > 0) {
+                prescaler_ticks += n / period;
+                uint32_t leftover = (uint32_t)(n % period);
+                // leftover==0 means last tick was a prescaler tick, SCALER reloads.
+                SCALER = sreload - leftover;
+            }
+
+            // Apply prescaler_ticks to each enabled timer counter.
+            bool any_irq = false;
+            for (auto& timer : timers) {
+                if (!timer.is_enabled()) continue;
+                for (uint64_t p = 0; p < prescaler_ticks; ++p)
+                    timer.tick();
+                if (timer.check_interrupt()) {
+                    any_irq = true;
+                    if (clear_irq) timer.clear_interrupt();
+                }
+            }
+            return any_irq;
+        }
+
         // Explicit locking and unlocking
         void lock() {mtx_.lock();}
         void unlock() {mtx_.unlock();}
