@@ -87,6 +87,8 @@ void GdbStub::gdb_thread(uint16_t port) {
     set_thread_name("gdb_stub");
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     sockaddr_in addr = {};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
