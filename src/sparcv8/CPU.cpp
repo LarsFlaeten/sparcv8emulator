@@ -162,6 +162,29 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 #endif		
         ++count;
         
+        // Check interrupt controller for pending interrupts
+        u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id_);
+        if(_incoming_irl>irl && trap_type == 0) {
+            set_irl(_incoming_irl);
+        }
+
+#ifdef IRQMP_DEBUG
+        static thread_local bool printed_masked_13 = false;
+        if (_incoming_irl == 13 &&
+            !(p->et && (13 > p->pil)) &&
+            !printed_masked_13)
+        {
+            printed_masked_13 = true;
+            std::cout
+                << "[CPU" << cpu_id_ << "] IRQ13 PENDING but MASKED"
+                << " ET=" << p->et
+                << " PIL=" << int(p->pil)
+                << " PSR=0x" << std::hex << d->psr
+                << std::dec
+                << "\n";
+        }
+#endif
+
         // Process interrupts if ther are no traps being handled
         if (trap_type == 0 && (p->et && (irl > p->pil))) {
             if (verbose)
@@ -227,34 +250,6 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         // Tick the bus, handling IO, interrupts etc
         if(bus_tick_func)
             bus_tick_func();
-        
-        // Check interrupt controller for pending interrupts and take any,
-        // as long as there are not ongoing trap handling
-        u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id_);
-#ifdef IRQMP_DEBUG
-        static thread_local bool printed_masked_13 = false;
-        if (_incoming_irl == 13 &&
-            !(p->et && (13 > p->pil)) &&
-            !printed_masked_13)
-        {
-            printed_masked_13 = true;
-            std::cout
-                << "[CPU" << cpu_id_ << "] IRQ13 PENDING but MASKED"
-                << " ET=" << p->et
-                << " PIL=" << int(p->pil)
-                << " PSR=0x" << std::hex << d->psr
-                << std::dec
-                << "\n";
-        }
-#endif
-
-        if(_incoming_irl>0 && trap_type == 0) {
-            if(_incoming_irl > irl) {
-                set_irl(_incoming_irl);
-            }
-        }
-
-        
 
         // External request to interrupt this run tick
         if(_interrupt) {
@@ -262,15 +257,6 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
             rs.reason = TerminateReason::RECV_SIGINT; // received SIGINT
             break;
         }
-
-        /*
-        // Request to power down (for this tick)
-        if(power_down) {
-            power_down = false;
-            rs.reason = TerminateReason::POWER_DOWN;
-            //CVLOG_UNMUTE();
-            break;
-        }*/
 
         // Check if any instructions tell us to exit
         if(rs.reason == TerminateReason::NORMAL || rs.reason == TerminateReason::UNIMPLEMENTED) {
