@@ -345,18 +345,7 @@ public:
         {
             // Exclusive lock for writes
 #if defined(PERF_STATS)
-            {
-                auto* rb = dynamic_cast<RamBank*>(pbank);
-                if (rb) {
-                    if (!mtx.try_lock()) {
-                        rb->perf_lock_contended();
-                        mtx.lock();
-                    }
-                    rb->perf_lock_acquired();
-                } else {
-                    mtx.lock();
-                }
-            }
+            pbank->perf_lock(mtx);
             std::unique_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
 #else
             std::unique_lock<std::shared_mutex> lk(mtx);
@@ -368,24 +357,11 @@ public:
                 default: throw std::runtime_error("Error write size != {1,2,4}");
             }
         }
-        else // read or execute: shared lock allows concurrent readers
+        else // read or execute: no host lock needed (concurrent reads safe; read-write races are SPARC UB)
         {
 #if defined(PERF_STATS)
-            {
-                auto* rb = dynamic_cast<RamBank*>(pbank);
-                if (rb) {
-                    if (!mtx.try_lock_shared()) {
-                        rb->perf_lock_contended();
-                        mtx.lock_shared();
-                    }
-                    rb->perf_lock_acquired();
-                } else {
-                    mtx.lock_shared();
-                }
-            }
+            pbank->perf_lock_shared(mtx);
             std::shared_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
-#else
-            std::shared_lock<std::shared_mutex> lk(mtx);
 #endif
             switch(size) {
                 case(1): value = pbank->read8_nolock(phys_addr);           break;

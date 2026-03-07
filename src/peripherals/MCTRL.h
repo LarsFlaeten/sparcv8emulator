@@ -197,6 +197,10 @@ public:
 
     virtual std::shared_mutex& get_mutex(u32 paddr) {return mtx;}
 
+#ifdef PERF_STATS
+    virtual void perf_lock(std::shared_mutex& m)        { m.lock(); }
+    virtual void perf_lock_shared(std::shared_mutex& m) { m.lock_shared(); }
+#endif
 
 protected:
     std::shared_mutex mtx = {}; // Dummy mutex
@@ -442,6 +446,15 @@ public:
     const RamStats& get_ram_stats() const { return ram_stats_; }
     void perf_lock_acquired()  { ram_stats_.lock_acquired .fetch_add(1, std::memory_order_relaxed); }
     void perf_lock_contended() { ram_stats_.lock_contended.fetch_add(1, std::memory_order_relaxed); }
+
+    void perf_lock(std::shared_mutex& m) override {
+        if (!m.try_lock()) { perf_lock_contended(); m.lock(); }
+        perf_lock_acquired();
+    }
+    void perf_lock_shared(std::shared_mutex& m) override {
+        if (!m.try_lock_shared()) { perf_lock_contended(); m.lock_shared(); }
+        perf_lock_acquired();
+    }
 private:
 #endif
 
