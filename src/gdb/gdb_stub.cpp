@@ -68,8 +68,11 @@ GdbStub::~GdbStub() {
         thread.join();
     }
 
-    if(was_run)
+    if(was_run) {
+#ifdef GDB_DEBUG
         std::cout << "[GDB] Stub shut down.\n";
+#endif
+    }
 }
 
 void GdbStub::start(uint16_t port, bool wait_for_connection) {
@@ -79,7 +82,9 @@ void GdbStub::start(uint16_t port, bool wait_for_connection) {
     if(wait_for_connection) {
         std::unique_lock lock(mtx);
         cv.wait(lock, [&]() { return active.load(std::memory_order_relaxed); });
+#ifdef GDB_DEBUG
         std::cout << "[GDB] Client connected, lets go..\n";
+#endif
     }
 }
 
@@ -97,13 +102,17 @@ void GdbStub::gdb_thread(uint16_t port) {
     listen(server_fd, 1);
     std::cout << "[GDB] Waiting for connection on port " << port << "\n";
     client_fd = accept(server_fd, nullptr, nullptr);
+#ifdef GDB_DEBUG
     std::cout << "[GDB] Connected.\n";
+#endif
     active = true;
 
     while (!shutting_down) {
         auto maybe_pkt = recv_packet();
         if (!maybe_pkt.has_value()) {
+#ifdef GDB_DEBUG
             std::cout << "[GDB] Client disconnected or shutdown\n";
+#endif
             break;
         }
         handle_packet(*maybe_pkt);
@@ -126,7 +135,9 @@ std::string make_qfThreadInfo_reply(int total_num_cpus)
 
 void GdbStub::handle_packet(const std::string& pkt) {
     
+#ifdef GDB_DEBUG
     std::cout << "[GDB] Handle packet: [" << pkt << "]\n";
+#endif
     //std::cout << "[GDB] handle_packet: this=" << this << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
     if (pkt == "?") {
         int tid = current_cpu + 1; // GDB threads are 1-based
@@ -134,13 +145,17 @@ void GdbStub::handle_packet(const std::string& pkt) {
     }
     else if(pkt.size() == 1 && static_cast<unsigned char>(pkt[0]) == 0x03) {
         // Interrupt from the remote!
+#ifdef GDB_DEBUG
         std::cout << "[GDB] Received Ctr+C from remote!\n";
         cpus[0]->get_intc_ref().dump_state();
+#endif
             
         if (auto* dsc = DebugStopController::Global()) {
             dsc->request_stop(DebugStopController::StopReason::CtrlC);
             dsc->wait_until_all_stopped();
+#ifdef GDB_DEBUG
             std::cout << "[GDB] Stopped the world!\n";
+#endif
             //send_packet("S02"); // TODO: Send T01??
             int tid = current_cpu + 1; // GDB threads are 1-based
             send_packet("T05thread:" + std::to_string(tid) + ";");
