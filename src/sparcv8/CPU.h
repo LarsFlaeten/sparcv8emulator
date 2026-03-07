@@ -175,6 +175,7 @@ class CPU
 
         u32 cpu_id_;
         u32 fsr; // FPU state register
+        u32 cwp_base_ = 0; // Cached: (psr & LOBITS5) << 3, updated whenever CWP changes
         ///////////////////////
         // Registers
         u32 globals [9];              // Global[8] is a pseudo register used only for SWAP
@@ -278,7 +279,7 @@ class CPU
         u32 get_cpu_id() const { return cpu_id_; }
         // State Accessors
         u32 get_psr() const {return psr;}
-        void set_psr(u32 value) { psr = value; }
+        void set_psr(u32 value) { psr = value; cwp_base_ = (psr & 0x1f) << 3; }
         u32 get_wim() const {return wim;}
         u32 get_tbr() const {return tbr;}
         u32 get_y_reg() const {return y_reg;}

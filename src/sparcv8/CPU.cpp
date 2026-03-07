@@ -54,9 +54,10 @@ void CPU::reset(u32 entry_va = 0x0)
     pc  = entry_va;
     npc = pc + 4;;
 
-    psr = (1 << PSR_ENABLE_TRAPS) | (0 << PSR_PREV_SUPER_MODE) 
+    psr = (1 << PSR_ENABLE_TRAPS) | (0 << PSR_PREV_SUPER_MODE)
         | (1 << PSR_SUPER_MODE) | (1 << PSR_ENABLE_FLOATING_POINT)
         | (0x3 << PSR_VER) | (0xf << PSR_IMPL) ;
+    cwp_base_ = (psr & LOBITS5) << 3;
     //((pPSR_t)&psr)->et = 1;
     //((pPSR_t)&psr)->s  = 1;
     //((pPSR_t)&psr)->ps  = 0; // Previus trap supervisor bit
@@ -226,6 +227,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
             u32 n_cwp = p->cwp;
             n_cwp = ((n_cwp - 1) & LOBITS5) % NWINDOWS;
             p->cwp = n_cwp;
+            cwp_base_ = (psr & LOBITS5) << 3;
 
             write_reg (pc,  LOCALREG1);
             write_reg (npc, LOCALREG2);
@@ -424,8 +426,9 @@ void CPU::write_back (const pDecode_t d)
     pc  = d->pc;
     npc = d->npc;
     psr = d->psr;
+    cwp_base_ = (psr & LOBITS5) << 3;
 
-    if (d->wb_type == WriteBackType::WRITEBACKREG) 
+    if (d->wb_type == WriteBackType::WRITEBACKREG)
         write_reg(d->value, d->rd);
 }
 
@@ -579,29 +582,25 @@ int CPU::test_cc (pDecode_t d) {
 
 //------------------------------------------------------------------------
 //
-void CPU::read_reg (const u32 reg_no, u32 * const value) 
+void CPU::read_reg (const u32 reg_no, u32 * const value)
 {
-    int win;
-
-    globals[0] = 0;
     if(reg_no == GLOBALREG8) {
         *value = *p_swap_reg;
         return;
     }
-    
+
     switch (reg_no >> 3) {
     case 0 : // Globals
         *value = globals[reg_no & LOBITS3];
         break;
     case 1 : // Outs
-        *value = outs [((get_psr() & LOBITS5) << 3) | (reg_no & LOBITS3)];
+        *value = outs [cwp_base_ | (reg_no & LOBITS3)];
         break;
     case 2 : // locals
-        *value = locals [((get_psr() & LOBITS5) << 3) | (reg_no & LOBITS3)];
+        *value = locals [cwp_base_ | (reg_no & LOBITS3)];
         break;
     case 3 : // Ins
-        win = ((get_psr() & LOBITS5) + 1) % NWINDOWS;
-        *value = outs [(win << 3) | (reg_no & LOBITS3)];
+        *value = outs [(((cwp_base_ >> 3) + 1) % NWINDOWS) << 3 | (reg_no & LOBITS3)];
         break;
     }
 }
@@ -609,29 +608,26 @@ void CPU::read_reg (const u32 reg_no, u32 * const value)
 
 //------------------------------------------------------------------------
 //
-void CPU::write_reg (const u32 value, const u32 reg_no) 
+void CPU::write_reg (const u32 value, const u32 reg_no)
 {
-   int win = 0;
-
    if(reg_no == GLOBALREG8) {
         *p_swap_reg = value;
         return;
     }
- 
-   switch ((reg_no >>3) & LOBITS2) {
+
+   switch ((reg_no >> 3) & LOBITS2) {
    case 0 : // Globals
       globals[reg_no & LOBITS3] = value;
       globals[0] = 0;
       break;
    case 1 : // Outs
-      outs [((get_psr() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
+      outs [cwp_base_ | (reg_no & LOBITS3)] = value;
       break;
    case 2 : // locals
-      locals [((get_psr() & LOBITS5) << 3) | (reg_no & LOBITS3)] = value;
+      locals [cwp_base_ | (reg_no & LOBITS3)] = value;
       break;
    case 3 : // Ins
-      win = ((get_psr() & LOBITS5) + 1) % NWINDOWS;
-      outs [(win << 3) | (reg_no & LOBITS3)] = value;
+      outs [(((cwp_base_ >> 3) + 1) % NWINDOWS) << 3 | (reg_no & LOBITS3)] = value;
       break;
    }
 }
