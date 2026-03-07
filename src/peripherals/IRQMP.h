@@ -6,6 +6,7 @@
 #include "../sparcv8/CPU.h"
 
 // std
+#include <atomic>
 #include <mutex>
 #include <shared_mutex>
 #include <vector>
@@ -43,7 +44,13 @@ class IRQMP {
         u32 num_active_cpus_;
         u8  barrier_irl;
 
+        // Lock-free IRQ hint per CPU: highest pending+unmasked IRL, or 0.
+        // Updated under unique_lock; read from CPU hot-path without any lock.
+        std::atomic<u32> irq_hint_[8]{};
+
         mutable std::shared_mutex mtx;
+
+        void update_hints_locked(); // must hold unique_lock on mtx
 
         std::vector<CPU*> cpu_ptrs_;
 
@@ -78,8 +85,11 @@ class IRQMP {
         }
 
         void trigger_irq(u32 IRL);
-        
-        unsigned int get_next_pending_irq(u8 cpu_id) const;
+
+        // Lock-free hot-path: returns highest pending+unmasked IRL for this CPU (0 = none).
+        u32 get_irq_hint(u8 cpu_id) const {
+            return irq_hint_[cpu_id & 7].load(std::memory_order_acquire);
+        }
 
         void clear_irq(u32 IRL, u8 cpu_id);
 

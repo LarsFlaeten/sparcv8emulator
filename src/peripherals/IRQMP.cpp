@@ -9,6 +9,7 @@ void IRQMP::reset() {
     for(int i = 0; i < 8; ++i) {
         PIMASK[i] = 0;
         PIFORCE[i] = 0;
+        irq_hint_[i].store(0, std::memory_order_relaxed);
     }
 
     num_active_cpus_ = 0;
@@ -28,6 +29,23 @@ void IRQMP::reset() {
     cpu_ptrs_.resize(num_cpus_);
     for(u8 i = 0; i < num_cpus_; ++i)
         cpu_ptrs_[i] = nullptr;
+}
+
+// Recompute irq_hint_[c] for all CPUs from current IPEND/PIFORCE/PIMASK state.
+// Must be called while holding a unique_lock on mtx.
+void IRQMP::update_hints_locked() {
+    for (u8 c = 0; c < num_cpus_; ++c) {
+        u32 h = 0;
+        for (int i = 15; i >= 1; --i) {
+            if (((PIFORCE[c] >> i) & 1u) && ((PIMASK[c] >> i) & 1u)) { h = i; break; }
+        }
+        if (!h) {
+            for (int i = 15; i >= 1; --i) {
+                if (((IPEND >> i) & 1u) && ((PIMASK[c] >> i) & 1u)) { h = i; break; }
+            }
+        }
+        irq_hint_[c].store(h, std::memory_order_release);
+    }
 }
 
 void IRQMP::trigger_irq(u32 IRL) {
@@ -56,6 +74,7 @@ void IRQMP::trigger_irq(u32 IRL) {
         } else { // If not broadcast, the set to normal IPEND
             IPEND = IPEND | (0x1U << irl);
         }
+        update_hints_locked();
     } // <-- Release mtx here
 
     // Wake up any CPUS that have unmasked this IRL
@@ -69,26 +88,6 @@ void IRQMP::trigger_irq(u32 IRL) {
     
 }
 
-unsigned IRQMP::get_next_pending_irq(u8 cpu_id) const {
-    u8 cpu = cpu_id & 0x7U;
-    std::shared_lock lock(mtx);
-
-    // Check forced first
-    for(int i = 15; i >= 1; --i) {
-        if( ((PIFORCE[cpu] >> i) & 0x1U) && ((PIMASK[cpu] >> i) & 0x1U  ) ) {
-                return i;
-        }
-    }
-    
-    // ..Then pending irls
-    for(int i = 15; i >= 1; --i) {
-        if( ((IPEND >> i) & 0x1U) && ((PIMASK[cpu] >> i) & 0x1U  ) ) {
-            return i;
-        }
-    }
-    
-    return 0;
-}
 
 void IRQMP::clear_irq(uint32_t IRL, uint8_t cpu_id) {
 #ifdef IRQMP_DEBUG
@@ -113,6 +112,7 @@ void IRQMP::clear_irq(uint32_t IRL, uint8_t cpu_id) {
     } else {
         IPEND &= ~bit;
     }
+    update_hints_locked();
 
 #ifdef IRQMP_DEBUG
     if (IRL == 13) {
@@ -183,11 +183,13 @@ void IRQMP::write(u32 offset, u32 value) {
             ++num_active_cpus_;
         
         PIMASK[n] = value;
+        update_hints_locked();
         return;
     } else if(offset >= 0x80 && offset < 0xA0) {
         u32 n = (offset - 0x80)/4;
 
         PIFORCE[n] |= value;
+        update_hints_locked();
 #ifdef IRQMP_DEBUG
         if (value & (1u << 13)) {
             std::cout
@@ -223,6 +225,7 @@ void IRQMP::write(u32 offset, u32 value) {
                 std::cout << "[IRQMP] IRQ 13 -> IPEND\n";
 #endif
             IPEND = value;
+            update_hints_locked();
             return;
         case(IRQMP_IFORCE_OS):
 #ifdef IRQMP_DEBUG
@@ -230,6 +233,7 @@ void IRQMP::write(u32 offset, u32 value) {
                 std::cout << "[IRQMP] IRQ 13 -> IFORCE 0x8\n";
 #endif
             IFORCE |= value;
+            update_hints_locked();
             return;
         case(IRQMP_ICLEAR_OS): {
 #ifdef IRQMP_DEBUG
@@ -242,6 +246,7 @@ void IRQMP::write(u32 offset, u32 value) {
             ICLEAR = value;
             const u32 mask = value & 0x0000FFFEu;
             IPEND &= ~mask;
+            update_hints_locked();
             return;
         }
         case(IRQMP_MPSTAT_OS): {

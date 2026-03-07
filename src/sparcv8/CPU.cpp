@@ -163,8 +163,8 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 #endif		
         ++count;
         
-        // Check interrupt controller for pending interrupts
-        u32 _incoming_irl = intc.get_next_pending_irq(this->cpu_id_);
+        // Check interrupt controller for pending interrupts (lock-free atomic read)
+        u32 _incoming_irl = intc.get_irq_hint(this->cpu_id_);
         if(_incoming_irl>irl && trap_type == 0) {
             set_irl(_incoming_irl);
         }

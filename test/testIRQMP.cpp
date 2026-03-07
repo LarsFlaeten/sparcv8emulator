@@ -66,7 +66,7 @@ TEST_F(IRQMPTest, trigger_irq_CheckPending)
     ASSERT_TRUE(ipend & 0x1 << 8);
 
     // No pending for cpu 0, since interrupt mask is not set
-    unsigned int irq = intc.get_next_pending_irq(0);
+    unsigned int irq = intc.get_irq_hint(0);
     ASSERT_EQ(irq, 0);
 
     // Clear IPEND
@@ -82,23 +82,23 @@ TEST_F(IRQMPTest, trigger_irq_CheckPending)
     ipend = intc.read(0x04);
     ASSERT_TRUE(ipend & 0x1 << 8);
 
-    irq = intc.get_next_pending_irq(0);
+    irq = intc.get_irq_hint(0);
     ASSERT_EQ(irq, 8);
     intc.clear_irq(8,0);
-    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
+    ASSERT_EQ(intc.get_irq_hint(0), 0);
  
    
     intc.write(0x04, 0x0); 
-    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
+    ASSERT_EQ(intc.get_irq_hint(0), 0);
 
     intc.trigger_irq(3);
     intc.trigger_irq(8);
     intc.trigger_irq(11);
 
     // The mask will ensure only IRQ8 is pending:
-    ASSERT_EQ(intc.get_next_pending_irq(0), 8);
+    ASSERT_EQ(intc.get_irq_hint(0), 8);
     intc.clear_irq(8,0);
-    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
+    ASSERT_EQ(intc.get_irq_hint(0), 0);
 
     
     // Enable MP interrupt mask for IRQ 3,8,11:
@@ -109,18 +109,18 @@ TEST_F(IRQMPTest, trigger_irq_CheckPending)
     intc.trigger_irq(11);
 
    
-    ASSERT_EQ(intc.get_next_pending_irq(0), 11);
+    ASSERT_EQ(intc.get_irq_hint(0), 11);
     intc.clear_irq(11,0);
 
-    ASSERT_EQ(intc.get_next_pending_irq(0), 8);
+    ASSERT_EQ(intc.get_irq_hint(0), 8);
     intc.clear_irq(8,0);
 
-    ASSERT_EQ(intc.get_next_pending_irq(0), 3);
+    ASSERT_EQ(intc.get_irq_hint(0), 3);
     intc.clear_irq(3,0);
 
     ASSERT_EQ(intc.read(0x04), 0);
 
-    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
+    ASSERT_EQ(intc.get_irq_hint(0), 0);
     intc.clear_irq(0,0);
 
     ASSERT_EQ(intc.read(0x04), 0);
@@ -167,7 +167,7 @@ TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
     EXPECT_EQ(cpu.get_irl(), 0)
         << "Timer IRQ must be pending, even while in trap.";
     intc.trigger_irq(3);  
-    EXPECT_EQ(intc.get_next_pending_irq(0), 8);
+    EXPECT_EQ(intc.get_irq_hint(0), 8);
 
     //
     // 3) Trigger a higher-priority interrupt (IRL=12)
@@ -176,7 +176,7 @@ TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
     //cpu.run(1, nullptr);
 
     // Now highest priority must be selected
-    EXPECT_EQ(intc.get_next_pending_irq(0), 12)
+    EXPECT_EQ(intc.get_irq_hint(0), 12)
         << "Higher IRQ=12 must override IRL, but lower IRQ=8 must remain pending.";
 
 
@@ -198,13 +198,13 @@ TEST_F(IRQMPTest, InterruptPriorityTest_PendingDoesNotGetLost)
     intc.clear_irq(12,0);
     
     // IRL should now fall back to pending IRQ 8
-    EXPECT_EQ(intc.get_next_pending_irq(0), 8)
+    EXPECT_EQ(intc.get_irq_hint(0), 8)
         << "After clearing IRQ12, pending timer IRQ8 must be restored.";
 
     intc.clear_irq(8,0);
     
     // IRL should now fall back to pending IRQ 3
-    EXPECT_EQ(intc.get_next_pending_irq(0), 3)
+    EXPECT_EQ(intc.get_irq_hint(0), 3)
         << "After clearing IRQ8, pending IRQ3 must be restored.";
 
 }
@@ -366,22 +366,22 @@ TEST_F(IRQMPTest, SMP_correctPIMASK)
     intc.trigger_irq(7);
     intc.trigger_irq(8);
 
-    ASSERT_EQ(intc.get_next_pending_irq(0), 1);
-    ASSERT_EQ(intc.get_next_pending_irq(1), 2);
-    ASSERT_EQ(intc.get_next_pending_irq(2), 3);
-    ASSERT_EQ(intc.get_next_pending_irq(3), 4);
-    ASSERT_EQ(intc.get_next_pending_irq(4), 5);
-    ASSERT_EQ(intc.get_next_pending_irq(5), 6);
-    ASSERT_EQ(intc.get_next_pending_irq(6), 7);
-    ASSERT_EQ(intc.get_next_pending_irq(7), 8);
+    ASSERT_EQ(intc.get_irq_hint(0), 1);
+    ASSERT_EQ(intc.get_irq_hint(1), 2);
+    ASSERT_EQ(intc.get_irq_hint(2), 3);
+    ASSERT_EQ(intc.get_irq_hint(3), 4);
+    ASSERT_EQ(intc.get_irq_hint(4), 5);
+    ASSERT_EQ(intc.get_irq_hint(5), 6);
+    ASSERT_EQ(intc.get_irq_hint(6), 7);
+    ASSERT_EQ(intc.get_irq_hint(7), 8);
     
     // Mask again, should now get no irq pending
     intc.write(0x50, 0x0U);
-    ASSERT_EQ(intc.get_next_pending_irq(4), 0);
+    ASSERT_EQ(intc.get_irq_hint(4), 0);
 
     // Clear all
     intc.clear_irq(1, 0);
-    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
+    ASSERT_EQ(intc.get_irq_hint(0), 0);
 
     intc.clear_irq(2, 1);
     intc.clear_irq(3, 2);
@@ -404,14 +404,14 @@ TEST_F(IRQMPTest, SMP_correctPIMASK)
     intc.trigger_irq(8);
 
     // Should get same result due to masking:
-    ASSERT_EQ(intc.get_next_pending_irq(0), 1);
-    ASSERT_EQ(intc.get_next_pending_irq(1), 2);
-    ASSERT_EQ(intc.get_next_pending_irq(2), 3);
-    ASSERT_EQ(intc.get_next_pending_irq(3), 4);
-    ASSERT_EQ(intc.get_next_pending_irq(4), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(5), 6);
-    ASSERT_EQ(intc.get_next_pending_irq(6), 7);
-    ASSERT_EQ(intc.get_next_pending_irq(7), 8);
+    ASSERT_EQ(intc.get_irq_hint(0), 1);
+    ASSERT_EQ(intc.get_irq_hint(1), 2);
+    ASSERT_EQ(intc.get_irq_hint(2), 3);
+    ASSERT_EQ(intc.get_irq_hint(3), 4);
+    ASSERT_EQ(intc.get_irq_hint(4), 0);
+    ASSERT_EQ(intc.get_irq_hint(5), 6);
+    ASSERT_EQ(intc.get_irq_hint(6), 7);
+    ASSERT_EQ(intc.get_irq_hint(7), 8);
     
     // Also unmask 13 for a few of them
     intc.write(0x40, 0x1U << 1 | 0x1U << 13);
@@ -428,14 +428,14 @@ TEST_F(IRQMPTest, SMP_correctPIMASK)
 
 
     intc.trigger_irq(13);
-    ASSERT_EQ(intc.get_next_pending_irq(0), 13);
-    ASSERT_EQ(intc.get_next_pending_irq(1), 2);
-    ASSERT_EQ(intc.get_next_pending_irq(2), 3);
-    ASSERT_EQ(intc.get_next_pending_irq(3), 4);
-    ASSERT_EQ(intc.get_next_pending_irq(4), 0); // Still 0, since IRL was not latched due to earlier mask
-    ASSERT_EQ(intc.get_next_pending_irq(5), 13);
-    ASSERT_EQ(intc.get_next_pending_irq(6), 13);
-    ASSERT_EQ(intc.get_next_pending_irq(7), 8);
+    ASSERT_EQ(intc.get_irq_hint(0), 13);
+    ASSERT_EQ(intc.get_irq_hint(1), 2);
+    ASSERT_EQ(intc.get_irq_hint(2), 3);
+    ASSERT_EQ(intc.get_irq_hint(3), 4);
+    ASSERT_EQ(intc.get_irq_hint(4), 0); // Still 0, since IRL was not latched due to earlier mask
+    ASSERT_EQ(intc.get_irq_hint(5), 13);
+    ASSERT_EQ(intc.get_irq_hint(6), 13);
+    ASSERT_EQ(intc.get_irq_hint(7), 8);
 
 
 
@@ -464,13 +464,13 @@ TEST_F(IRQMPTest, SMP_broadcast_irl8)
     // Trigger irl 3:
     intc.trigger_irq(3);
 
-    ASSERT_EQ(intc.get_next_pending_irq(0), 3);
+    ASSERT_EQ(intc.get_irq_hint(0), 3);
 
     intc.trigger_irq(8); // Should trigger broadcast to all CPUs
 
-    ASSERT_EQ(intc.get_next_pending_irq(0), 8);
-    ASSERT_EQ(intc.get_next_pending_irq(1), 8);
-    ASSERT_EQ(intc.get_next_pending_irq(2), 8);
+    ASSERT_EQ(intc.get_irq_hint(0), 8);
+    ASSERT_EQ(intc.get_irq_hint(1), 8);
+    ASSERT_EQ(intc.get_irq_hint(2), 8);
     
 
 
@@ -543,14 +543,14 @@ TEST_F(IRQMPTest, SMP_active_cpus_bookkeeping)
     
     // Check that IRL 8 is only visible to CPU 0
     intc.trigger_irq(8);
-    ASSERT_EQ(intc.get_next_pending_irq(0), 8);
-    ASSERT_EQ(intc.get_next_pending_irq(1), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(2), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(3), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(4), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(5), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(6), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(7), 0);
+    ASSERT_EQ(intc.get_irq_hint(0), 8);
+    ASSERT_EQ(intc.get_irq_hint(1), 0);
+    ASSERT_EQ(intc.get_irq_hint(2), 0);
+    ASSERT_EQ(intc.get_irq_hint(3), 0);
+    ASSERT_EQ(intc.get_irq_hint(4), 0);
+    ASSERT_EQ(intc.get_irq_hint(5), 0);
+    ASSERT_EQ(intc.get_irq_hint(6), 0);
+    ASSERT_EQ(intc.get_irq_hint(7), 0);
     intc.clear_irq(8,0);
 
     // Start CPU 1:
@@ -563,14 +563,14 @@ TEST_F(IRQMPTest, SMP_active_cpus_bookkeeping)
     ASSERT_EQ(intc.get_number_active_cpus(), 2);
     // ..and both CPU 0 and 1 sohuld see the broadcasted IRL 8:
     intc.trigger_irq(8);
-    ASSERT_EQ(intc.get_next_pending_irq(0), 8);
-    ASSERT_EQ(intc.get_next_pending_irq(1), 8);
-    ASSERT_EQ(intc.get_next_pending_irq(2), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(3), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(4), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(5), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(6), 0);
-    ASSERT_EQ(intc.get_next_pending_irq(7), 0);
+    ASSERT_EQ(intc.get_irq_hint(0), 8);
+    ASSERT_EQ(intc.get_irq_hint(1), 8);
+    ASSERT_EQ(intc.get_irq_hint(2), 0);
+    ASSERT_EQ(intc.get_irq_hint(3), 0);
+    ASSERT_EQ(intc.get_irq_hint(4), 0);
+    ASSERT_EQ(intc.get_irq_hint(5), 0);
+    ASSERT_EQ(intc.get_irq_hint(6), 0);
+    ASSERT_EQ(intc.get_irq_hint(7), 0);
     intc.clear_irq(8,0);
     intc.clear_irq(8,1);
     
@@ -610,14 +610,14 @@ TEST_F(IRQMPTest, SMP_PIFORCE_write)
     // Force IRL 13 for second cpu:
     intc.write(0x84, 0x2000);
 
-    ASSERT_EQ(intc.get_next_pending_irq(1), 13);
-    ASSERT_EQ(intc.get_next_pending_irq(0), 0);
+    ASSERT_EQ(intc.get_irq_hint(1), 13);
+    ASSERT_EQ(intc.get_irq_hint(0), 0);
 
     // Force IRL 13 for first cpu:
     intc.write(0x80, 0x2000);
 
-    ASSERT_EQ(intc.get_next_pending_irq(1), 13);
-    ASSERT_EQ(intc.get_next_pending_irq(0), 13);
+    ASSERT_EQ(intc.get_irq_hint(1), 13);
+    ASSERT_EQ(intc.get_irq_hint(0), 13);
 
 
 
