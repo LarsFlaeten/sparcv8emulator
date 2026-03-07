@@ -186,23 +186,6 @@ class CPU
         u32 freg[32];
 #endif
 
-        // Instruction decode cache — decode is a pure function of opcode, so cache
-        // {func, rd, rs1, i, imm_disp_rs2, op_2_3, I_idx, fmt_bits} by opcode.
-        // Saves the switch + table-lookup + bit-extraction on repeated instructions.
-        struct DecodeCacheEntry {
-            pc_func func;                           // 8 bytes (first for alignment)
-            u32     opcode       = ~0u;             // ~0u = invalid sentinel
-            u32     imm_disp_rs2 = 0;
-            u8      rd = 0, rs1 = 0, i = 0, fmt_bits = 0;
-            u8      op_2_3 = 0, I_idx = 0;
-            u16     _pad = 0;
-        };                                          // 24 bytes per entry
-        static constexpr u32 DCACHE_BITS = 12;     // 4096 entries = 96 KB
-        static constexpr u32 DCACHE_SIZE = 1u << DCACHE_BITS;
-        static constexpr u32 DCACHE_MASK = DCACHE_SIZE - 1u;
-        DecodeCacheEntry dcache_[DCACHE_SIZE] = {};
-
-        
 
         // Emulator control and debugging
        	std::ostream& os;
