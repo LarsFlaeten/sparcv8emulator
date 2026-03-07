@@ -186,6 +186,22 @@ class CPU
         u32 freg[32];
 #endif
 
+        // Instruction decode cache — decode is a pure function of opcode, so cache
+        // {func, rd, rs1, i, imm_disp_rs2, op_2_3, I_idx, fmt_bits} by opcode.
+        // Saves the switch + table-lookup + bit-extraction on repeated instructions.
+        struct DecodeCacheEntry {
+            pc_func func;                           // 8 bytes (first for alignment)
+            u32     opcode       = ~0u;             // ~0u = invalid sentinel
+            u32     imm_disp_rs2 = 0;
+            u8      rd = 0, rs1 = 0, i = 0, fmt_bits = 0;
+            u8      op_2_3 = 0, I_idx = 0;
+            u16     _pad = 0;
+        };                                          // 24 bytes per entry
+        static constexpr u32 DCACHE_BITS = 12;     // 4096 entries = 96 KB
+        static constexpr u32 DCACHE_SIZE = 1u << DCACHE_BITS;
+        static constexpr u32 DCACHE_MASK = DCACHE_SIZE - 1u;
+        DecodeCacheEntry dcache_[DCACHE_SIZE] = {};
+
         
 
         // Emulator control and debugging
@@ -255,10 +271,26 @@ class CPU
         void nop() { return; } // Just for the sake of it...
 
 
-        // Read/write registers
-        void read_reg (const u32 reg_no, u32 * const value);
-        //u32  ReadRegsAll (const int reg_base); 
-        void write_reg (const u32 value, const u32 reg_no);
+        // Read/write registers (inlined for hot-path performance)
+        inline void read_reg(const u32 reg_no, u32* const value) {
+            if (reg_no == GLOBALREG8) { *value = *p_swap_reg; return; }
+            switch (reg_no >> 3) {
+            case 0: *value = globals[reg_no & LOBITS3]; break;
+            case 1: *value = outs  [cwp_base_ | (reg_no & LOBITS3)]; break;
+            case 2: *value = locals[cwp_base_ | (reg_no & LOBITS3)]; break;
+            case 3: *value = outs  [(((cwp_base_ >> 3) + 1) & (NWINDOWS-1)) << 3 | (reg_no & LOBITS3)]; break;
+            }
+        }
+
+        inline void write_reg(const u32 value, const u32 reg_no) {
+            if (reg_no == GLOBALREG8) { *p_swap_reg = value; return; }
+            switch ((reg_no >> 3) & LOBITS2) {
+            case 0: globals[reg_no & LOBITS3] = value; globals[0] = 0; break;
+            case 1: outs  [cwp_base_ | (reg_no & LOBITS3)] = value; break;
+            case 2: locals[cwp_base_ | (reg_no & LOBITS3)] = value; break;
+            case 3: outs  [(((cwp_base_ >> 3) + 1) & (NWINDOWS-1)) << 3 | (reg_no & LOBITS3)] = value; break;
+            }
+        }
         
         // Handy methods for reading/writing between memory and a reg
         int load8(const u32 va, const u32 rd, const int signext, bool forced_cache_miss);    
@@ -427,10 +459,10 @@ class CPU
 		&CPU::CASA    , &CPU::UNIMP    , &CPU::UNIMP    , &CPU::UNIMP 
 		};
 
+#ifdef CPU_VERBOSE
     /////////////////////////
-    // ALU instruction labels
-    //static constexpr char *
-    const std::string  op_byte[32] = {
+    // ALU instruction labels (only needed for verbose trace output)
+    static constexpr const char* op_byte[32] = {
        "add     ", "and     ", "or      ", "xor     ",
        "sub     ", "andn    ", "orn     ", "xnor    ",
        "addx    ", "unip    ", "umul    ", "smul    ",
@@ -440,15 +472,14 @@ class CPU
        "addxcc  ", "unipcc  ", "umulcc  ", "smulcc  ",
        "subxcc  ", "unipcc  ", "udivcc  ", "sdivcc  "};
 
-    const std::string cond_byte [16] = {
+    static constexpr const char* cond_byte[16] = {
        "n      ", "e      ", "le     ", "l       ",
        "leu    ", "cs     ", "neg    ", "vs      ",
        "a      ", "ne     ", "g      ", "ge      ",
        "gu     ", "cc     ", "pos    ", "vc      "
     };
 
-
-    const std::string trap_str [64] = {
+    static constexpr const char* trap_str[64] = {
         "Software Reset",
         "Instruction Access Exception",
         "Illegal Instruction",
@@ -485,9 +516,10 @@ class CPU
         "NO TRAP", "NO TRAP", "NO TRAP", "NO TRAP",
         "NO TRAP", "NO TRAP", "NO TRAP", "NO TRAP",
         "NO TRAP", "NO TRAP", "NO TRAP", "NO TRAP",
-        "Instruction Access MMU Miss", 
+        "Instruction Access MMU Miss",
         "NO TRAP", "NO TRAP", "NO TRAP"
     };
+#endif // CPU_VERBOSE
 
 
 

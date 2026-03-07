@@ -318,102 +318,123 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 //
 void CPU::decode(pDecode_t d)
 {
-    // Map the PSR structure to the decode PSR
-    d->p = (pPSR_t)&(d->psr);
+    // d->p is set once in run() and never changes — no need to reassign here
 
-    u32 fmt_bits = (d->opcode >> FMTSTARTBIT) & LOBITS2;
-    u32 op2      = (d->opcode >> OP2STARTBIT) & LOBITS3;
-    u32 op3      = (d->opcode >> OP3STARTBIT) & LOBITS6;
-    u32 I_idx, regvalue;
-
-#ifdef CPU_VERBOSE
-        os << std::format("{:#08x}: ", d->opcode);
-#endif
-
-    // By default, no change to program counter and PSR, and
-    // no writeback
+    // By default, no change to program counter and PSR, and no writeback
     d->pc      = pc;
     d->npc     = npc;
     d->psr     = psr;
     d->wb_type = WriteBackType::NO_WRITEBACK;
 
+    const u32 opcode = d->opcode;
+    auto& ce = dcache_[opcode & DCACHE_MASK];
+
+    if (ce.opcode == opcode) [[likely]] {
+        // Cache hit: restore pre-decoded static fields and do register reads
+        d->function     = ce.func;
+        d->rd           = ce.rd;
+        d->rs1          = ce.rs1;
+        d->i            = ce.i;
+        d->imm_disp_rs2 = ce.imm_disp_rs2;
+        d->op_2_3       = ce.op_2_3;
+
+        if (ce.fmt_bits >= 2) {
+            const u32 I_idx = ce.I_idx;
+            read_reg(d->rs1, &d->rs1_value);
+            const u32 regvalue = (I_idx < FIRST_RS1_EVAL_IDX) ? 0 : d->rs1_value;
+            if (d->i)
+                d->ev = regvalue + sign_ext13(d->imm_disp_rs2);
+            else {
+                read_reg(d->imm_disp_rs2 & LOBITS5, &d->ev);
+                d->ev += regvalue;
+            }
+            if (I_idx == STORE_DBL_IDX) {
+                read_reg(d->rd & ~LOBITS1, &d->value);
+                read_reg((d->rd & ~LOBITS1)+1, &d->value1);
+            } else if (I_idx == TICC_IDX && !d->i)
+                read_reg(d->imm_disp_rs2 & LOBITS5, &d->value);
+            else if (ce.fmt_bits & 1)
+                read_reg(d->rd, &d->value);
+        }
+        return;
+    }
+
+    // Cache miss: full decode
+    const u32 fmt_bits = (opcode >> FMTSTARTBIT) & LOBITS2;
+    const u32 op2      = (opcode >> OP2STARTBIT) & LOBITS3;
+    const u32 op3      = (opcode >> OP3STARTBIT) & LOBITS6;
+    u32 I_idx = 0, regvalue;
+
+#ifdef CPU_VERBOSE
+    os << std::format("{:#08x}: ", opcode);
+#endif
+
     switch (fmt_bits) {
     // CALL
-    case 1:  
+    case 1:
 #ifdef PROFILE_INSTRUCTIONS
-        ++format1_counter;    
+        ++format1_counter;
 #endif
-        d->function     = format1;                         
-        d->imm_disp_rs2 = d->opcode & LOBITS30;
+        d->function     = format1;
+        d->imm_disp_rs2 = opcode & LOBITS30;
         break;
 
     // SETHI, Branches
-    case 0:  
+    case 0:
 #ifdef PROFILE_INSTRUCTIONS
-        ++format2_counter[op2];    
+        ++format2_counter[op2];
 #endif
-        d->function     = format2[op2];                     
-        d->rd           = (d->opcode >> RDSTARTBIT) & LOBITS5;
-        d->op_2_3       = (d->opcode >> OP2STARTBIT) & LOBITS3;
-        d->imm_disp_rs2 = (d->opcode & LOBITS22);
+        d->function     = format2[op2];
+        d->rd           = (opcode >> RDSTARTBIT) & LOBITS5;
+        d->op_2_3       = (opcode >> OP2STARTBIT) & LOBITS3;
+        d->imm_disp_rs2 = (opcode & LOBITS22);
         break;
 
     // Memory accesses, ALU etc.
-    case 3:  
-    case 2:  
- #ifdef PROFILE_INSTRUCTIONS
-        ++format3_counter[op3 + ((fmt_bits & 1) << 6)];   
+    case 3:
+    case 2:
+#ifdef PROFILE_INSTRUCTIONS
+        ++format3_counter[op3 + ((fmt_bits & 1) << 6)];
 #endif
         d->function     = format3[op3 + ((fmt_bits & 1) << 6)];
-        d->rd           = (d->opcode >> RDSTARTBIT)  & LOBITS5;
-        d->op_2_3       = (d->opcode >> OP3STARTBIT) & LOBITS6;
-        d->rs1          = (d->opcode >> RS1STARTBIT) & LOBITS5;
-        d->i            = (d->opcode >> ISTARTBIT)   & LOBITS1;
-        d->imm_disp_rs2 = (d->opcode >> RS2STARTBIT) & LOBITS13;
+        d->rd           = (opcode >> RDSTARTBIT)  & LOBITS5;
+        d->op_2_3       = (opcode >> OP3STARTBIT) & LOBITS6;
+        d->rs1          = (opcode >> RS1STARTBIT) & LOBITS5;
+        d->i            = (opcode >> ISTARTBIT)   & LOBITS1;
+        d->imm_disp_rs2 = (opcode >> RS2STARTBIT) & LOBITS13;
 
-        // All instructions need r[rs1] value
-        // op = 11 and op3 = 100xxx means load or store from fregs,
-        // handle that in function
-        /*if((fmt_bits == 3) && ( (d->op_2_3 >> 3 ) == 4) ) {
-            break;
-        } else if ((fmt_bits == 2) && ( (d->op_2_3 == 52) || (d->op_2_3 == 53)) ) {
-            break; // Skip read regs for FOP1 and FOP2
-        } else
-        { */       
-            read_reg (d->rs1, &d->rs1_value);
-        /*}*/
+        read_reg(d->rs1, &d->rs1_value);
 
-        // ev = ((RD/WR/ALU/Logic instr) ? r[rs1] : 0) + (i ? sign_ext(imm) : r[rs2])
-        I_idx = op3 + ((fmt_bits & 1) << 6);
+        I_idx   = op3 + ((fmt_bits & 1) << 6);
         regvalue = (I_idx < FIRST_RS1_EVAL_IDX) ? 0 : d->rs1_value;
 
         if (d->i)
-           d->ev = regvalue + sign_ext13(d->imm_disp_rs2);
+            d->ev = regvalue + sign_ext13(d->imm_disp_rs2);
         else {
-            
             read_reg(d->imm_disp_rs2 & LOBITS5, &d->ev);
             d->ev += regvalue;
         }
 
-        // All format 3 instructions require at least one register read (rs1),
-        // but a few require more...
-
-        // A store double access requires two register reads
-        // from, r[rd], r[rd+1].
         if (I_idx == STORE_DBL_IDX) {
-            read_reg (d->rd & ~LOBITS1, &d->value);
-            read_reg ((d->rd & ~LOBITS1)+1, &d->value1);
-
-        // Ticc requires an r[rs2] read if i bit clear
+            read_reg(d->rd & ~LOBITS1, &d->value);
+            read_reg((d->rd & ~LOBITS1)+1, &d->value1);
         } else if (I_idx == TICC_IDX && !d->i)
-            read_reg (d->imm_disp_rs2 & LOBITS5, &d->value); 
-
-        // Memory instructions need to read r[rd]
+            read_reg(d->imm_disp_rs2 & LOBITS5, &d->value);
         else if (fmt_bits & 1)
-            read_reg (d->rd, &d->value);
-
+            read_reg(d->rd, &d->value);
         break;
-   }
+    }
+
+    // Populate cache entry with static decode fields
+    ce.opcode       = opcode;
+    ce.func         = d->function;
+    ce.rd           = d->rd;
+    ce.rs1          = d->rs1;
+    ce.i            = d->i;
+    ce.imm_disp_rs2 = d->imm_disp_rs2;
+    ce.op_2_3       = d->op_2_3;
+    ce.I_idx        = static_cast<u8>(I_idx);
+    ce.fmt_bits     = static_cast<u8>(fmt_bits);
 }
 
 //------------------------------------------------------------------------
@@ -579,58 +600,6 @@ int CPU::test_cc (pDecode_t d) {
     return 0;
 }
 
-
-//------------------------------------------------------------------------
-//
-void CPU::read_reg (const u32 reg_no, u32 * const value)
-{
-    if(reg_no == GLOBALREG8) {
-        *value = *p_swap_reg;
-        return;
-    }
-
-    switch (reg_no >> 3) {
-    case 0 : // Globals
-        *value = globals[reg_no & LOBITS3];
-        break;
-    case 1 : // Outs
-        *value = outs [cwp_base_ | (reg_no & LOBITS3)];
-        break;
-    case 2 : // locals
-        *value = locals [cwp_base_ | (reg_no & LOBITS3)];
-        break;
-    case 3 : // Ins
-        *value = outs [(((cwp_base_ >> 3) + 1) % NWINDOWS) << 3 | (reg_no & LOBITS3)];
-        break;
-    }
-}
-
-
-//------------------------------------------------------------------------
-//
-void CPU::write_reg (const u32 value, const u32 reg_no)
-{
-   if(reg_no == GLOBALREG8) {
-        *p_swap_reg = value;
-        return;
-    }
-
-   switch ((reg_no >> 3) & LOBITS2) {
-   case 0 : // Globals
-      globals[reg_no & LOBITS3] = value;
-      globals[0] = 0;
-      break;
-   case 1 : // Outs
-      outs [cwp_base_ | (reg_no & LOBITS3)] = value;
-      break;
-   case 2 : // locals
-      locals [cwp_base_ | (reg_no & LOBITS3)] = value;
-      break;
-   case 3 : // Ins
-      outs [(((cwp_base_ >> 3) + 1) % NWINDOWS) << 3 | (reg_no & LOBITS3)] = value;
-      break;
-   }
-}
 
 //------------------------------------------------------------------------
 //
