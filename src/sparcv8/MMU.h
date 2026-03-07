@@ -67,7 +67,14 @@ private:
     };
 
     std::array<Entry, TLB_ENTRIES> entries;
-    u16 next_victim_ = 0; // FIFO eviction index
+    u16 next_victim_ = 0;
+
+    // 1-entry micro-cache for fast repeated lookups (per-CPU, mutable for const lookup)
+    mutable u32 mc_context_   = ~0u;
+    mutable u32 mc_vaddr_tag_ = 0;
+    mutable u32 mc_mask_      = 0;
+    mutable u32 mc_pte_       = 0;
+    mutable u8  mc_level_     = 0;
 public:
     static bool is_valid(u32 pte);
 };
@@ -333,16 +340,16 @@ public:
             phys_addr = virt_addr;
         }
 
-        // Get mtx for the page/bank in question, and lock it
+        // Get bank for the address
         auto pbank = mctrl.get_bank(phys_addr);
         if(!pbank) {// No physical bank at this address..
-            return bus_fault();  
+            return bus_fault();
         }
-        auto& mtx = pbank->get_mutex(phys_addr);
 
         if constexpr (rw == intent_store)
         {
             // Exclusive lock for writes
+            auto& mtx = pbank->get_mutex(phys_addr);
 #if defined(PERF_STATS)
             pbank->perf_lock(mtx);
             std::unique_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
@@ -359,6 +366,7 @@ public:
         else // read or execute: no host lock needed (concurrent reads safe; read-write races are SPARC UB)
         {
 #if defined(PERF_STATS)
+            auto& mtx = pbank->get_mutex(phys_addr);
             pbank->perf_lock_shared(mtx);
             std::shared_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
 #endif

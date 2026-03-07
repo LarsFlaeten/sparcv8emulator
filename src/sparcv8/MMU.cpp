@@ -20,11 +20,26 @@ bool TLB::is_valid(u32 pte) {
 }
 
 bool TLB::lookup(u32 context, u32 vaddr, u32& pte_out, u8& level_out) const {
+    // Fast path: 1-entry micro-cache (avoids 16-entry linear scan for repeated accesses)
+    if (mc_context_ == context && (vaddr & mc_mask_) == mc_vaddr_tag_) {
+        pte_out   = mc_pte_;
+        level_out = mc_level_;
+#ifdef PERF_STATS
+        stats_.hits.fetch_add(1, std::memory_order_relaxed);
+#endif
+        return true;
+    }
     for (const auto& entry : entries) {
         if (!is_valid(entry.pte)) continue;
         if (entry.context == context && (vaddr & entry.mask) == entry.vaddr_tag) {
             pte_out = entry.pte;
             level_out = entry.level;
+            // Warm micro-cache for next lookup
+            mc_context_   = entry.context;
+            mc_vaddr_tag_ = entry.vaddr_tag;
+            mc_mask_      = entry.mask;
+            mc_pte_       = entry.pte;
+            mc_level_     = entry.level;
 #ifdef PERF_STATS
             stats_.hits.fetch_add(1, std::memory_order_relaxed);
 #endif
@@ -49,6 +64,12 @@ void TLB::insert(u32 context, u32 vaddr, u8 level, u32 pte) {
     e.mask      = mask;
     e.pte       = pte;
     e.level     = level;
+    // Warm micro-cache so the next lookup hits immediately
+    mc_context_   = context;
+    mc_vaddr_tag_ = vaddr & mask;
+    mc_mask_      = mask;
+    mc_pte_       = pte;
+    mc_level_     = level;
 }
 
 // We can choose two behaviors:
@@ -65,11 +86,13 @@ void TLB::invalidate_strict(u32 context, uint32_t vaddr) {
             entry.pte = 0;
         }
     }
+    mc_context_ = ~0u; // Invalidate micro-cache
 }
 
 void TLB::flush() {
     entries.fill(Entry{});
     next_victim_ = 0;
+    mc_context_ = ~0u; // Invalidate micro-cache
 }
 
 void TLB::debug_dump(const std::string& label) const {
@@ -388,7 +411,7 @@ MMUTranslateResult MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool
    
     
     if(!found) {
-        level = 0;	
+        level = 0;
         // Fetch context table entry:
         if(ctx_n > 255)
             throw std::runtime_error("ctx_n > 255 error");
@@ -402,15 +425,31 @@ MMUTranslateResult MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool
                 dtlb.insert(ctx, vaddr, level, pte);
 
         }
-    }
-    
-    
-    // Fault handling:    
-    u8 FT = check_perms(vaddr, pte, rw, supervisor, level, report_faults);
-    
-    // Signal fault 
-    if(FT != 0) {
-        return {false, 0x0, level, 0x0};
+
+        // TLB miss: use full check_perms (ET might not be PTE, level may be unusual)
+        u8 FT = check_perms(vaddr, pte, rw, supervisor, level, report_faults);
+        if(FT != 0) return {false, 0x0, level, 0x0};
+    } else {
+        // TLB hit: pte is guaranteed ET_PTE=2; use table lookup instead of check_perms.
+        // perm_ok_table[ACC] = bitmask of ATs (0-7) that are allowed for that ACC value.
+        // Derived from SRMMU access control table (SPARC V8 Appendix H).
+        static constexpr u8 perm_ok_table[8] = {
+            0x03, // ACC=0: user/super load only
+            0x33, // ACC=1: user/super load+store
+            0x0F, // ACC=2: user/super load+execute
+            0xFF, // ACC=3: all access (most common for kernel text/data)
+            0x0C, // ACC=4: execute only
+            0x23, // ACC=5: super load+store, user load
+            0x0A, // ACC=6: super load+execute, user no access
+            0xAA, // ACC=7: super all, user no access
+        };
+        u8 AT  = get_access_type(rw, supervisor);
+        u8 ACC = (pte >> 2) & 0x7;
+        if (__builtin_expect(!((perm_ok_table[ACC] >> AT) & 1), 0)) {
+            // Permission denied — slow path, call check_perms for fault recording
+            check_perms(vaddr, pte, rw, supervisor, level, report_faults);
+            return {false, 0x0, level, 0x0};
+        }
     }
 
     // We have a valid PTE, Assemble physical address
