@@ -21,19 +21,14 @@ bool TLB::is_valid(u32 pte) {
 
 bool TLB::lookup(u32 context, u32 vaddr, u32& pte_out, u8& level_out) const {
     for (const auto& entry : entries) {
-        if (!is_valid(entry.pte)) {
-            pte_out = 0;
-            level_out = 0;
-            continue;
-        }
+        if (!is_valid(entry.pte)) continue;
         if (entry.context == context && (vaddr & entry.mask) == entry.vaddr_tag) {
-            entry.last_used = ++use_counter;
             pte_out = entry.pte;
             level_out = entry.level;
 #ifdef PERF_STATS
             stats_.hits.fetch_add(1, std::memory_order_relaxed);
 #endif
-            return (entry.pte & ~0x3) || entry.level;
+            return true;
         }
     }
     pte_out = 0;
@@ -45,36 +40,15 @@ bool TLB::lookup(u32 context, u32 vaddr, u32& pte_out, u8& level_out) const {
 }
 
 void TLB::insert(u32 context, u32 vaddr, u8 level, u32 pte) {
-    if (!is_valid(pte)) {
-        return; // Don't insert invalid PTEs
-    }
+    if (!is_valid(pte)) return;
     u32 mask = MMU::get_addr_level_mask(level);
-
-    for (auto& entry : entries) {
-        if (!is_valid(entry.pte)) {
-            entry.context = context;
-            entry.vaddr_tag = vaddr & mask;
-            entry.mask = mask;
-            entry.pte = pte;
-            entry.last_used = ++use_counter;
-            entry.level = level;
-            return;
-        }
-    }
-
-    auto lru_entry = &entries[0];
-    for (auto& entry : entries) {
-        if (entry.last_used < lru_entry->last_used) {
-            lru_entry = &entry;
-        }
-    }
-
-    lru_entry->context = context;
-    lru_entry->vaddr_tag = vaddr & mask;
-    lru_entry->mask = mask;
-    lru_entry->pte = pte;
-    lru_entry->last_used = ++use_counter;
-    lru_entry->level = level;
+    auto& e = entries[next_victim_];
+    next_victim_ = (next_victim_ + 1) & (TLB_ENTRIES - 1);
+    e.context   = context;
+    e.vaddr_tag = vaddr & mask;
+    e.mask      = mask;
+    e.pte       = pte;
+    e.level     = level;
 }
 
 // We can choose two behaviors:
@@ -94,9 +68,8 @@ void TLB::invalidate_strict(u32 context, uint32_t vaddr) {
 }
 
 void TLB::flush() {
-    for (auto& entry : entries) {
-        entry.pte = 0;
-    }
+    entries.fill(Entry{});
+    next_victim_ = 0;
 }
 
 void TLB::debug_dump(const std::string& label) const {
@@ -107,7 +80,6 @@ void TLB::debug_dump(const std::string& label) const {
               << std::setw(10) << "Mask"
               << std::setw(12) << "PageSize"
               << std::setw(10) << "PTE"
-              << std::setw(12) << "LastUsed"
               << "\n";
 
     for (size_t i = 0; i < entries.size(); ++i) {
@@ -128,7 +100,6 @@ void TLB::debug_dump(const std::string& label) const {
                   << " 0x" << std::setw(8) << e.mask
                   << std::setw(12) << size_str
                   << "0x" << std::setw(8) << e.pte
-                  << std::dec << std::setw(12) << e.last_used
                   << "\n";
     }
 

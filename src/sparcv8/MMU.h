@@ -63,12 +63,11 @@ private:
         u32 mask = 0;
         u32 pte = 0;
         u32 context = 0;
-        mutable u64 last_used = 0;
         u8 level = 0;
     };
 
     std::array<Entry, TLB_ENTRIES> entries;
-    mutable u64 use_counter = 0;
+    u16 next_victim_ = 0; // FIFO eviction index
 public:
     static bool is_valid(u32 pte);
 };
