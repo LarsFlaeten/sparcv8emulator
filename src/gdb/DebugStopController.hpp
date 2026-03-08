@@ -118,11 +118,8 @@ public:
         return static_cast<StopReason>(reason_.load(std::memory_order_acquire));
     }
 
-    // Called frequently from worker threads (CPU execute loop, bus tick loop).
-    // If stop is requested, the worker parks here until resumed.
-    void checkpoint(const WorkerToken& tok) {
-        if (!is_stop_requested_or_stopped()) return;
-
+    // Slow path: worker parks until resumed. Only called when stop is requested.
+    [[gnu::noinline]] void checkpoint_slow(const WorkerToken& tok) {
         std::unique_lock lk(mtx_);
         // Mark this worker stopped once per stop epoch.
         auto it = workers_.find(tok.id);
@@ -146,6 +143,14 @@ public:
             return state_.load(std::memory_order_acquire) == StopState::Running
                    && stop_epoch_ != my_epoch;
         });
+    }
+
+    // Called frequently from worker threads (CPU execute loop, bus tick loop).
+    // Fast path: single atomic load + branch, inlined at every call site.
+    // Slow path (stop requested) is out-of-line to keep the fast path tiny.
+    [[gnu::always_inline]] inline void checkpoint(const WorkerToken& tok) {
+        if (!is_stop_requested_or_stopped()) return;
+        checkpoint_slow(tok);
     }
 
     // Debugger-side: wait until all workers have parked.
