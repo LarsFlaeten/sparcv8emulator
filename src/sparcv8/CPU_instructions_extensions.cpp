@@ -29,10 +29,10 @@ void CPU::LDA_impl (pDecode_t d) {
             throw std::runtime_error("Load Altternate op3 != 0x0 Not implemented yet");
    }
 
-    u32 rd_value;
+    u32 rd_value = 0;
     read_reg(d->rd, &rd_value);
 
-    u32 r1, r2;
+    u32 r1 = 0, r2 = 0;
     read_reg(d->rs1, &r1);
     read_reg(rs2, &r2);
     u32 address = r1 + r2;
@@ -140,14 +140,14 @@ void CPU::STA_impl (pDecode_t d) {
             break;
     }
 
-    u32 rd_value;
+    u32 rd_value = 0;
     read_reg(d->rd, &rd_value);
 
-    u32 r1, r2;
+    u32 r1 = 0, r2 = 0;
     read_reg(d->rs1, &r1);
     read_reg(rs2, &r2);
     u32 address = r1 + r2;
-    
+
     if (address & LOBITS2) {
         trap(d, SPARC_MEMORY_ADDR_NOT_ALIGNED);
         return;

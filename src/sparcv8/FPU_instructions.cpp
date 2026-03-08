@@ -52,7 +52,7 @@ void CPU::LDDF_impl(pDecode_t d)
         trap(d, SPARC_FP_EXCEPTION);
    
     } else {
-        u32 value_lo, value_hi = 0;
+        u32 value_lo = 0, value_hi = 0;
         int ret1 = mmu.MemAccess<intent_load, 4>(d->ev, value_hi, CROSS_ENDIAN, super);
         int ret2 = mmu.MemAccess<intent_load, 4>(d->ev+4, value_lo, CROSS_ENDIAN, super);
         

@@ -403,7 +403,6 @@ void CPU::decode(pDecode_t d)
 void CPU::trap(pDecode_t d, u32 trap_no) 
 {
     int tn = trap_no & LOBITS8;
-    u32 npc = (tbr & ~(0xff0)) | ((tn & LOBITS8) << 4);;
 
     if ( ((psr >> PSR_ENABLE_TRAPS) & 0x1) == 0) {
          fprintf (stderr, "ERROR TRAP %x WHILE TRAPS DISABLED\n", trap_no);
@@ -417,6 +416,7 @@ void CPU::trap(pDecode_t d, u32 trap_no)
 
 #ifdef CPU_VERBOSE
     {
+        u32 npc = (tbr & ~(0xff0)) | ((tn & LOBITS8) << 4);
         if (tn < 0x40)
             os << std::format("                   TRAP {} ({:#x}) PC={:#08x} NPC={:#08x}\n", trap_str[tn], tn, pc, npc);
         else if (tn >= 0x40 && tn < 0x60)
@@ -625,10 +625,10 @@ int CPU::load64(const u32 va, const u32 rd, const int signext, bool forced_cache
 
 //------------------------------------------------------------------------
 //
-int CPU::store8(const u32 va, const u32 rd) 
+int CPU::store8(const u32 va, const u32 rd)
 {
-    u32 value;
-    
+    u32 value = 0;
+
     bool super = ((psr >> 7) & 0x1) == 0x1;
 
     read_reg(rd, &value);
@@ -640,10 +640,10 @@ int CPU::store8(const u32 va, const u32 rd)
 
 //------------------------------------------------------------------------
 //
-int CPU::store16(const u32 va, const u32 rd) 
+int CPU::store16(const u32 va, const u32 rd)
 {
-    u32 value;
-    
+    u32 value = 0;
+
     bool super = ((psr >> 7) & 0x1) == 0x1;
 
     read_reg(rd, &value);
@@ -655,10 +655,10 @@ int CPU::store16(const u32 va, const u32 rd)
 
 //------------------------------------------------------------------------
 //
-int CPU::store32(const u32 va, const u32 rd) 
+int CPU::store32(const u32 va, const u32 rd)
 {
-    u32 value;
-    
+    u32 value = 0;
+
     bool super = ((psr >> 7) & 0x1) == 0x1;
 
     read_reg(rd, &value);
@@ -668,10 +668,10 @@ int CPU::store32(const u32 va, const u32 rd)
     return ret1; 
 }
 
-int CPU::store64(const u32 va, const u32 rd) 
+int CPU::store64(const u32 va, const u32 rd)
 {
-    u32 value;
-    
+    u32 value = 0;
+
     bool super = ((psr >> 7) & 0x1) == 0x1;
 
     read_reg(rd, &value);    

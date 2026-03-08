@@ -1,5 +1,5 @@
-project(SPARCV8 CXX C)
 cmake_minimum_required(VERSION 3.22)
+project(SPARCV8 CXX C)
 #cmake_policy(VERSION 2.6)
 
 # Avoid source tree pollution
