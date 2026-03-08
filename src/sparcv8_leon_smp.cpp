@@ -296,6 +296,7 @@ int main(int argc, char **argv) {
     timer.set_system_freq(config.system_freq_hz);
    
     std::cout << "Creating " << (int)config.num_cpus << " cpu threads\n";
+    std::cout.flush(); // flush before threads start to avoid interleaved output
     std::vector<std::thread> threads;
     for (unsigned int i = 0; i < config.num_cpus; ++i) {
         threads.emplace_back(cpu_thread, std::ref(*cpus[i]));
