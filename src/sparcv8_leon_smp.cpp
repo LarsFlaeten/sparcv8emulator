@@ -16,6 +16,8 @@
 #include "peripherals/Amba.h"
 #include "peripherals/APBCTRL.h"
 #include "peripherals/BusClock.hpp"
+#include "peripherals/ac97.hpp"
+#include "peripherals/GRPCI2.hpp"
 
 #include "readelf.h"
 #include "debug.h"
@@ -222,7 +224,16 @@ int main(int argc, char **argv) {
     IRQMP intc(num_cpus_requested);
     mctrl.attach_bank<APBCTRL>(0x80000000, mctrl ,intc);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
-    
+
+    // PCI memory space: 2KB RAM for DMA descriptors/PCM data, then AC97 BAR windows
+    mctrl.attach_bank<RamBank>(0x24000000, 0x800);
+    auto ac97pci = std::make_unique<AC97Pci>(0, mctrl);
+    mctrl.attach_bank<PCIMMIOBank>(*ac97pci, 0x24000800, 0x100); // NAM (BAR0)
+    mctrl.attach_bank<PCIMMIOBank>(*ac97pci, 0x24000900, 0x100); // NABM (BAR1)
+    GRPCI2& grpci2 = apbctrl.get_grpci2();
+    grpci2.attach_device(std::move(ac97pci));
+    mctrl.attach_bank<PCIIOCfgArea>(0xfffa0000, grpci2); // PCI config space
+
     mctrl.debug_list_banks();
 
     // Find end of ram so we can set the stack pointers correctly when we reset the CPUs
@@ -279,7 +290,8 @@ int main(int argc, char **argv) {
     
     std::cout << "Creating bus clock\n";
     auto bus = std::make_unique<BusClock>(intc, timer, uart);
-    
+    bus->add_device(std::shared_ptr<Tickable>(&grpci2, [](Tickable*){}));
+
     bus->set_frequency(config.system_freq_hz);
     timer.set_system_freq(config.system_freq_hz);
    

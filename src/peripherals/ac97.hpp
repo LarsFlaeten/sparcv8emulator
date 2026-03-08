@@ -13,7 +13,6 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <optional>
 #include <algorithm>
 #include <exception>
@@ -212,11 +211,9 @@ public:
     
     
     explicit AC97Pci(uint8_t device_number,
-                     std::function<bool(uint32_t, void*, size_t)> mem_read,
-                     std::function<bool(uint32_t, const void*, size_t)> mem_write,
                      MCtrl& mctrl,
                      bool start_host_audio = true)
-        : dev_num_(device_number), mem_read_(mem_read), mem_write_(mem_write), mctrl_(mctrl) {
+        : dev_num_(device_number), mctrl_(mctrl) {
 
         if(start_host_audio)
             host_audio_ = std::make_unique<HostAudioOut>(48000, 2);
@@ -262,8 +259,6 @@ private:
     uint8_t dev_num_{0};
     std::array<uint8_t,256> config_{};
     std::array<uint8_t,256> nam_{};
-    std::function<bool(uint32_t, void*, size_t)> mem_read_;
-    std::function<bool(uint32_t, const void*, size_t)> mem_write_;
     MCtrl& mctrl_;
     
     std::function<void()> raise_intx_;
@@ -285,7 +280,7 @@ private:
 
     //static constexpr uint32_t GS_CRDY_CODEC0 = 0x00000100;  // Codec-0 ready
     //static constexpr uint32_t GS_S0R  = (1u << 15);
-    static constexpr uint32_t GS_PR   = (1u << 0);  // Primary Codec Ready
+    static constexpr uint32_t GS_PR   = (1u << 8);  // Primary Codec Ready (ICH_PCR)
     static constexpr uint32_t GS_BUSY = (1u << 2);  // Command Busy
     static constexpr uint32_t GS_W1C_MASK = (GS_PR | GS_BUSY);  
 
@@ -539,16 +534,10 @@ private:
     }
 
     uint32_t mem_read32(uint32_t addr) {
-        uint32_t val = 0;
-        if(!mem_read_(addr, &val, 4))
-            throw std::runtime_error("[AC97] mem_read32: Could no access memory at 0x" + to_hex(addr));
-        return val;
+        return std::byteswap(mctrl_.read32(addr));
     }
 
     uint16_t mem_read16(uint32_t addr) {
-        uint16_t val = 0;
-        if(!mem_read_(addr, &val, 2))
-            throw std::runtime_error("[AC97] mem_read16: Could no access memory at 0x" + to_hex(addr));
-        return val;
+        return std::byteswap(mctrl_.read16(addr));
     }
 };

@@ -167,6 +167,10 @@ void BusClock::run() {
         }
         timer_.unlock();
 
+        // Tick registered devices (e.g. GRPCI2 → AC97 DMA)
+        for (auto& dev : devices_)
+            dev->tick();
+
         // stats measure "work" per host iteration
         auto iter_end = clock::now();
         double work_ns = duration_cast<nanoseconds>(iter_end - iter_start).count();

@@ -184,10 +184,7 @@ void AC97Pci::tick()
     uint32_t sample_ptr = po_cur_ptr_ + po_cur_bd_frame_offset_bytes_;
 
     for (uint32_t i = 0; i < todo * 2; ++i) {
-        uint16_t v;
-        mem_read_(sample_ptr + i * 2, &v, 2);
-        //v = std::byteswap(v);
-        samples[i] = (int16_t)v;
+        samples[i] = (int16_t)mem_read16(sample_ptr + i * 2);
     }
 
     // Push audio to host
@@ -1010,14 +1007,9 @@ void AC97Pci::cold_reset()
     //
     // --- GLOB_STA Hardware Reset State ---
     //
-    glob_sta_  = (1 << 0)    // PCR (codec ready pipeline)
-               | (1 << 5)    // PCM in active
-               | (1 << 6);   // PCM out active
-
-    // CRDY will be asserted later by init_codec_cold()
-    glob_sta_ &= ~(1 << 8);
-
-    reset_delay_counter_ = 4;   // realistic delay
+    glob_sta_  = (1u << 5)    // PCM in active
+               | (1u << 6)   // PCM out active
+               | GS_PR;      // CRDY: primary codec ready (bit 8)
 
     //
     // --- GLOB_CNT Codec Feature Bits ---

@@ -41,39 +41,7 @@ protected:
     bool irq_raised = false;
 
     void make_device() {
-        // Create the AC'97 PCI peripheral
-        // Instead of handing over mctrl, we give it read/write lambdas
-        // TODO: Redesign this...
-        auto mem_read = [this](uint32_t pa, void* val, size_t sz) -> bool {
-            
-            switch(sz) {
-                case 1: {
-                    u8* p = static_cast<u8*>(val);
-                    *p = mctrl.read8(pa);
-                    break;
-                }
-                case 2: {
-                    u16* p = static_cast<u16*>(val);
-                    *p = std::byteswap(mctrl.read16(pa));
-                    break;
-                }
-                case 4: {
-                    u32* p = static_cast<u32*>(val);
-                    *p = std::byteswap(mctrl.read32(pa));
-                    break;
-                }
-                default:
-                throw std::runtime_error("memread lambda, wrong size: " + std::to_string(sz));
-            
-            }
-            return true;
-        };
-        auto mem_write = [](uint32_t va, const void* val, size_t sz) -> bool {
-            throw std::runtime_error("memwrite lambda");
-            return true;
-        };
-
-        dev = std::make_unique<AC97Pci>(0, mem_read, mem_write, mctrl, false);
+        dev = std::make_unique<AC97Pci>(0, mctrl, false);
 
         dev->config_write32(0x10, NAM_BASE); // Write NAM BAR
         dev->config_write32(0x14, NABM_BASE); // Write NABM BAR

@@ -13,10 +13,11 @@
 #include "IRQMP.h"
 #include "MCTRL.h"
 #include "pcidevice.hpp"
+#include "Tickable.hpp"
 
 
 
-class GRPCI2 : public apb_slave {
+class GRPCI2 : public apb_slave, public Tickable {
 
 public:
     struct Map {

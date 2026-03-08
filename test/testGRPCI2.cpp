@@ -374,18 +374,7 @@ TEST_F(GRPCI2Test, ahbm2pci_readwrite)
 
 TEST_F(GRPCI2Test, ac97_init)
 {
-    auto& _mmu = mmu;
-    // Create the AC'97 PCI peripheral
-    auto mem_read = [&_mmu](uint32_t va, void* val, size_t sz) -> bool {
-        throw std::runtime_error("memread lambda");
-        return true;
-    };
-    auto mem_write = [&_mmu](uint32_t va, const void* val, size_t sz) -> bool {
-        throw std::runtime_error("memwrite lambda");
-        return true;
-    };
-    
-    auto ac97pci = std::make_unique<AC97Pci>(0, mem_read, mem_write, mctrl);
+    auto ac97pci = std::make_unique<AC97Pci>(0, mctrl, false); // false = no host audio
     
 
     // Set up what we need of memory and peripherals to test all this:
