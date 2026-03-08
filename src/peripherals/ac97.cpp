@@ -399,16 +399,14 @@ void AC97Pci::io_write8(uint32_t addr, uint8_t v) {
 
 void AC97Pci::codec_command_begin()
 {
-    // command starts: BUSY=1, READY=0
+    // BUSY is a software model only; GS_PR (PCR) must never be cleared —
+    // it is a hardware state bit (codec alive) checked by the ICH semaphore path.
     glob_sta_ |= GS_BUSY;
-    glob_sta_ &= ~GS_PR;
 }
 
 void AC97Pci::codec_command_complete()
 {
-     // command finishes: BUSY=0, READY=1
     glob_sta_ &= ~GS_BUSY;
-    glob_sta_ |= GS_PR;
 }
 
 uint16_t AC97Pci::read_nam(uint32_t offset)

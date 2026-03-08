@@ -282,7 +282,7 @@ private:
     //static constexpr uint32_t GS_S0R  = (1u << 15);
     static constexpr uint32_t GS_PR   = (1u << 8);  // Primary Codec Ready (ICH_PCR)
     static constexpr uint32_t GS_BUSY = (1u << 2);  // Command Busy
-    static constexpr uint32_t GS_W1C_MASK = (GS_PR | GS_BUSY);  
+    static constexpr uint32_t GS_W1C_MASK = GS_BUSY;  // GS_PR is read-only, never W1C
 
     static constexpr uint32_t CNT_COLD     = 0x00000002;
     static constexpr uint32_t CNT_WARM     = 0x00000004;

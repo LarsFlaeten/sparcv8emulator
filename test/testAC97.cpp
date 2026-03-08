@@ -127,20 +127,50 @@ TEST_F(AC97Test, GlobStaReturnsOnlyAllowedBits)
     make_device();
 
     uint32_t v = read32_le(NABM_BASE + 0x30);
-    // We cannot see the sempahore bit, even though it is set a device init
-    // since reading glob sta will clear it:
-    ASSERT_EQ(v & 0x1FF , GS_PR) << "GLOB_STA must have Codec 0 ready and busy bit not set";
-    
-    // Only allow clearing bit 0 (PR) and bit 2 (BUSY):
+    ASSERT_NE(v & GS_PR,   0u) << "GLOB_STA must have PCR (bit 8) set after init";
+    ASSERT_EQ(v & GS_BUSY, 0u) << "GLOB_STA must not have BUSY set after init";
+
+    // Writing all-ones to GLOB_STA (W1C operation) must NOT clear GS_PR —
+    // PCR is a read-only hardware state bit, not W1C.
     write32_le(NABM_BASE + 0x30, 0xffffffffu);
-
     v = read32_le(NABM_BASE + 0x30);
-    ASSERT_EQ(v & 0x1ff, 0) << "GLOB_STA must have Codec 0 and busy bit cleared";
-    
-    // Below test is disabled, as DMA bits are not implemented:
+    ASSERT_NE(v & GS_PR, 0u) << "GS_PR (PCR, bit 8) must survive a W1C write — it is not W1C";
+}
 
-    // Only 0x10F is allowed: CRDY + DMA bits + semaphore bit
-    //ASSERT_EQ(v & ~0x10F, 0u) << "GLOB_STA must mask off undefined bits";
+// snd_intel8x0_codec_semaphore() checks:
+//   1. GLOB_STA PCR (bit 8) is set
+//   2. CAS register (NABM 0x34) bit 0 is clear
+// Both must hold before AND during/after a NAM register access.
+TEST_F(AC97Test, CodecSemaphore_PCR_PreservedDuringNAMAccess)
+{
+    make_device();
+
+    // PCR must be set before any access
+    ASSERT_NE(read32_le(NABM_BASE + 0x30) & GS_PR, 0u)
+        << "GS_PR must be set before NAM access";
+
+    // Perform a NAM read (triggers codec_command_begin internally)
+    read32_le(NAM_BASE + 0x00);  // Master Volume
+
+    // PCR must still be set after the access — codec_command_begin must not clear it
+    ASSERT_NE(read32_le(NABM_BASE + 0x30) & GS_PR, 0u)
+        << "GS_PR must remain set after NAM read (codec_command_begin must not clear PCR)";
+
+    // Perform a NAM write
+    write16_le(NAM_BASE + 0x02, 0x0808);
+
+    ASSERT_NE(read32_le(NABM_BASE + 0x30) & GS_PR, 0u)
+        << "GS_PR must remain set after NAM write";
+}
+
+TEST_F(AC97Test, CodecSemaphore_CAS_AlwaysFree)
+{
+    make_device();
+
+    // CAS register (NABM offset 0x34, 8-bit): bit 0 = 0 means semaphore free.
+    // snd_intel8x0 reads this byte and checks !(val & ICH_CAS); 0 means acquired.
+    uint8_t cas = read8(NABM_BASE + 0x34);
+    ASSERT_EQ(cas & 0x1, 0u) << "CAS bit 0 must be 0 (semaphore free) so driver can acquire it";
 }
 
 // ----------------------
