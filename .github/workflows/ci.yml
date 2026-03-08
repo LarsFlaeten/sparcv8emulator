@@ -29,9 +29,9 @@ jobs:
         # APBUARTTest, APBCTRLTest, AC97Test, and GRPCI2Test.ac97_init require
         # a real TTY or audio device and are skipped in headless CI.
         run: |
-          bin/sparcv8_tests \
-            --gtest_filter="-APBUARTTest.*:APBCTRLTest.*:AC97Test.*:GRPCI2Test.ac97_init" \
-            --gtest_output=xml:test-results.xml
+          ctest --test-dir build --output-on-failure \
+            -E "APBUARTTest|APBCTRLTest|AC97Test|GRPCI2Test\.ac97_init" \
+            --output-junit test-results.xml
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
