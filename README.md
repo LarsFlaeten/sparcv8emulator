@@ -131,12 +131,25 @@ src/
 ## Credits
 
 This project started as a fork of [wyvernSemi/sparc](https://github.com/wyvernSemi/sparc)
-by Simon Southwell. The assembly test suite (`test/asm/`) is largely derived from that
-project. Some structural patterns in the CPU run loop also trace back to the original.
-The upstream project is licensed under GPL-3.0.
+by Simon Southwell. The following files derive from that project and retain their
+GPL-3.0 license:
+
+- `src/sparcv8/CPU.h` / `CPU.cpp` — SPARC V8 CPU core
+- `src/dis.h` / `dis.cpp` — instruction disassembler
+- `test/asm/` — assembly test suite
+
+The `src/peripherals/gaisler/` headers are copyright Frontgrade Gaisler, GPL-2.0-or-later.
+
+All other source files are original work and licensed under MIT.
 
 ## License
 
-This project is licensed under the [GNU General Public License v3.0](LICENSE).
+This project uses a dual license:
 
-SPDX-License-Identifier: GPL-3.0-or-later
+| Files | License |
+|---|---|
+| `src/sparcv8/CPU.*`, `src/dis.*`, `test/asm/` | [GPL-3.0-or-later](LICENSE) |
+| `src/peripherals/gaisler/` | GPL-2.0-or-later (Frontgrade Gaisler) |
+| Everything else | [MIT](LICENSE-MIT) |
+
+Each source file carries an `SPDX-License-Identifier` header identifying its license.

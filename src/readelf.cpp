@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "readelf.h"
 
 #include <fstream>

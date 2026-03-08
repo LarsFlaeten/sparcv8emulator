@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "gdb_stub.hpp"
 
 #include "../sparcv8/CPU.h"  // Must define get_gpr(), get_fpr(), get_pc(), etc.

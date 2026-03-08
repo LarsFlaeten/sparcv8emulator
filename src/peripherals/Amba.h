@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef _AMBA_H_
 #define _AMBA_H_
 

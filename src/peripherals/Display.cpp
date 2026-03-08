@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "Display.h"
 #include <chrono>
 #include <cstring>

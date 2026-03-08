@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef _CPU_INSTR_MAP_H
 #define _CPU_INSTR_MAP_H
 

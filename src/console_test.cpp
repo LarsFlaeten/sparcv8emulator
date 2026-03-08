@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "peripherals/APBUART.h"
 
 int main() {

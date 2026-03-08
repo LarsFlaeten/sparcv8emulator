@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 // AC97_Generic_PCI_Device.cpp (GRPCI2-integrated, Intel-compatible IDs)
 // Generic AC'97 PCI audio controller emulating an Intel ICH AC'97 device (0x8086:0x2415)

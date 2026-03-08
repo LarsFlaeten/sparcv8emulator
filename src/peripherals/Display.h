@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 #include <SDL2/SDL.h>
 #include <thread>

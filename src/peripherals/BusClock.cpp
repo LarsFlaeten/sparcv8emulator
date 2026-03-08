@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include <iomanip>   // for std::setw, std::setprecision
 
 #include "BusClock.hpp"

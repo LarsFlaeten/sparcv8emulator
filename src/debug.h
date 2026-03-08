@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef __SRCROOT_DEBUG_H__
 #define __SRCROOT_DEBUG_H__
 #include "sparcv8/CPU.h"

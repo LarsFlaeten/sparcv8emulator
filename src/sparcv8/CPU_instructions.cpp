@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include <time.h>
 
 #include "CPU.h"

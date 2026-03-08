@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "../src/sparcv8/CPU.h"
 #include "../src/peripherals/MCTRL.h"
 #include "../src/peripherals/gaisler/ambapp.h"

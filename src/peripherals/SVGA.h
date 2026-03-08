@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef _SVGA_H_
 #define _SVGA_H_
 

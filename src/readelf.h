@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef _readelf_h_
 #define _readelf_h_
 

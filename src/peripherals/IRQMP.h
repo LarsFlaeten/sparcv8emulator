@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef _IRQMP_H_
 #define _IRQMP_H_
 

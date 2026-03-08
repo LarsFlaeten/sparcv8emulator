@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "../src/sparcv8/CPU.h"
 #include "../src/sparcv8/MMU.h"
 #include "../src/peripherals/Amba.h"

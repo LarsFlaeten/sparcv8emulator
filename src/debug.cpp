@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "debug.h"
 #include "sparcv8/MMU.h"
 

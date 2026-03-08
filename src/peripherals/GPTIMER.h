@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef _GPTIMER_H_
 #define _GPTIMER_H_
 

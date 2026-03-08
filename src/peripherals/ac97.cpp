@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "ac97.hpp"
 
 #include <bit>

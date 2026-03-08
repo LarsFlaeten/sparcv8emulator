@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef _APBUART_H_
 #define _APBUART_H_
 

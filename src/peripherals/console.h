@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef _CONSOLE_H_
 #define _CONSOLE_H_
 

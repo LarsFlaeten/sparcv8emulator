@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef _APBCTRL_H_
 #define _APBCTRL_H_
 
