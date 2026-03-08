@@ -29,8 +29,8 @@ message(STATUS "Using CXX flags: " ${CMAKE_CXX_FLAGS})
 
 # compile the asm tests:
 add_custom_target(run_setup_tool
-    COMMAND ${PROJECT_SOURCE_DIR}/test/asm/runtests nt
-    COMMENT "Running setup tool before tests"
+    COMMAND ${PROJECT_SOURCE_DIR}/test/asm/runtests nc
+    COMMENT "Running ASM tests (pre-built binaries, no recompile)"
 )
 
 
