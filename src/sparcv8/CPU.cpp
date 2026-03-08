@@ -397,18 +397,6 @@ void CPU::decode(pDecode_t d)
 //
 // Write back register values
 //
-void CPU::write_back (const pDecode_t d)
-{
-    pc  = d->pc;
-    npc = d->npc;
-    psr = d->psr;
-    cwp_base_ = (psr & LOBITS5) << 3;
-
-    if (d->wb_type == WriteBackType::WRITEBACKREG)
-        write_reg(d->value, d->rd);
-}
-
-
 // ------------------------------------------------
 
 void CPU::trap(pDecode_t d, u32 trap_no) 

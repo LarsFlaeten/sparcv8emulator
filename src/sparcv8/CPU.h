@@ -246,7 +246,14 @@ class CPU
 
         void decode(pDecode_t d);
         
-        void write_back (const pDecode_t d);
+        inline void write_back(const pDecode_t d) {
+            pc  = d->pc;
+            npc = d->npc;
+            psr = d->psr;
+            cwp_base_ = (psr & LOBITS5) << 3;
+            if (d->wb_type == WriteBackType::WRITEBACKREG)
+                write_reg(d->value, d->rd);
+        }
 
         void trap (pDecode_t d, u32 trap_no); 
 
