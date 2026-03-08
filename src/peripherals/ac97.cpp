@@ -164,8 +164,10 @@ void AC97Pci::tick()
 
     uint32_t todo = std::min<uint32_t>(po_picb_, frames_per_tick_dynamic_);
 
+#ifdef AC97_DEBUG
     printf("[TICK] picb=%u todo=%u offset=%u\n",
        po_picb_, todo, po_cur_bd_frame_offset_bytes_);
+#endif
     
     //
     // 3. Fetch 'todo' stereo frames from guest memory
@@ -197,9 +199,11 @@ void AC97Pci::tick()
     //
     // 6. Buffer is COMPLETED
     //
+#ifdef AC97_DEBUG
     printf("[AC97 TICK] CIV=%u LVI=%u PICB=%u LEN=%u OFFS=%u CTL=%04x RUN=%u BD_PTR=%08x\n",
         po_civ_, po_lvi_, po_picb_, po_cur_len_, po_cur_bd_frame_offset_bytes_,
         po_cur_ctl_, po_running_, po_cur_ptr_);
+#endif
 
     // CIV always increments modulo 32
     uint8_t old_civ = po_civ_;
@@ -229,7 +233,9 @@ void AC97Pci::tick()
     if ((po_status_ & 0x0C) && (po_control_ & 0x10)) {
         if (raise_intx_) {
             raise_intx_();
+#ifdef AC97_DEBUG
             printf("RAISE IRQ! STATUS=%04x\n", po_status_);
+#endif
         }
     }
 
@@ -241,8 +247,10 @@ void AC97Pci::tick()
     uint32_t ptr  = mem_read32(bd_addr + 0);
     uint16_t len  = mem_read16(bd_addr + 4);
     uint16_t ctl  = mem_read16(bd_addr + 6);
+#ifdef AC97_DEBUG
     printf("[AC97 BD LOAD from tick] %08x: ptr=%08x len=%08x ctl=%08x\n",
         bd_addr, ptr, len, ctl);
+#endif
     po_cur_ptr_ = ptr;
     po_cur_len_ = (uint32_t)len;
     po_cur_ctl_ = ctl;
@@ -258,7 +266,9 @@ void AC97Pci::tick()
     }
 
     po_picb_ = po_cur_len_ / 4; // frames
+#ifdef AC97_DEBUG
     printf("[BD in tick()] frames=%u\n", po_picb_);
+#endif
     
 }
 
@@ -808,13 +818,11 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 uint32_t ptr = mem_read32(bd_addr + 0);
                 uint16_t len = mem_read16(bd_addr + 4);
                 uint16_t ctl_field = mem_read16(bd_addr + 6);
-                // 🔥 INSERT THIS HERE — BD is valid, Linux requested RUN=1
+#ifdef AC97_DEBUG
                 printf("BD0 RAW len read = %04x\n", len);
                 printf("[BD_LOAD from PO CR] civ=%u ptr=%08x len=%u ctl=%04x\n",
-                    po_civ_,
-                    ptr,
-                    (unsigned)(len + 1),
-                    ctl_field);
+                    po_civ_, ptr, (unsigned)(len + 1), ctl_field);
+#endif
 
                 // ------------------------------------------
                 // CORE FIX:
@@ -851,8 +859,10 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                 // Calculate frame count (stereo 16-bit = 4 bytes)
                 po_picb_ = po_cur_len_ / 4;
+#ifdef AC97_DEBUG
                 printf("[BD_INIT PO CR] frames=%u len=%u ptr=%08x\n",
                     po_picb_, po_cur_len_, po_cur_ptr_);
+#endif
 
                 return;
             }       

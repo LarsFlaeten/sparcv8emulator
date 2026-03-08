@@ -24,8 +24,12 @@ static void set_audio_thread_name() {
     pthread_setname_np(pthread_self(), "host audio");
 }
 
+#ifdef AC97_DEBUG
 #define TRACE_PO_SR_CHANGE() \
     printf("[AC97 Debug] PO_SR changed to %02x (file %s:%d)\n", po_status_, __FILE__, __LINE__);
+#else
+#define TRACE_PO_SR_CHANGE() do {} while(0)
+#endif
 
 
 
