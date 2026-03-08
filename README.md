@@ -23,7 +23,7 @@ A cycle-approximate emulator for the **SPARC V8** ISA targeting the **Gaisler LE
 
 On Ubuntu/Debian:
 ```sh
-sudo apt-get install cmake g++ libsdl2-dev libportaudio-dev
+sudo apt-get install cmake g++ libsdl2-dev portaudio19-dev
 ```
 
 ## Building

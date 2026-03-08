@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y cmake g++ libsdl2-dev libportaudio-dev
+          sudo apt-get install -y cmake g++ libsdl2-dev portaudio19-dev
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
