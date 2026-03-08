@@ -18,11 +18,12 @@ A cycle-approximate emulator for the **SPARC V8** ISA targeting the **Gaisler LE
 - CMake ≥ 3.22
 - GCC or Clang with C++23 support
 - SDL2 (for display/audio peripherals in tests)
+- PortAudio (for AC97 audio peripheral)
 - SPARC cross-compiler toolchain (for building test assembly, optional)
 
 On Ubuntu/Debian:
 ```sh
-sudo apt-get install cmake g++ libsdl2-dev
+sudo apt-get install cmake g++ libsdl2-dev libportaudio-dev
 ```
 
 ## Building

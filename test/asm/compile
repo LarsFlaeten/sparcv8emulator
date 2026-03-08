@@ -17,6 +17,10 @@ name=$1
 
 if [ "$OSTYPE" = "cygwin" -o  "$OSTYPE" = "linux" -o  "$OSTYPE" = "linux-gnu" ]
 then
+  if ! command -v sparc-elf-cpp &>/dev/null; then
+    echo "sparc-elf-cpp not found, skipping assembly compilation of $name"
+    exit 0
+  fi
   sparc-elf-cpp -g trap_table.s | sparc-elf-as -xarch=v8 -o trap_table.o -g
   sparc-elf-cpp -g ${name}.s | sparc-elf-as -xarch=v8 -W -o ${name}.o -g
   sparc-elf-gcc -c libsparc.c -o libsparc.o -g
