@@ -3,7 +3,7 @@
 [![Build](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/build.yml/badge.svg)](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/build.yml)
 [![Tests](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/test.yml/badge.svg)](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/test.yml)
 
-A cycle-approximate emulator for the **SPARC V8** ISA targeting the **Gaisler LEON3** SMP processor family. It boots an unmodified Linux kernel (Gaisler Buildroot image) with up to 4 CPUs and includes a full GDB remote debugging stub.
+A functional emulator for the **SPARC V8** ISA targeting the **Gaisler LEON3** SMP processor family. It boots an unmodified Linux kernel (Gaisler Buildroot image) with up to 4 CPUs and includes a full GDB remote debugging stub.
 
 ## Features
 
