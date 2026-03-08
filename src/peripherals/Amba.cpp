@@ -50,7 +50,7 @@ void amba_ahb_pnp_setup(MCtrl& mctrl) {
     mctrl.write32(0xfffff830, (0x000 << 20) | (0x3 << 16) | (0xe00 << 4) | 2); //0x0003e002;
     mctrl.write32(0xfffff834, (0x200 << 20) | (0x0 << 16) | (0xe00 << 4) | 2); //0x2000e002;
     mctrl.write32(0xfffff838, (0x400 << 20) | (0x3 << 16) | (0xc00 << 4) | 2); //0x4003c002;
- #if 0
+ #if 1
     // ahb slv - PCI Initiator interface MEM, IRQ 5
     mctrl.write32(0xfffff840, (VENDOR_GAISLER << 24) | (GAISLER_GRPCI2 << 12) | (AMB_VERSION << 5));// | (0x5 & 0xf));
     mctrl.write32(0xfffff850, (0x240 << 20) | (0x0 << 16) | (0xff0 << 4) | AMBA_TYPE_MEM); // 16 Mb Mask 
@@ -128,7 +128,7 @@ void amba_apb_pnp_setup(MCtrl& mctrl) {
     mctrl.write32(0x800ff020, (VENDOR_GAISLER << 24) | (GAISLER_APBUART << 12) | (AMB_VERSION_1 << 5) | (0x3 & 0xf));
     mctrl.write32(0x800ff024, (0x009 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000900 - 800009ff
 
-#if 0
+#if 1
     // slv4 at 0x800ff020 - PCI BRIDGE CTRL APB IRQ 2
     mctrl.write32(0x800ff028, (VENDOR_GAISLER << 24) | (GAISLER_GRPCI2 << 12) | (AMB_VERSION << 5) | (0x2 & 0xf));
     mctrl.write32(0x800ff02c, (0x004 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000400 - 800004ff
