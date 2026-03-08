@@ -8,7 +8,7 @@ A cycle-approximate emulator for the **SPARC V8** ISA targeting the **Gaisler LE
 
 - **Full SPARC V8 ISA** — integer, FPU, and LEON3 ASI extensions
 - **Symmetric Multi-Processing** — up to 4 CPUs with shared memory and IRQMP broadcast interrupts
-- **SRMMU** — software-reloadable MMU with 16-entry ITLB + DTLB, L0 instruction/data translation caches
+- **SRMMU** — Sparc Reference MMU with 16-entry ITLB + DTLB, L0 instruction/data translation caches
 - **GDB remote debugging** — multi-CPU stop-the-world via TCP (port 1234), works with `sparc-linux-gdb`
 - **LEON3 peripherals** — IRQMP, GPTIMER, APBUART, GRPCI2, MCTRL, SVGA framebuffer, AC97 audio
 - **ELF loader** — loads Gaisler Buildroot ELF images directly
