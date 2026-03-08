@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef __SRCROOT_DEBUG_H__
-#define __SRCROOT_DEBUG_H__
+#pragma once
 #include "sparcv8/CPU.h"
 
 void debug_registerdump(CPU& cpu);
@@ -14,4 +13,3 @@ void debug_print_memory_banks();
 
 std::string rs_reason_str(TerminateReason trs);
 
-#endif

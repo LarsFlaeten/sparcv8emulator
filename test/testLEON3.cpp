@@ -130,7 +130,7 @@ TEST_F(LEON3Test, CASA_swap)
     EXPECT_EQ(d.imm_disp_rs2 & 0x1f, GLOBALREG1);
     
     // Verify MMU is turned off for this test:
-    ASSERT_FALSE(mmu.GetEnabled());
+    ASSERT_FALSE(mmu.get_enabled());
  
     // Write something to memory:
     u32 mem_value = 0x3ffffdff;
@@ -194,7 +194,7 @@ TEST_F(LEON3Test, CASA_noswap)
     EXPECT_EQ(d.imm_disp_rs2 & 0x1f, GLOBALREG1);
     
     // Verify MMU is turned off for this test:
-    ASSERT_FALSE(mmu.GetEnabled());
+    ASSERT_FALSE(mmu.get_enabled());
  
     // Write something to memory:
     u32 mem_value = 0x3ffffdff;

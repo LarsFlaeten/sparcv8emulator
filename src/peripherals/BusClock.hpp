@@ -39,13 +39,13 @@ public:
 
     void start();
     void stop();
-    void setFrequency(double freq_hz);
-    double getFrequency() const;
+    void set_frequency(double freq_hz);
+    double get_frequency() const;
 
-    void addDevice(std::shared_ptr<Tickable> dev);
-    void clearDevices();
+    void add_device(std::shared_ptr<Tickable> dev);
+    void clear_devices();
 
-    Stats getStats() const;
+    Stats get_stats() const;
 
     void wait_for_tick(uint64_t& local_tick);
     uint64_t current_tick() const noexcept { return tick_count_.load(); }
@@ -74,6 +74,6 @@ private:
     GPTIMER& timer_;
     APBUART& uart_;
 
-    DebugStopController::WorkerToken wtoken;
+    DebugStopController::WorkerToken wtoken_;
     
 };

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _APBUART_H_
-#define _APBUART_H_
+#pragma once
 
 #include <termio.h>
 #include <sys/ioctl.h>
@@ -84,7 +83,7 @@ public:
                 throw not_implemented_leon_exception("Test - write UART other reg");
         }
     }
-    bool CheckIRQ() // TX interrupt is an edge; RX interrupt is a level.
+    bool check_irq() // TX interrupt is an edge; RX interrupt is a level.
     {
         if(r_ints_enabled && in.len)
         {
@@ -100,7 +99,7 @@ public:
     // To be used in a linear simulation where this function is called
     // on each bus tick. Hence this method has a scaler (counter) to
     // avoid IO polling on every cycle.
-    void Input()
+    void input()
     {
         static unsigned counter = 0;
         if(!counter) 
@@ -153,4 +152,3 @@ public:
     }
 };
 
-#endif

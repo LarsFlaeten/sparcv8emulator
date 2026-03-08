@@ -45,15 +45,15 @@ TEST_F(APBUARTTest, TXInterruptEdgeTriggeredOnWrite)
 {
     u.write(0x8, 0x8); // TI bit
 
-    ASSERT_FALSE(u.CheckIRQ());
+    ASSERT_FALSE(u.check_irq());
 
     u.write(0x0, 'A');
-    ASSERT_TRUE(u.CheckIRQ());
-    ASSERT_FALSE(u.CheckIRQ());
+    ASSERT_TRUE(u.check_irq());
+    ASSERT_FALSE(u.check_irq());
 
     u.write(0x0, 'B');
-    ASSERT_TRUE(u.CheckIRQ());
-    ASSERT_FALSE(u.CheckIRQ());
+    ASSERT_TRUE(u.check_irq());
+    ASSERT_FALSE(u.check_irq());
 }
 
 // ------------------------
@@ -94,12 +94,12 @@ TEST_F(APBUARTTest, TXInterruptPeriodicWhenEmpty)
     };*/
 
     u.tick_scheduled();
-    ASSERT_TRUE(u.CheckIRQ());
+    ASSERT_TRUE(u.check_irq());
 
     u.tick_scheduled();
-    ASSERT_TRUE(u.CheckIRQ());
-    ASSERT_FALSE(u.CheckIRQ());
+    ASSERT_TRUE(u.check_irq());
+    ASSERT_FALSE(u.check_irq());
 
     u.tick_scheduled();
-    ASSERT_TRUE(u.CheckIRQ());
+    ASSERT_TRUE(u.check_irq());
 }

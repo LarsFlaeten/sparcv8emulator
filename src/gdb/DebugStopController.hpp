@@ -20,10 +20,10 @@ public:
     };
 
     // --- Global optional install ---
-    static void InstallGlobal(DebugStopController* c) {
+    static void install_global(DebugStopController* c) {
         global_.store(c, std::memory_order_release);
     }
-    static void UninstallGlobal(DebugStopController* c) {
+    static void uninstall_global(DebugStopController* c) {
         DebugStopController* expected = c;
         global_.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
     }
@@ -214,7 +214,7 @@ private:
 
 public:
 
-    static const char* StopStateToString(uint8_t s) {
+    static const char* stop_state_to_string(uint8_t s) {
         switch (static_cast<StopState>(s)) {
             case StopState::Running:       return "Running";
             case StopState::StopRequested: return "StopRequested";
@@ -223,7 +223,7 @@ public:
         return "Unknown";
     }
 
-    static const char* StopReasonToString(StopReason r) {
+    static const char* stop_reason_to_string(StopReason r) {
         switch (r) {
             case StopReason::Breakpoint:  return "Breakpoint";
             case StopReason::SingleStep:  return "SingleStep";
@@ -235,33 +235,33 @@ public:
         return "Unknown";
     }
 
-    // Returnerer en tekst-dump (lett å bruke i logger/tester).
+    // Returns a text dump (convenient for logs and tests).
     std::string dump() const {
         std::ostringstream os;
         dump_to(os);
         return os.str();
     }
 
-    // Skriver til ostream (lett å sende til logg-systemer).
+    // Writes to ostream (convenient for logging systems).
     void dump_to(std::ostream& os) const {
-        // Ta en konsistent snapshot under lock.
+        // Take a consistent snapshot under lock.
         std::unique_lock lk(mtx_);
 
         const auto s = state_.load(std::memory_order_acquire);
-        const auto r = stop_reason(); // leser atomisk internt
+        const auto r = stop_reason(); // reads atomically internally
         const uint64_t epoch = stop_epoch_;
 
         os << "DebugStopController@" << this
            << " global=" << (Global() == this ? "yes" : (Global() ? "other" : "null"))
-           << "\n  state=" << StopStateToString(static_cast<uint8_t>(s))
-           << " reason=" << StopReasonToString(r)
+           << "\n  state=" << stop_state_to_string(static_cast<uint8_t>(s))
+           << " reason=" << stop_reason_to_string(r)
            << " epoch=" << epoch
            << "\n  expected_workers=" << expected_workers_
            << " stopped_count=" << stopped_count_
            << " workers.size=" << workers_.size()
            << "\n  workers:\n";
 
-        // Stabil og “pen” rekkefølge: sorter ids.
+        // Stable and clean ordering: sort ids.
         std::vector<uint32_t> ids;
         ids.reserve(workers_.size());
         for (auto& kv : workers_) ids.push_back(kv.first);
@@ -275,7 +275,7 @@ public:
         }
     }
 
-    // Direkte til FILE* (praktisk i "call" fra GDB uten å måtte fange string).
+    // Writes directly to FILE* (convenient for GDB 'call' without needing to capture a string).
     void dump_to(FILE* f) const {
         if (!f) return;
         std::ostringstream os;
@@ -284,7 +284,7 @@ public:
         std::fflush(f);
     }
 
-    // Enda mer GDB-vennlig: alltid til stderr.
+    // Even more GDB-friendly: always writes to stderr.
     void dump_stderr() const {
         dump_to(stderr);
     }

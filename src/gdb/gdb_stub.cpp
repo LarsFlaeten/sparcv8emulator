@@ -32,41 +32,41 @@ static std::vector<uint8_t> from_hex(const std::string& hex) {
     return res;
 }
 
-GdbStub::GdbStub(std::vector<std::unique_ptr<CPU>>& cpu_refs) : cpus(cpu_refs) {
+GdbStub::GdbStub(std::vector<std::unique_ptr<CPU>>& cpu_refs) : cpus_(cpu_refs) {
     //std::cout << "[GDBStub] constructed, this=" << this
-    //      << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
+    //      << ", &cv_=" << &cv_ << ", &mtx_=" << &mtx_ << std::endl;
 }
 
 GdbStub::~GdbStub() {
     //std::cout << "[GDB] GdbStub destructor\n";
 
-    shutting_down = true;
-    active = false;
+    shutting_down_ = true;
+    active_ = false;
 
     bool was_run= false;
     // Close sockets to unblock recv() calls
-    if (client_fd != -1) {
+    if (client_fd_ != -1) {
         was_run = true;
-        shutdown(client_fd, SHUT_RDWR);
-        close(client_fd);
-        client_fd = -1;
+        shutdown(client_fd_, SHUT_RDWR);
+        close(client_fd_);
+        client_fd_ = -1;
     }
-    if (server_fd != -1) {
+    if (server_fd_ != -1) {
         was_run = true;
-        close(server_fd);
-        server_fd = -1;
+        close(server_fd_);
+        server_fd_ = -1;
     }
 
-    // Wake any CPU threads waiting on GDB
+    // Wake any CPU threads waiting_ on GDB
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        waiting = false;
-        cv.notify_all();
+        std::lock_guard<std::mutex> lock(mtx_);
+        waiting_ = false;
+        cv_.notify_all();
     }
 
-    // Join GDB thread
-    if (thread.joinable()) {
-        thread.join();
+    // Join GDB thread_
+    if (thread_.joinable()) {
+        thread_.join();
     }
 
     if(was_run) {
@@ -77,12 +77,12 @@ GdbStub::~GdbStub() {
 }
 
 void GdbStub::start(uint16_t port, bool wait_for_connection) {
-    thread = std::thread(&GdbStub::gdb_thread, this, port);
+    thread_ = std::thread(&GdbStub::gdb_thread, this, port);
 
     // Wait here until the client has connected:
     if(wait_for_connection) {
-        std::unique_lock lock(mtx);
-        cv.wait(lock, [&]() { return active.load(std::memory_order_relaxed); });
+        std::unique_lock lock(mtx_);
+        cv_.wait(lock, [&]() { return active_.load(std::memory_order_relaxed); });
 #ifdef GDB_DEBUG
         std::cout << "[GDB] Client connected, lets go..\n";
 #endif
@@ -92,23 +92,23 @@ void GdbStub::start(uint16_t port, bool wait_for_connection) {
 void GdbStub::gdb_thread(uint16_t port) {
     set_thread_name("gdb_stub");
 
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     sockaddr_in addr = {};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = INADDR_ANY;
-    bind(server_fd, (sockaddr*)&addr, sizeof(addr));
-    listen(server_fd, 1);
+    bind(server_fd_, (sockaddr*)&addr, sizeof(addr));
+    listen(server_fd_, 1);
     std::cout << "[GDB] Waiting for connection on port " << port << "\n";
-    client_fd = accept(server_fd, nullptr, nullptr);
+    client_fd_ = accept(server_fd_, nullptr, nullptr);
 #ifdef GDB_DEBUG
     std::cout << "[GDB] Connected.\n";
 #endif
-    active = true;
+    active_ = true;
 
-    while (!shutting_down) {
+    while (!shutting_down_) {
         auto maybe_pkt = recv_packet();
         if (!maybe_pkt.has_value()) {
 #ifdef GDB_DEBUG
@@ -129,7 +129,7 @@ std::string make_qfThreadInfo_reply(int total_num_cpus)
     for (int i = 0; i < total_num_cpus; ++i) {
         if (i > 0)
             r += ",";
-        r += std::to_string(i + 1);  // GDB thread IDs are 1-based
+        r += std::to_string(i + 1);  // GDB thread_ IDs are 1-based
     }
     return r;
 }
@@ -139,16 +139,16 @@ void GdbStub::handle_packet(const std::string& pkt) {
 #ifdef GDB_DEBUG
     std::cout << "[GDB] Handle packet: [" << pkt << "]\n";
 #endif
-    //std::cout << "[GDB] handle_packet: this=" << this << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
+    //std::cout << "[GDB] handle_packet: this=" << this << ", &cv_=" << &cv_ << ", &mtx_=" << &mtx_ << std::endl;
     if (pkt == "?") {
-        int tid = current_cpu + 1; // GDB threads are 1-based
+        int tid = current_cpu_ + 1; // GDB threads are 1-based
         send_packet("T05thread:" + std::to_string(tid) + ";");
     }
     else if(pkt.size() == 1 && static_cast<unsigned char>(pkt[0]) == 0x03) {
         // Interrupt from the remote!
 #ifdef GDB_DEBUG
         std::cout << "[GDB] Received Ctr+C from remote!\n";
-        cpus[0]->get_intc_ref().dump_state();
+        cpus_[0]->get_intc_ref().dump_state();
 #endif
             
         if (auto* dsc = DebugStopController::Global()) {
@@ -158,56 +158,56 @@ void GdbStub::handle_packet(const std::string& pkt) {
             std::cout << "[GDB] Stopped the world!\n";
 #endif
             //send_packet("S02"); // TODO: Send T01??
-            int tid = current_cpu + 1; // GDB threads are 1-based
+            int tid = current_cpu_ + 1; // GDB threads are 1-based
             send_packet("T05thread:" + std::to_string(tid) + ";");
             return;
         }
     }
     else if (pkt.starts_with("qC")) {
-        // Current thread
-        int tid = current_cpu + 1;
+        // Current thread_
+        int tid = current_cpu_ + 1;
         send_packet("QC" + std::to_string(tid));
     }
     else if (pkt.starts_with("qfThreadInfo")) {
-        send_packet(make_qfThreadInfo_reply((int)cpus.size()));
+        send_packet(make_qfThreadInfo_reply((int)cpus_.size()));
     }
     else if (pkt.starts_with("qsThreadInfo")) {
         send_packet("l");
     }
     else if (pkt[0] == 'g') {
-        if (current_cpu < 0 || current_cpu >= (int)cpus.size()) {
-            std::cerr << "[GDB] Invalid current_cpu: " << current_cpu << "\n";
+        if (current_cpu_ < 0 || current_cpu_ >= (int)cpus_.size()) {
+            std::cerr << "[GDB] Invalid current_cpu_: " << current_cpu_ << "\n";
             send_packet("E01"); // Error
             return;
         } 
-        auto reg_data = read_registers(*cpus[current_cpu]);
+        auto reg_data = read_registers(*cpus_[current_cpu_]);
         assert(reg_data.size() == 576);
         send_packet(reg_data);
         
     }
     else if (pkt[0] == 'G') {
-        if (current_cpu < 0 || current_cpu >= (int)cpus.size()) {
-            std::cerr << "[GDB] Invalid current_cpu: " << current_cpu << "\n";
+        if (current_cpu_ < 0 || current_cpu_ >= (int)cpus_.size()) {
+            std::cerr << "[GDB] Invalid current_cpu_: " << current_cpu_ << "\n";
             send_packet("E01"); // Error
             return;
         } 
         auto data = from_hex(pkt.substr(1));
-        write_registers(*cpus[current_cpu], data);
+        write_registers(*cpus_[current_cpu_], data);
         send_packet("OK");
     }
     else if (pkt[0] == 'c') {
         // Do the replaced instruction:
         //std::cout << "[GDB] Continue received\n";
-        //std::cout << "[GDB] waiting on mtx " << &mtx << "\n";
-        //std::cout << "[GDB]        with cv " << &cv << "\n";
+        //std::cout << "[GDB] waiting_ on mtx_ " << &mtx_ << "\n";
+        //std::cout << "[GDB]        with cv_ " << &cv_ << "\n";
       
         // Release the cpu:  
         {
-            std::lock_guard lock(mtx);
-            waiting = false;
+            std::lock_guard lock(mtx_);
+            waiting_ = false;
         }
         
-        cv.notify_all();     
+        cv_.notify_all();     
 
         if (auto* dsc = DebugStopController::Global())
             dsc->resume();   
@@ -216,8 +216,8 @@ void GdbStub::handle_packet(const std::string& pkt) {
         int id = std::stoi(pkt.substr(2));
         if( id == 0) {
             send_packet("OK");
-        } else if (id > 0 && id <= (int)cpus.size()) {
-            current_cpu = id-1;
+        } else if (id > 0 && id <= (int)cpus_.size()) {
+            current_cpu_ = id-1;
             send_packet("OK");
         } else {
             send_packet("E01");
@@ -225,8 +225,8 @@ void GdbStub::handle_packet(const std::string& pkt) {
     }
     else if (pkt.starts_with("T")) {
         int id = std::stoi(pkt.substr(1));
-        // Is thread <tid> alive?
-        if(id > 0 && id <= (int)cpus.size())
+        // Is thread_ <tid> alive?
+        if(id > 0 && id <= (int)cpus_.size())
             send_packet("OK");
         else
             send_packet("E01");
@@ -239,7 +239,7 @@ void GdbStub::handle_packet(const std::string& pkt) {
             // Hc-1 means "continue all threads"
             // You can set a flag or just treat it as valid
             send_packet("OK");
-        } else if (id >= 0 && id < (int)cpus.size()) {
+        } else if (id >= 0 && id < (int)cpus_.size()) {
             // You could store a `continue_cpu` if needed
             send_packet("OK");
         } else {
@@ -295,24 +295,24 @@ void GdbStub::handle_packet(const std::string& pkt) {
 }
 
 void GdbStub::notify_breakpoint(int cpu_id, uint32_t pc) {
-    //std::cout << "[GDB] notify_breakpoint: this=" << this << ", &cv=" << &cv << ", &mtx=" << &mtx << std::endl;
+    //std::cout << "[GDB] notify_breakpoint: this=" << this << ", &cv_=" << &cv_ << ", &mtx_=" << &mtx_ << std::endl;
 
     // Halt all other threads/workers
     if (auto* dbg = DebugStopController::Global())
         dbg->request_stop(DebugStopController::StopReason::Breakpoint);
 
     {
-        std::unique_lock lock(mtx);
-        halted_cpu = cpu_id;
-        waiting = true;
+        std::unique_lock lock(mtx_);
+        halted_cpu_ = cpu_id;
+        waiting_ = true;
         send_packet("T05thread:" + std::to_string(cpu_id+1) + ";");
             
-        while (waiting) {
+        while (waiting_) {
             assert(lock.owns_lock());
-            cv.wait(lock);
+            cv_.wait(lock);
         }
         
-        halted_cpu = -1;
+        halted_cpu_ = -1;
     }
 
     // Release all other workers/threads
@@ -327,14 +327,14 @@ std::optional<std::string> GdbStub::recv_packet() {
 
     /*
     // Wait for '$' — or return if disconnected
-    while (read(client_fd, &ch, 1) == 1 && ch != '$') {
-        if (shutting_down) return std::nullopt;
+    while (read(client_fd_, &ch, 1) == 1 && ch != '$') {
+        if (shutting_down_) return std::nullopt;
     }
 
-    if (shutting_down) return std::nullopt;
+    if (shutting_down_) return std::nullopt;
 
     // Read until '#' (start of checksum)
-    while (read(client_fd, &ch, 1) == 1 && ch != '#') {
+    while (read(client_fd_, &ch, 1) == 1 && ch != '#') {
         buf += ch;
     }
     */
@@ -346,14 +346,14 @@ std::optional<std::string> GdbStub::recv_packet() {
 
     // Wait for '$' — or return if disconnected
     while (true) {
-        ssize_t n = read(client_fd, &ch, 1);
+        ssize_t n = read(client_fd_, &ch, 1);
         if (n == 0) return std::nullopt;          // disconnected
         if (n < 0) {
             if (errno == EINTR) continue;
             return std::nullopt;
         }
 
-        if (shutting_down) return std::nullopt;
+        if (shutting_down_) return std::nullopt;
 
         if (static_cast<unsigned char>(ch) == 0x03) {
             return handle_ctrl_c();
@@ -366,14 +366,14 @@ std::optional<std::string> GdbStub::recv_packet() {
 
     // Read until '#' (start of checksum)
     while (true) {
-        ssize_t n = read(client_fd, &ch, 1);
+        ssize_t n = read(client_fd_, &ch, 1);
         if (n == 0) return std::nullopt;
         if (n < 0) {
             if (errno == EINTR) continue;
             return std::nullopt;
         }
 
-        if (shutting_down) return std::nullopt;
+        if (shutting_down_) return std::nullopt;
 
         if (static_cast<unsigned char>(ch) == 0x03) {
             // Ctrl+C Can come at any time, drop ongoing packet
@@ -387,11 +387,11 @@ std::optional<std::string> GdbStub::recv_packet() {
 
     // Read checksum (2 bytes)
     char csum1, csum2;
-    if (read(client_fd, &csum1, 1) != 1 || read(client_fd, &csum2, 1) != 1)
+    if (read(client_fd_, &csum1, 1) != 1 || read(client_fd_, &csum2, 1) != 1)
         return std::nullopt;
 
     // Always ACK the packet
-    if (write(client_fd, "+", 1) != 1)
+    if (write(client_fd_, "+", 1) != 1)
         return std::nullopt;
 
 
@@ -405,7 +405,7 @@ void GdbStub::send_packet(const std::string& data) {
     oss << "$" << data << "#" << std::hex << std::setw(2) << std::setfill('0') << (int)csum;
     std::string pkt = oss.str();
     //std::cout << "[GDB] Send packet [" << pkt << "]\n";
-    send(client_fd, pkt.c_str(), pkt.size(), 0);
+    send(client_fd_, pkt.c_str(), pkt.size(), 0);
 }
 
 std::string GdbStub::read_registers(CPU& cpu) {
@@ -485,13 +485,13 @@ void GdbStub::write_registers(CPU& cpu, const std::vector<uint8_t>& data) {
 }
 
 bool GdbStub::has_breakpoint(uint32_t addr) {
-    for (const auto& bp : breakpoints)
+    for (const auto& bp : breakpoints_)
         if (bp.addr == addr) return true;
     return false;
 }
 
 uint32_t GdbStub::get_breakpoint_instruction(uint32_t addr) {
-    for (const auto& bp : breakpoints)
+    for (const auto& bp : breakpoints_)
         if (bp.addr == addr) return bp.original_instr;
     
     return 0;
@@ -500,11 +500,11 @@ uint32_t GdbStub::get_breakpoint_instruction(uint32_t addr) {
 void GdbStub::insert_breakpoint(uint32_t addr) {
     if (has_breakpoint(addr)) return;
 
-    MMU& mmu = cpus[current_cpu]->get_mmu();
+    MMU& mmu = cpus_[current_cpu_]->get_mmu();
 
     try {
         uint32_t original = read_mem32(addr);
-        breakpoints.push_back({addr, original});
+        breakpoints_.push_back({addr, original});
         write_mem32(addr, 0x91d02001); // ta 1
     } catch (const std::exception& e) {
         // Maybe addr is virtual, and MMU not set up yet?
@@ -512,15 +512,15 @@ void GdbStub::insert_breakpoint(uint32_t addr) {
         // 0x0-0xefffffff -> 0x0-0xefffffff -rwx--- [983040 pages]                                                                                                                                       
         // 0xf0000000-0xfbffffff -> 0x40000000-0x4bffffff crwx--- [49152 pages]                                                                                                                          
         // 0xffd00000-0xffd13fff -> 0x43fec000-0x43ffffff crwx--- [20 pages]  
-        if ((!mmu.GetEnabled()) && (addr >= 0xf0000000) && (addr < 0xfbffffff)) {
+        if ((!mmu.get_enabled()) && (addr >= 0xf0000000) && (addr < 0xfbffffff)) {
             auto phys_addr = addr - (0xf0000000 - 0x40000000);
             uint32_t original = read_mem32(phys_addr);
-            breakpoints.push_back({addr, original});
+            breakpoints_.push_back({addr, original});
             write_mem32(phys_addr, 0x91d02001); // ta 1
-        } else if ((!mmu.GetEnabled()) && (addr >= 0xffd00000) && (addr < 0xffd13fff)) {
+        } else if ((!mmu.get_enabled()) && (addr >= 0xffd00000) && (addr < 0xffd13fff)) {
             auto phys_addr = addr - (0xffd00000 - 0x43fec000);
             uint32_t original = read_mem32(phys_addr);
-            breakpoints.push_back({addr, original});
+            breakpoints_.push_back({addr, original});
             write_mem32(phys_addr, 0x91d02001); // ta 1
         } else {
             std::cerr << "Insert breakpoint: " << e.what() << '\n';
@@ -533,14 +533,14 @@ void GdbStub::insert_breakpoint(uint32_t addr) {
 }
 
 void GdbStub::remove_breakpoint(uint32_t addr) {
-    MMU& mmu = cpus[current_cpu]->get_mmu();
+    MMU& mmu = cpus_[current_cpu_]->get_mmu();
 
-    for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
+    for (auto it = breakpoints_.begin(); it != breakpoints_.end(); ++it) {
         if (it->addr == addr) {
             try
             {
                 write_mem32(addr, it->original_instr);
-                breakpoints.erase(it);
+                breakpoints_.erase(it);
                 return;
             }
             catch(const std::exception& e)
@@ -551,14 +551,14 @@ void GdbStub::remove_breakpoint(uint32_t addr) {
                 // 0xf0000000-0xfbffffff -> 0x40000000-0x4bffffff crwx--- [49152 pages]                                                                                                                          
                 // 0xffd00000-0xffd13fff -> 0x43fec000-0x43ffffff crwx--- [20 pages]  
         
-                if ((!mmu.GetEnabled()) && (addr >= 0xf0000000) && (addr < 0xfbffffff)) {
+                if ((!mmu.get_enabled()) && (addr >= 0xf0000000) && (addr < 0xfbffffff)) {
                     auto phys_addr = addr - (0xf0000000 - 0x40000000);
                     write_mem32(phys_addr, it->original_instr);
-                    breakpoints.erase(it);
-                } else if ((!mmu.GetEnabled()) && (addr >= 0xffd00000) && (addr < 0xffd13fff)) {
+                    breakpoints_.erase(it);
+                } else if ((!mmu.get_enabled()) && (addr >= 0xffd00000) && (addr < 0xffd13fff)) {
                     auto phys_addr = addr - (0xffd00000 - 0x43fec000);
                     write_mem32(phys_addr, it->original_instr);
-                    breakpoints.erase(it);
+                    breakpoints_.erase(it);
                 } else{
                     std::cerr << "Remove breakpoint: " << e.what() << '\n';
                     throw std::runtime_error("Could not insert breakpoint at given adress."); 
@@ -632,20 +632,20 @@ bool GdbStub::handle_memory_write(uint32_t addr, size_t len, const std::string& 
 // Try to read memory assuming vaddr is available
 // If it fails, try the two normal mappings on linux boot
 uint32_t GdbStub::read_mem32(uint32_t vaddr) {
-    MMU& mmu = cpus[current_cpu]->get_mmu();
+    MMU& mmu = cpus_[current_cpu_]->get_mmu();
 
     uint32_t val = 0;
     if(mmu.MemAccess<intent_load, 4>(vaddr, val, CROSS_ENDIAN, true) == 0)
         return val;
     
     // Try standard mmu linux boot mappings
-    if ((!mmu.GetEnabled()) && (vaddr >= 0xf0000000) && (vaddr < 0xfbffffff)) {
+    if ((!mmu.get_enabled()) && (vaddr >= 0xf0000000) && (vaddr < 0xfbffffff)) {
         auto phys_addr = vaddr - (0xf0000000 - 0x40000000);
         if(mmu.MemAccess<intent_load, 4>(phys_addr, val, CROSS_ENDIAN, true) == 0)
             return val;
     }
 
-    if ((!mmu.GetEnabled()) && (vaddr >= 0xffd00000) && (vaddr < 0xffd13fff)) {
+    if ((!mmu.get_enabled()) && (vaddr >= 0xffd00000) && (vaddr < 0xffd13fff)) {
         auto phys_addr = vaddr - (0xffd00000 - 0x43fec000);
         if(mmu.MemAccess<intent_load, 4>(phys_addr, val, CROSS_ENDIAN, true) == 0)
             return val;
@@ -655,19 +655,19 @@ uint32_t GdbStub::read_mem32(uint32_t vaddr) {
 }
 
 void GdbStub::write_mem32(uint32_t vaddr, uint32_t value) {
-    MMU& mmu = cpus[current_cpu]->get_mmu();
+    MMU& mmu = cpus_[current_cpu_]->get_mmu();
 
     if(mmu.MemAccess<intent_store, 4>(vaddr, value, CROSS_ENDIAN, true) == 0)
         return;
         
     // Try standard mmu linux boot mappings
-    if ((!mmu.GetEnabled()) && (vaddr >= 0xf0000000) && (vaddr < 0xfbffffff)) {
+    if ((!mmu.get_enabled()) && (vaddr >= 0xf0000000) && (vaddr < 0xfbffffff)) {
         auto phys_addr = vaddr - (0xf0000000 - 0x40000000);
         if(mmu.MemAccess<intent_store, 4>(phys_addr, value, CROSS_ENDIAN, true) == 0)
             return;
     }
 
-    if ((!mmu.GetEnabled()) && (vaddr >= 0xffd00000) && (vaddr < 0xffd13fff)) {
+    if ((!mmu.get_enabled()) && (vaddr >= 0xffd00000) && (vaddr < 0xffd13fff)) {
         auto phys_addr = vaddr - (0xffd00000 - 0x43fec000);
         if(mmu.MemAccess<intent_store, 4>(phys_addr, value, CROSS_ENDIAN, true) == 0)
             return;

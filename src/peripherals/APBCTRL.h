@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _APBCTRL_H_
-#define _APBCTRL_H_
+#pragma once
 
 #include "gaisler/ambapp.h"
 
@@ -71,11 +70,11 @@ class APBCTRL : public IMemoryBank {
         }
 
 
-        GPTIMER& GetTimer() { return timer; }
-        IRQMP& GetIntc() { return irq; }
-        APBUART& GetUART() {return apbuart;}
-        APBUART& GetUART9() {return apbuart9;}
-        GRPCI2& GetGRPCI2() {return pci;}
+        GPTIMER& get_timer() { return timer; }
+        IRQMP& get_intc() { return irq; }
+        APBUART& get_uart() {return apbuart;}
+        APBUART& get_uart9() {return apbuart9;}
+        GRPCI2& get_grpci2() {return pci;}
 
         
         u8 read8(u32 addr) const override {
@@ -175,5 +174,4 @@ class APBCTRL : public IMemoryBank {
 };
 
 
-#endif
 

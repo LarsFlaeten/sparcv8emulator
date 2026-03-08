@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _GPTIMER_H_
-#define _GPTIMER_H_
+#pragma once
 
 #include "apb_slave.h"
 
@@ -409,4 +408,3 @@ class GPTIMER : public apb_slave {
 
 
 
-#endif

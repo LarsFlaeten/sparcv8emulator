@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _readelf_h_
-#define _readelf_h_
+#pragma once
 
 #include <elf.h>
 #include <string>
@@ -18,4 +17,3 @@ u32 ReadElf(const std::string& fname, MCtrl& mctrl, u32& entry_va, bool verbose 
 
 
 
-#endif

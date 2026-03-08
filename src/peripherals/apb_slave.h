@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _APB_SLAVE_H_
-#define _APB_SLAVE_H_
+#pragma once
 
 #include "../common.h"
 
@@ -25,4 +24,3 @@ public:
 };
 
 
-#endif

@@ -391,7 +391,7 @@ TEST_F(GRPCI2Test, ac97_init)
     // Set up what we need of memory and peripherals to test all this:
     mctrl.attach_bank<APBCTRL>(0x80000000, mctrl, irqmp);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
-    GRPCI2& grpci2 = apbctrl.GetGRPCI2();
+    GRPCI2& grpci2 = apbctrl.get_grpci2();
     grpci2.attach_device(std::move(ac97pci));
     mctrl.attach_bank<PCIIOCfgArea>(0xfffa0000, grpci2); // PCI CFG
     

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef CPU_H
-#define CPU_H
+#pragma once
 
 #include <cstdint>
 #include <iostream>
@@ -212,9 +211,9 @@ class CPU
         CPU(MCtrl& mctrl, IRQMP& intc, u32 cpu_id, std::ostream& out = std::cout) : cpu_id_(cpu_id), os(out), _interrupt(false), mmu(mctrl), intc(intc)
         { 
             // Set Cache control regs as TSIM does
-            mmu.SetCCR(0x00020000);
-            mmu.SetICCR(0x10220008);
-            mmu.SetDCCR(0x18220008);
+            mmu.set_ccr(0x00020000);
+            mmu.set_iccr(0x10220008);
+            mmu.set_dccr(0x18220008);
 
             // Register worker since we now have the unique name
             if (auto* dbg = DebugStopController::Global())
@@ -517,4 +516,3 @@ class CPU
 };
 
 
-#endif

@@ -22,7 +22,7 @@ void CPU::LDF_impl(pDecode_t d)
         u32 value = 0;
         int ret = mmu.MemAccess<intent_load, 4>(d->ev, value, CROSS_ENDIAN, super);
         //os << "ldf [" << d->ev << "], " << *(float*)(&value) << "f (0x" << std::hex << value << std::dec << ") [" << std::bitset<32>(value) << "]\n";
-        if((ret < 0) && !mmu.GetNoFault())
+        if((ret < 0) && !mmu.get_no_fault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             freg[d->rd] = value;
@@ -56,7 +56,7 @@ void CPU::LDDF_impl(pDecode_t d)
         int ret1 = mmu.MemAccess<intent_load, 4>(d->ev, value_hi, CROSS_ENDIAN, super);
         int ret2 = mmu.MemAccess<intent_load, 4>(d->ev+4, value_lo, CROSS_ENDIAN, super);
         
-        if(((ret1 < 0) || (ret2 < 0 ))&& !mmu.GetNoFault())
+        if(((ret1 < 0) || (ret2 < 0 ))&& !mmu.get_no_fault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             freg[d->rd] = value_hi;
@@ -83,7 +83,7 @@ void CPU::LDFSR_impl (pDecode_t d)
         u32 va = d->ev;
         u32 value = 0; // To avoid warning
         u32 ret1 = mmu.MemAccess<intent_load,4>(va, value, CROSS_ENDIAN);
-        if((ret1 < 0) && !mmu.GetNoFault())
+        if((ret1 < 0) && !mmu.get_no_fault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             fsr = value;
@@ -108,7 +108,7 @@ void CPU::STF_impl(pDecode_t d)
     } else {
         u32 value = freg[d->rd];
         int ret = mmu.MemAccess<intent_store, 4>(d->ev, value, CROSS_ENDIAN, super);
-        if((ret < 0) && !mmu.GetNoFault())
+        if((ret < 0) && !mmu.get_no_fault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             d->pc = d->npc;
@@ -140,7 +140,7 @@ void CPU::STDF_impl(pDecode_t d)
         u32 value_lo = freg[d->rd+1];
         int ret1 = mmu.MemAccess<intent_store, 4>(d->ev, value_hi, CROSS_ENDIAN, super);
         int ret2 = mmu.MemAccess<intent_store, 4>(d->ev+4, value_lo, CROSS_ENDIAN, super);
-        if(((ret1 < 0) || (ret2 < 0))&& !mmu.GetNoFault())
+        if(((ret1 < 0) || (ret2 < 0))&& !mmu.get_no_fault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             d->pc = d->npc;
@@ -166,7 +166,7 @@ void CPU::STFSR_impl (pDecode_t d)
         u32 va = d->ev;
         u32 value = fsr;
         u32 ret1 = mmu.MemAccess<intent_store,4>(va, value, CROSS_ENDIAN);
-        if((ret1 < 0) && !mmu.GetNoFault())
+        if((ret1 < 0) && !mmu.get_no_fault())
             trap(d,  SPARC_DATA_ACCESS_EXCEPTION); 
         else {
             d->pc = d->npc;

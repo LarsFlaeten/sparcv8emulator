@@ -6,7 +6,7 @@ int main() {
     std::vector<char> command;
 
     while(true) {
-        uart.Input();
+        uart.input();
 
         u32 index = 0;
         u32 r = uart.read(index);

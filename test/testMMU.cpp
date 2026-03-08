@@ -197,7 +197,7 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
     cpu.Reset(entry_va);
  */
    
-    EXPECT_FALSE(mmu.GetEnabled());
+    EXPECT_FALSE(mmu.get_enabled());
  
 
     // adress to indicate MMU op is taken from LOCALREG4
@@ -209,7 +209,7 @@ TEST_F(MMUTest, MMUInitAndChangeReg)
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set new register value:
-    EXPECT_EQ(mmu.GetControlReg(), 0x0011);
+    EXPECT_EQ(mmu.get_control_reg(), 0x0011);
 
 
 }
@@ -218,7 +218,7 @@ TEST_F(MMUTest, MMUEnableDisable)
 {     
     auto& mmu = cpu.get_mmu();
 
-    EXPECT_FALSE(mmu.GetEnabled());
+    EXPECT_FALSE(mmu.get_enabled());
  
     // adress to indicate MMU op is taken from LOCALREG4
     cpu.write_reg(0x00011, LOCALREG0); //0x0000 is VA/adress in MMU regs
@@ -228,13 +228,13 @@ TEST_F(MMUTest, MMUEnableDisable)
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set enabled bit to 1:
-    EXPECT_TRUE(mmu.GetEnabled());
+    EXPECT_TRUE(mmu.get_enabled());
 
     cpu.write_reg(0x00010, LOCALREG0); //0x0000 is VA/adress in MMU regs
  
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
     // MMU shuld now have set enabled bit to 0:
-    EXPECT_FALSE(mmu.GetEnabled());
+    EXPECT_FALSE(mmu.get_enabled());
 
 
 }
@@ -247,7 +247,7 @@ TEST_F(MMUTest, MMUInitCtxTblPtr)
     mmu.reset();
 
     // MMU shuld now have set new register value:
-    EXPECT_EQ(mmu.GetCtxTblPtr(), 0x0);
+    EXPECT_EQ(mmu.get_ctx_tbl_ptr(), 0x0);
 
     // adress to indicate MMU op is taken from LOCALREG4
     cpu.write_reg(0x4000200, LOCALREG0); //0x...... is value to write
@@ -257,7 +257,7 @@ TEST_F(MMUTest, MMUInitCtxTblPtr)
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now have set new register value:
-    EXPECT_EQ(mmu.GetCtxTblPtr(), 0x4000200);
+    EXPECT_EQ(mmu.get_ctx_tbl_ptr(), 0x4000200);
 
 }
 
@@ -266,7 +266,7 @@ TEST_F(MMUTest, MMUInitSetContext)
     auto& mmu = cpu.get_mmu();
 
     mmu.reset();
-    EXPECT_EQ(mmu.GetCtxNumber(), 0x0);
+    EXPECT_EQ(mmu.get_ctx_number(), 0x0);
  
     // adress to indicate MMU op is taken from LOCALREG4
     cpu.write_reg(0x42, LOCALREG0); //0x0042 is value to write
@@ -276,7 +276,7 @@ TEST_F(MMUTest, MMUInitSetContext)
     do_STA_instr(LOCALREG4, LOCALREG5, LOCALREG0, 0x19);
 
     // MMU shuld now ave new context:
-    EXPECT_EQ(mmu.GetCtxNumber(), 0x42);
+    EXPECT_EQ(mmu.get_ctx_number(), 0x42);
 
 }
 
@@ -340,7 +340,7 @@ TEST_F(MMUTest, MMUBypassRAMReadWrite2)
     
     // MMU shuld be off for this test, as we mix bypass
     // and normal MMU ops (without virtual mapping):
-    EXPECT_FALSE(mmu.GetEnabled());
+    EXPECT_FALSE(mmu.get_enabled());
 
 
     
@@ -368,9 +368,9 @@ TEST_F(MMUTest, CacheControlregs)
 {
     auto& mmu = cpu.get_mmu();
 
-    u32 ccr = mmu.GetCCR();
-    u32 iccr = mmu.GetICCR();
-    u32 dccr = mmu.GetDCCR();
+    u32 ccr = mmu.get_ccr();
+    u32 iccr = mmu.get_iccr();
+    u32 dccr = mmu.get_dccr();
 
     ASSERT_EQ(ccr, 0);
     ASSERT_EQ(iccr, 0);
@@ -384,14 +384,14 @@ TEST_F(MMUTest, CacheControlregs)
     // dcfg         Dcache config register            0x18220008
     // asr17        Processor config register         0x00000d07
 
-    mmu.SetCCR(0x00020000);
-    mmu.SetICCR(0x10220008);
-    mmu.SetDCCR(0x18220008);
+    mmu.set_ccr(0x00020000);
+    mmu.set_iccr(0x10220008);
+    mmu.set_dccr(0x18220008);
 
 
-    ccr = mmu.GetCCR();
-    iccr = mmu.GetICCR();
-    dccr = mmu.GetDCCR();
+    ccr = mmu.get_ccr();
+    iccr = mmu.get_iccr();
+    dccr = mmu.get_dccr();
 
     ASSERT_EQ(ccr, 0x00020000);
     ASSERT_EQ(iccr, 0x10220008);
@@ -408,7 +408,7 @@ TEST_F(MMUTest, MMUTLBCacheLvl3)
 {
     auto& mmu = cpu.get_mmu();
 
-    auto ctx = mmu.GetCtxNumber();
+    auto ctx = mmu.get_ctx_number();
     ASSERT_EQ(ctx, 0);
 	u32 pte = 0;
     u8 level = 0;
@@ -560,7 +560,7 @@ TEST_F(MMUTest, MMUTLBCacheAllLvls)
 {
     auto& mmu = cpu.get_mmu();
 
-    ASSERT_EQ(mmu.GetCtxNumber(), 0);
+    ASSERT_EQ(mmu.get_ctx_number(), 0);
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x200001e;
@@ -628,7 +628,7 @@ TEST_F(MMUTest, MMUTLBCacheLvl12_ctx_switch)
 {
     auto& mmu = cpu.get_mmu();
 
-    ASSERT_EQ(mmu.GetCtxNumber(), 0);
+    ASSERT_EQ(mmu.get_ctx_number(), 0);
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x600001e;
@@ -674,8 +674,8 @@ TEST_F(MMUTest, MMUTLBCacheLvl12_ctx_switch)
 	ASSERT_FALSE(found);
 
     // Switch context, all TLBS should now be invalid
-    mmu.SetCtxNumber(42);
-    auto ctx = mmu.GetCtxNumber();
+    mmu.set_ctx_number(42);
+    auto ctx = mmu.get_ctx_number();
 	ASSERT_EQ(ctx, 42);
 	
     found = mmu.get_itlb().lookup(ctx, va, pte_out_i, level_out_i);
@@ -753,7 +753,7 @@ TEST_F(MMUTest, MMUTLBCacheFlush)
 {
     auto& mmu = cpu.get_mmu();
 
-    ASSERT_EQ(mmu.GetCtxNumber(), 0);
+    ASSERT_EQ(mmu.get_ctx_number(), 0);
 	
 	u32 va = 0x60000d90;
 	u32 PTE = 0x600001e;
@@ -877,7 +877,7 @@ TEST_F(MMUTest, MMUTables)
     auto& mmu = cpu.get_mmu();
 
     // MMU shuld be off in the start
-    ASSERT_FALSE(mmu.GetEnabled());
+    ASSERT_FALSE(mmu.get_enabled());
 
  	// Point the MMU table pointer to the correct location in RAM:
 	// MUMU Tables base: 0x60002000 (ctx = 0)
@@ -912,7 +912,7 @@ TEST_F(MMUTest, MMUTables)
 	mmu_init(mmu);
 
 
-    ASSERT_TRUE(mmu.GetEnabled());
+    ASSERT_TRUE(mmu.get_enabled());
 
     // Fill up RAM with the values of each words physical address:
     for(u32 pa = 0x60010000; pa < 0x61000000; pa += 4)
@@ -955,34 +955,34 @@ TEST_F(MMUTest, MMUTables)
     u32 val;
     int ret = mmu.MemAccess<intent_load>(0xF1000000, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -5); // Bus error
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xF1000000);
+    ASSERT_EQ(mmu.get_fault_address(), 0xF1000000);
 
     ret = mmu.MemAccess<intent_load>(0xFBFFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -5);
-    //ASSERT_EQ(mmu.GetFaultAddress(), 0xFBFFF000); // Corresponing page
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xFBFFFFFC); // We now do full VA
+    //ASSERT_EQ(mmu.get_fault_address(), 0xFBFFF000); // Corresponing page
+    ASSERT_EQ(mmu.get_fault_address(), 0xFBFFFFFC); // We now do full VA
 
     // Area not mapped,  * 0xFC000000-0xFFCFFFFF: Not Mapped
     ret = mmu.MemAccess<intent_load>(0xFC000000, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xFC000000);
+    ASSERT_EQ(mmu.get_fault_address(), 0xFC000000);
 
     ret = mmu.MemAccess<intent_load>(0xFFCFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    //ASSERT_EQ(mmu.GetFaultAddress(), 0xFFCFF000);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFCFFFFC); // We now do full VA
+    //ASSERT_EQ(mmu.get_fault_address(), 0xFFCFF000);
+    ASSERT_EQ(mmu.get_fault_address(), 0xFFCFFFFC); // We now do full VA
 
 
     // Area not mapped,   * 0xFFD3FFFF-0xFFFFFFFF: Not Mapped
     ret = mmu.MemAccess<intent_load>(0xFFD3FFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    //ASSERT_EQ(mmu.GetFaultAddress(), 0xFFD3F000);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFD3FFFC); // We now do full VA
+    //ASSERT_EQ(mmu.get_fault_address(), 0xFFD3F000);
+    ASSERT_EQ(mmu.get_fault_address(), 0xFFD3FFFC); // We now do full VA
 
     ret = mmu.MemAccess<intent_load>(0xFFFFFFFC, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, -1);
-    //ASSERT_EQ(mmu.GetFaultAddress(), 0xFFFFF000);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xFFFFFFFC); // We now do full VA
+    //ASSERT_EQ(mmu.get_fault_address(), 0xFFFFF000);
+    ASSERT_EQ(mmu.get_fault_address(), 0xFFFFFFFC); // We now do full VA
 
     
     // Read memory through MMU translation for 81 kb PROM (mapped to end of ram)
@@ -1011,7 +1011,7 @@ TEST_F(MMUTest, MMUFaults)
     auto& mmu = cpu.get_mmu();
 
     // MMU shuld be off in the start
-    ASSERT_FALSE(mmu.GetEnabled());
+    ASSERT_FALSE(mmu.get_enabled());
 
  	// Point the MMU table pointer to the correct location in RAM:
 	// MUMU Tables base: 0x60002000 (ctx = 0)
@@ -1033,7 +1033,7 @@ TEST_F(MMUTest, MMUFaults)
 
 	mmu_table_init(mctrl, 0x61000000);
 	mmu_init(mmu);
-    ASSERT_TRUE(mmu.GetEnabled());
+    ASSERT_TRUE(mmu.get_enabled());
 
 
 
@@ -1048,7 +1048,7 @@ TEST_F(MMUTest, MMUFaults)
     ret = mmu.MemAccess<intent_load>(0x6000000F, val, CROSS_ENDIAN);
     ASSERT_EQ(ret, 0);
     //ASSERT_EQ(ret, -3);
-    //ASSERT_EQ(mmu.GetFaultAddress(), 0x60000000); // Corresponding page
+    //ASSERT_EQ(mmu.get_fault_address(), 0x60000000); // Corresponding page
 
     // Get a level 3 and level 1 physical address we can play with
     u32 pa_l3 = mctrl.read32(_mmu_ctx0_ffd_level3[0]) >> 8;
@@ -1061,8 +1061,8 @@ TEST_F(MMUTest, MMUFaults)
     ret = mmu.MemAccess<intent_load>(0xffd00000, val, CROSS_ENDIAN, false);
     
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xffd00000);
-    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x7, 3); // Privilege error
+    ASSERT_EQ(mmu.get_fault_address(), 0xffd00000);
+    ASSERT_EQ((mmu.get_fault_status() >> 2) & 0x7, 3); // Privilege error
 
     // Lvl 3 Supervisor page read only. Execute and write should fail, load shuold be fine
     mmu.flush();
@@ -1073,14 +1073,14 @@ TEST_F(MMUTest, MMUFaults)
     mmu.flush();
     ret = mmu.MemAccess<intent_store>(0xffd00000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xffd00000);
-    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x7, 2); // Protection error
+    ASSERT_EQ(mmu.get_fault_address(), 0xffd00000);
+    ASSERT_EQ((mmu.get_fault_status() >> 2) & 0x7, 2); // Protection error
 
     mmu.flush();
     ret = mmu.MemAccess<intent_execute>(0xffd00000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0xffd00000);
-    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x3, 2); // Protection error
+    ASSERT_EQ(mmu.get_fault_address(), 0xffd00000);
+    ASSERT_EQ((mmu.get_fault_status() >> 2) & 0x3, 2); // Protection error
 
     // Lvl 1 Supervisor page read only. Execute and write should fail, load shuold be fine
     mmu.flush();
@@ -1091,14 +1091,14 @@ TEST_F(MMUTest, MMUFaults)
     mmu.flush();
     ret = mmu.MemAccess<intent_store>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(mmu.GetFaultAddress(),  0x60000000);
-    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x7, 2); // Protection error
+    ASSERT_EQ(mmu.get_fault_address(),  0x60000000);
+    ASSERT_EQ((mmu.get_fault_status() >> 2) & 0x7, 2); // Protection error
 
     mmu.flush();
     ret = mmu.MemAccess<intent_execute>(0x60000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
-    ASSERT_EQ(mmu.GetFaultAddress(), 0x60000000);
-    ASSERT_EQ((mmu.GetFaultStatus() >> 2) & 0x7, 2); // Protection error
+    ASSERT_EQ(mmu.get_fault_address(), 0x60000000);
+    ASSERT_EQ((mmu.get_fault_status() >> 2) & 0x7, 2); // Protection error
 
     // All Access types
     
@@ -1324,7 +1324,7 @@ TEST_F(MMUTest, MMUFaults)
     ret = mmu.MemAccess<intent_load>(0x50000000, val, CROSS_ENDIAN, true);
     ASSERT_LT(ret, 0);
 
-    auto fsr = mmu.GetFaultStatus();
+    auto fsr = mmu.get_fault_status();
     ASSERT_EQ((fsr >> 2) & LOBITS3, 5); // FT == 5, Access Bus Error
     ASSERT_EQ((fsr >> 1) & 0x1, 0x1); // FAV == 1, Fault Address Valid
     ASSERT_EQ((fsr >> 5) & LOBITS3, 0x1); // AT == 1, Load from super data
@@ -1342,7 +1342,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     auto& mmu = cpu.get_mmu();
 
     // MMU shuld be off in the start
-    ASSERT_FALSE(mmu.GetEnabled());
+    ASSERT_FALSE(mmu.get_enabled());
 
  	// Point the MMU table pointer to the correct location in RAM:
 	// MUMU Tables base: 0x60002000 (ctx = 0)
@@ -1361,7 +1361,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     }
 	mmu_table_init(mctrl, 0x61000000);
 	mmu_init(mmu);
-    ASSERT_TRUE(mmu.GetEnabled());
+    ASSERT_TRUE(mmu.get_enabled());
 
     // Read MMU controlreg:
     cpu.write_reg(0x000,  LOCALREG1); // MMU Control reg...
@@ -1439,7 +1439,7 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     cpu.write_reg(0x0,  LOCALREG2); 
     cpu.write_reg(0x0,  LOCALREG3); 
   
-    ASSERT_FALSE(mmu.GetNoFault());
+    ASSERT_FALSE(mmu.get_no_fault());
         
 
     do_LDA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
@@ -1449,9 +1449,9 @@ TEST_F(MMUTest, MMUFaults_cpuOP)
     do_STA_instr(LOCALREG1, LOCALREG2, LOCALREG3, ASI_M_MMUREGS );
    
     // Check that we got the control reg right:
-    u32 c = mmu.GetControlReg();
+    u32 c = mmu.get_control_reg();
     ASSERT_EQ( c & 0x2, 0x2);
-    ASSERT_TRUE(mmu.GetNoFault());
+    ASSERT_TRUE(mmu.get_no_fault());
 
     // Change to user mode:
     psr = cpu.get_psr(); 
@@ -1572,15 +1572,15 @@ void mmu_table_init(MCtrl& mctrl, u32 end_of_mem)
 void mmu_init(MMU& mmu)
 {
    
-	mmu.SetCtxTblPtr((0x60002000 >> 4) & 0xfffffff0);
+	mmu.set_ctx_tbl_ptr((0x60002000 >> 4) & 0xfffffff0);
     
     // Flush TLB
     mmu.flush();
 
     // Enable MMU:
-    u32 creg = mmu.GetControlReg();
+    u32 creg = mmu.get_control_reg();
     creg = creg | 0x1;
-    mmu.SetControlReg(creg);
+    mmu.set_control_reg(creg);
  
 /*
 	// Setup MMU

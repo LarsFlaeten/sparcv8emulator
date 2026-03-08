@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _CONSOLE_H_
-#define _CONSOLE_H_
+#pragma once
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -82,4 +81,3 @@ public:
     }
 };
 
-#endif

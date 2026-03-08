@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _SVGA_H_
-#define _SVGA_H_
+#pragma once
 
 #include "apb_slave.h"
 #include "gaisler/ambapp_ids.h"
@@ -138,4 +137,3 @@ public:
 };
 
 
-#endif

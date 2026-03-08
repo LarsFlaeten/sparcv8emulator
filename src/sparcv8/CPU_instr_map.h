@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _CPU_INSTR_MAP_H
-#define _CPU_INSTR_MAP_H
+#pragma once
 
 // Map instructions to common functions
 
@@ -86,5 +85,4 @@
 #endif
 
 
-#endif
 

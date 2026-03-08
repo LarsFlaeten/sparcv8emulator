@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#ifndef _dis_h_
-#define _dis_h_
+#pragma once
 
 #include "sparcv8/CPU.h"
 
@@ -57,4 +56,3 @@ static std::string cond_byte [16] = {
    "gu ", "cc ", "pos", "vc"
 };
 
-#endif

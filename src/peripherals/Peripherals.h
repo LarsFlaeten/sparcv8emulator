@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _PERIPHERALS_H_
-#define _PERIPHERALS_H_
+#pragma once
 
 #include <map>
 #include <iostream> 
@@ -43,4 +42,3 @@ class AMBA_IO {
 
 
 
-#endif

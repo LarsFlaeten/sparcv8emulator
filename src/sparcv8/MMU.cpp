@@ -250,14 +250,14 @@ AtomicResult MMU::atomic_swap32(u32 vaddr, bool supervisor, u32 value) {
     AtomicResult r = {};
     
     u32 paddr = 0x0;
-    if(GetEnabled()) {
-        auto tr = translate_va(vaddr, supervisor, intent_load, !GetNoFault());
+    if(get_enabled()) {
+        auto tr = translate_va(vaddr, supervisor, intent_load, !get_no_fault());
         if(!tr.ok) {
             return {false, 0x0U};    
         }
 
         // Check perms for write too, since swap is rw
-        auto ft = check_perms(vaddr,tr.pte, intent_store, supervisor, tr.level, !GetNoFault());
+        auto ft = check_perms(vaddr,tr.pte, intent_store, supervisor, tr.level, !get_no_fault());
         if(ft != 0) {
             return {false, 0x0U};       
         }
@@ -294,8 +294,8 @@ AtomicResult MMU::atomic_casa32(u32 vaddr, bool supervisor, u32 expected, u32 de
     
     MMUTranslateResult tr = {};
 
-    if(GetEnabled()) {
-        tr = translate_va(vaddr, supervisor, intent_load, !GetNoFault());
+    if(get_enabled()) {
+        tr = translate_va(vaddr, supervisor, intent_load, !get_no_fault());
         if(!tr.ok) {
             r.ok = false;
             return r;    
@@ -323,8 +323,8 @@ AtomicResult MMU::atomic_casa32(u32 vaddr, bool supervisor, u32 expected, u32 de
     r.old = pbank->read32_nolock(paddr_old);
     if (r.old == expected) {
         // Check permissions for store also
-        if(GetEnabled()) {
-            auto ft = check_perms(vaddr, tr.pte, intent_store, supervisor, tr.level, !GetNoFault());
+        if(get_enabled()) {
+            auto ft = check_perms(vaddr, tr.pte, intent_store, supervisor, tr.level, !get_no_fault());
             if(ft != 0) {
                 r.ok = false;
                 return r;    
@@ -400,7 +400,7 @@ MMUTranslateResult MMU::translate_va(u32 vaddr, bool supervisor, intent rw, bool
      
     
     // Lookup from TLB
-    auto ctx = GetCtxNumber();
+    auto ctx = get_ctx_number();
     u32 pte = 0;
     u8 level = 0;
     bool found = false;

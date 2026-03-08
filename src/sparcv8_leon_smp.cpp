@@ -156,7 +156,7 @@ int main(int argc, char **argv) {
     CVLOG_MUTE();
     
     DebugStopController dbg;
-    DebugStopController::InstallGlobal(&dbg);
+    DebugStopController::install_global(&dbg);
 
     set_thread_name("main");
     // Set up handler for external SIGINTs
@@ -229,10 +229,10 @@ int main(int argc, char **argv) {
     auto end_of_ram = mctrl.find_bank(0x40000000)->get_end_exclusive();
 
     // Get the devices we need to interact with
-    auto& uart = apbctrl.GetUART();
+    auto& uart = apbctrl.get_uart();
     
     // Set up timer
-    auto& timer = apbctrl.GetTimer();
+    auto& timer = apbctrl.get_timer();
     timer.set_LEON_smp_state();
 
     // Read the ELF and get the entry point, then reset all cpus.
@@ -280,7 +280,7 @@ int main(int argc, char **argv) {
     std::cout << "Creating bus clock\n";
     auto bus = std::make_unique<BusClock>(intc, timer, uart);
     
-    bus->setFrequency(config.system_freq_hz);
+    bus->set_frequency(config.system_freq_hz);
     timer.set_system_freq(config.system_freq_hz);
    
     std::cout << "Creating " << (int)config.num_cpus << " cpu threads\n";
@@ -311,7 +311,7 @@ int main(int argc, char **argv) {
     }
     
     bus->stop();
-    auto stats = bus->getStats();
+    auto stats = bus->get_stats();
     std::cout << stats << std::endl;
 
     DebugStopController::Global()->dump_stderr();
@@ -338,7 +338,7 @@ int main(int argc, char **argv) {
               << "** Wall time: " << elapsed_s << " s\n"
               << "** Emulation complete.\n";
 
-    DebugStopController::UninstallGlobal(&dbg);
+    DebugStopController::uninstall_global(&dbg);
     return 0;
     
 

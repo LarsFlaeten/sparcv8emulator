@@ -55,7 +55,7 @@ void CPU::CASA (pDecode_t d)
 
     auto r = mmu.atomic_casa32(rs1_addr, super, expected, desired, swapped);
 
-    if(!r.ok && !mmu.GetNoFault()) {
+    if(!r.ok && !mmu.get_no_fault()) {
         trap(d,  SPARC_DATA_ACCESS_EXCEPTION);
         return;
     }

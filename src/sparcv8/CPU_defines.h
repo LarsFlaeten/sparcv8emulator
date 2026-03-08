@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _CPU_DEFINES_H_
-#define _CPU_DEFINES_H_
+#pragma once
 
 #include <exception>
 
@@ -180,4 +179,3 @@
 #define ASI_LEON_BYPASS 0x1c
 
 
-#endif

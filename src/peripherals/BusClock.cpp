@@ -34,7 +34,7 @@ BusClock::BusClock(IRQMP& irqmp, GPTIMER& timer, APBUART& uart)
 {
     // Register worker
     if (auto* dbg = DebugStopController::Global())
-        wtoken = dbg->register_worker("BusClock");
+        wtoken_ = dbg->register_worker("BusClock");
 }
 
 BusClock::~BusClock() {
@@ -57,31 +57,31 @@ void BusClock::stop() {
     cv_.notify_all(); // Wake any waiting cpus
 }
 
-void BusClock::setFrequency(double freq_hz) {
+void BusClock::set_frequency(double freq_hz) {
     //std::lock_guard<std::mutex> lock(mtx_);
     cvlog::LockGuard lock(mtx_);
     clock_freq_hz_ = freq_hz;
 }
 
-double BusClock::getFrequency() const {
+double BusClock::get_frequency() const {
     //std::lock_guard<std::mutex> lock(mtx_);
     cvlog::LockGuard lock(mtx_);
     return clock_freq_hz_;
 }
 
-void BusClock::addDevice(std::shared_ptr<Tickable> dev) {
+void BusClock::add_device(std::shared_ptr<Tickable> dev) {
     //std::lock_guard<std::mutex> lock(mtx_);
     cvlog::LockGuard lock(mtx_);
     devices_.push_back(std::move(dev));
 }
 
-void BusClock::clearDevices() {
+void BusClock::clear_devices() {
     //std::lock_guard<std::mutex> lock(mtx_);
     cvlog::LockGuard lock(mtx_);    
     devices_.clear();
 }
 
-BusClock::Stats BusClock::getStats() const {
+BusClock::Stats BusClock::get_stats() const {
     //std::lock_guard<std::mutex> lock(stats_mtx_);
     cvlog::LockGuard lock(mtx_);
     return stats_;
@@ -125,7 +125,7 @@ void BusClock::run() {
         while (running_) {
         auto iter_start = clock::now();
 
-        if (auto* dbg = DebugStopController::Global()) dbg->checkpoint(wtoken);
+        if (auto* dbg = DebugStopController::Global()) dbg->checkpoint(wtoken_);
 
         // compute due ticks from wall time
         auto now = clock::now();
@@ -160,7 +160,7 @@ void BusClock::run() {
                 uart_div = 0;
                 timer_.unlock();
                 uart_.tick_scheduled();
-                if (uart_.CheckIRQ())
+                if (uart_.check_irq())
                     irqmp_.trigger_irq(4);
                 timer_.lock();
             }

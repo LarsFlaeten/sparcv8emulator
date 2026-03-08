@@ -47,20 +47,20 @@ void CPU::LDA_impl (pDecode_t d) {
         case(ASI_M_MMUREGS):
             switch(address) {
                 case(0x0):
-                    d->value = mmu.GetControlReg();
+                    d->value = mmu.get_control_reg();
                     break;
                 case(0x100):
-                    d->value = mmu.GetCtxTblPtr();
+                    d->value = mmu.get_ctx_tbl_ptr();
                     break;
                 case(0x200):
-                    d->value = mmu.GetCtxNumber();
+                    d->value = mmu.get_ctx_number();
                     break;
                 case(0x300):
-                    d->value = mmu.GetFaultStatus();
-                    mmu.ClearFaultStatus(); // Clear on read, ref turboSparc
+                    d->value = mmu.get_fault_status();
+                    mmu.clear_fault_status(); // Clear on read, ref turboSparc
                     break;
                 case(0x400):
-                    d->value = mmu.GetFaultAddress();
+                    d->value = mmu.get_fault_address();
                     break;
                 default:
                     throw not_implemented_leon_exception("Address not implemented for MMU access"); 
@@ -78,13 +78,13 @@ void CPU::LDA_impl (pDecode_t d) {
             offset = address & 0xf;
             switch(offset) {
                 case(0x0):
-                    d->value = mmu.GetCCR();
+                    d->value = mmu.get_ccr();
                     break;
                 case(0x8):
-                    d->value = mmu.GetICCR();
+                    d->value = mmu.get_iccr();
                     break;
                 case(0xc):
-                    d->value = mmu.GetDCCR();
+                    d->value = mmu.get_dccr();
                     break;
                 default:
                     throw std::runtime_error("ASI=0x2 with offset != 0,8,c not implemented");
@@ -164,14 +164,14 @@ void CPU::STA_impl (pDecode_t d) {
             //os << std::hex << (address & ~0xff) << "\n";
             switch(address) {
                 case(0x000):
-                    mmu.SetControlReg(rd_value);
+                    mmu.set_control_reg(rd_value);
                     break;
                 case(0x100):
-                    mmu.SetCtxTblPtr(rd_value);
+                    mmu.set_ctx_tbl_ptr(rd_value);
                     //os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
                     break;
                 case(0x200):
-                    mmu.SetCtxNumber(rd_value);
+                    mmu.set_ctx_number(rd_value);
                     //os << std::format("{:#08x} {}      {} {:#08x} , {:#08x} asi: {:#08x}\n", d->PC, op, DispRegStr(d->rd), rd_value, address, ASI);
                     break;
                 default:
@@ -190,13 +190,13 @@ void CPU::STA_impl (pDecode_t d) {
             offset = address & 0xf;
             switch(offset) {
                 case(0x0):
-                    mmu.SetCCR(rd_value);
+                    mmu.set_ccr(rd_value);
                     break;
                 case(0x8):
-                    mmu.SetICCR(rd_value);
+                    mmu.set_iccr(rd_value);
                     break;
                 case(0xc):
-                    mmu.SetDCCR(rd_value);
+                    mmu.set_dccr(rd_value);
                     break;
                 default:
                     throw std::runtime_error("ASI=0x2 with offset != 0,8,c not implemented");

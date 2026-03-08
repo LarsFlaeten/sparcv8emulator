@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _IRQMP_H_
-#define _IRQMP_H_
+#pragma once
 
 #include "../common.h"
 
@@ -30,44 +29,44 @@
 class IRQMP {
     private:
         // Regs mapped into APB address space
-        u32 ILEVEL;
-        u32 IPEND;
-        u32 IFORCE;
-        u32 ICLEAR;
-        u32 MPSTAT;
-        u32 BRDCST;
-        u32 ERRSTAT;
-        u32 AMPCTRL;
-        u32 PIFORCE[8]; // Processor n interrupt force register (when ncpu > 1)
-        u32 PIMASK[8]; // Processor n interrupt mask registers
+        u32 ilevel_;
+        u32 ipend_;
+        u32 iforce_;
+        u32 iclear_;
+        u32 mpstat_;
+        u32 brdcst_;
+        u32 errstat_;
+        u32 ampctrl_;
+        u32 piforce_[8]; // Processor n interrupt force register (when ncpu > 1)
+        u32 pimask_[8]; // Processor n interrupt mask registers
 
         u32 num_cpus_;
         u32 num_active_cpus_;
-        u8  barrier_irl;
+        u8  barrier_irl_;
 
         // Lock-free IRQ hint per CPU: highest pending+unmasked IRL, or 0.
         // Updated under unique_lock; read from CPU hot-path without any lock.
         std::atomic<u32> irq_hint_[8]{};
 
-        mutable std::shared_mutex mtx;
+        mutable std::shared_mutex mtx_;
 
-        void update_hints_locked(); // must hold unique_lock on mtx
+        void update_hints_locked(); // must hold unique_lock on mtx_
 
         std::vector<CPU*> cpu_ptrs_;
 
     public:
         IRQMP(u8 num_cpus):
-            ILEVEL(0),
-            IPEND(0),
-            IFORCE(0),
-            ICLEAR(0),
-            MPSTAT(0),
-            BRDCST(0),
-            ERRSTAT(0),
-            AMPCTRL(0),
+            ilevel_(0),
+            ipend_(0),
+            iforce_(0),
+            iclear_(0),
+            mpstat_(0),
+            brdcst_(0),
+            errstat_(0),
+            ampctrl_(0),
             num_cpus_(num_cpus),
             num_active_cpus_(0),
-            barrier_irl(8)
+            barrier_irl_(8)
         {
             reset();
         }
@@ -81,7 +80,7 @@ class IRQMP {
         }
 
         u32 get_number_active_cpus() const {
-            std::shared_lock lock(mtx);
+            std::shared_lock lock(mtx_);
             return num_active_cpus_;
         }
 
@@ -105,15 +104,15 @@ class IRQMP {
         }
 
         void dump_state() const {
-            std::shared_lock lock(mtx);
-            std::cout << "[IRQMP] ILEVEL=0x" << std::hex << ILEVEL
-                    << " IPEND=0x" << IPEND
-                    << " BRDCST=0x" << BRDCST
+            std::shared_lock lock(mtx_);
+            std::cout << "[IRQMP] ilevel_=0x" << std::hex << ilevel_
+                    << " ipend_=0x" << ipend_
+                    << " brdcst_=0x" << brdcst_
                     << std::dec << "\n";
             for (u8 c = 0; c < num_cpus_; ++c) {
                 std::cout << "  cpu" << int(c)
-                        << " MASK=0x" << std::hex << PIMASK[c]
-                        << " PIFORCE=0x" << PIFORCE[c]
+                        << " MASK=0x" << std::hex << pimask_[c]
+                        << " piforce_=0x" << piforce_[c]
                         << std::dec << "\n";
             }
         }
@@ -124,5 +123,4 @@ class IRQMP {
 
 
 
-#endif
 

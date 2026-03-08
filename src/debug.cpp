@@ -146,7 +146,7 @@ struct TR {
 };
 
 void debug_mmu_tlbs() {
-    if(!debug_mmu_ptr->GetEnabled()) {
+    if(!debug_mmu_ptr->get_enabled()) {
         std::cout << "MMU not enabled..\n";
         return;
     }
@@ -160,15 +160,15 @@ void debug_mmu_tlbs() {
 
 void debug_mmu_tables() {
 
-    if(!debug_mmu_ptr->GetEnabled()) {
+    if(!debug_mmu_ptr->get_enabled()) {
         std::cout << "MMU not enabled..\n";
         return;
     }
 
     std::vector<TR> trs;
 
-    auto ctx_tbl_ptr = debug_mmu_ptr->GetCtxTblPtr();
-    auto ctx_n = debug_mmu_ptr->GetCtxNumber();
+    auto ctx_tbl_ptr = debug_mmu_ptr->get_ctx_tbl_ptr();
+    auto ctx_n = debug_mmu_ptr->get_ctx_number();
     std::cout << "MMU table for CPU 0, ctx " << std::hex << ctx_n << "\n";
         
     // Fetch PTD from the context table 
@@ -276,7 +276,7 @@ void debug_print_amba_pnp() {
         return;
     }
 
-    auto& mctrl = debug_mmu_ptr->GetMCTRL();
+    auto& mctrl = debug_mmu_ptr->get_mctrl();
 
     Read32 r32 = [&](u32 a){ return mctrl.read32(a); };
         
@@ -290,7 +290,7 @@ void debug_print_memory_banks() {
         return;
     }
 
-    auto& mctrl = debug_mmu_ptr->GetMCTRL();
+    auto& mctrl = debug_mmu_ptr->get_mctrl();
 
     mctrl.debug_list_banks();
 }

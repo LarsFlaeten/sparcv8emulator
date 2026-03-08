@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _AMBA_H_
-#define _AMBA_H_
+#pragma once
 
 #include "../sparcv8/MMU.h"
 
@@ -13,4 +12,3 @@ void amba_apb_pnp_setup(MCtrl& mctrl);
 
 
 
-#endif

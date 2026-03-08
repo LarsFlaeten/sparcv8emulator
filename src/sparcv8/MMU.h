@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#ifndef _MMU_H_
-#define _MMU_H_
+#pragma once
 
 #include <cstdint>
 #include <array>
@@ -162,53 +161,53 @@ class MMU {
     }
     
 public:
-    MCtrl&  GetMCTRL() {return mctrl;}
+    MCtrl&  get_mctrl() {return mctrl;}
 
-    void SetControlReg(u32 value) {
+    void set_control_reg(u32 value) {
         if ((value & 0x1) != (control_reg & 0x1)) {
             fetch_cache_.vpage = ~0u; // Invalidate on MMU enable/disable transition
             data_cache_.vpage  = ~0u;
         }
         control_reg = value;
     }
-    u32 GetControlReg() {return control_reg;}
+    u32 get_control_reg() {return control_reg;}
  
-    bool GetEnabled() {return control_reg & 0x1;}
+    bool get_enabled() {return control_reg & 0x1;}
  
     TLB& get_itlb() {return itlb;}
     TLB& get_dtlb() {return dtlb;}
     
-    bool GetNoFault() {return (control_reg & 0x2) >> 1 == 0x1;};
+    bool get_no_fault() {return (control_reg & 0x2) >> 1 == 0x1;};
 
-    void SetCCR(u32 value) {
+    void set_ccr(u32 value) {
         ccr = value;
     }
-    u32 GetCCR() {return ccr;}
+    u32 get_ccr() {return ccr;}
      
-    void SetICCR(u32 value) {
+    void set_iccr(u32 value) {
         iccr = value;
     }
-    u32 GetICCR() {return iccr;}
+    u32 get_iccr() {return iccr;}
      
-    void SetDCCR(u32 value) {
+    void set_dccr(u32 value) {
         dccr = value;
     }
-    u32 GetDCCR() {return dccr;}
+    u32 get_dccr() {return dccr;}
  
-    void SetCtxTblPtr(u32 value) {
+    void set_ctx_tbl_ptr(u32 value) {
         ctx_tbl_ptr = value;
     }
-    u32 GetCtxTblPtr() {return ctx_tbl_ptr;}
+    u32 get_ctx_tbl_ptr() {return ctx_tbl_ptr;}
  
-    void SetCtxNumber(u32 value) {
+    void set_ctx_number(u32 value) {
         ctx_n = value;
     }
-    u32 GetCtxNumber() {return ctx_n;}
+    u32 get_ctx_number() {return ctx_n;}
  
-    u32 GetFaultAddress() {return fault_address_reg;}
+    u32 get_fault_address() {return fault_address_reg;}
 
-    u32 GetFaultStatus() {return fault_status_reg;}
-    void ClearFaultStatus() {fault_status_reg = 0x0;}
+    u32 get_fault_status() {return fault_status_reg;}
+    void clear_fault_status() {fault_status_reg = 0x0;}
 
     void reset() {
         control_reg = 0x0;
@@ -345,7 +344,7 @@ public:
 
 
         u32 phys_addr = 0x0;
-        const bool mmu_on = GetEnabled();
+        const bool mmu_on = get_enabled();
 
         if(mmu_on) {
             // L0 instruction fetch cache: bypass translate_va + get_bank for
@@ -467,5 +466,4 @@ public:
 
 
 
-#endif // _MMU_H_
 

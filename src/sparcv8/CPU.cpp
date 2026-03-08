@@ -108,7 +108,7 @@ bool CPU::instr_fetch(u32 virt_addr, pDecode_t d){
     if(mmu.MemAccess<intent_execute, 4>(virt_addr, opcode, CROSS_ENDIAN, super) < 0)
     {
         // Get the fault from MMU:
-        u32 f = mmu.GetFaultStatus();
+        u32 f = mmu.get_fault_status();
             
         // We have a fault..
         u32 AT = (f >> 5) & 0x7;
@@ -117,7 +117,7 @@ bool CPU::instr_fetch(u32 virt_addr, pDecode_t d){
             throw std::runtime_error("AT != 2 | 3 is not possible in an instruction fetch!");
    
         // The NF field in the MMU control regs governs wether we should TRAP    
-        u32 nf = (mmu.GetControlReg() & 0x2) >> 1;
+        u32 nf = (mmu.get_control_reg() & 0x2) >> 1;
 
         // Only throw trap if nf == 0
         if(nf == 0) { 
