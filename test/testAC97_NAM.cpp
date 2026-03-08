@@ -21,7 +21,7 @@ static constexpr uint32_t PO_CR    = PO_BASE + 0x0B;
 static constexpr uint32_t BD_AREA = 0x420A0000; 
 
 
-static constexpr uint32_t GS_PR   = (1u << 0);  // Primary Codec Ready
+static constexpr uint32_t GS_PR   = (1u << 8);  // Primary Codec Ready (ICH_PCR)
 static constexpr uint32_t GS_BUSY = (1u << 2);  // Command Busy
 
 static constexpr uint32_t CNT_COLD     = 0x00000002;

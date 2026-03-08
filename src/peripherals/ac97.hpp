@@ -332,8 +332,6 @@ private:
 
     uint64_t dma_tick_counter_ = 0;
 
-    uint32_t reset_delay_counter_ = 0;
-    
     // AD1881A valid registers:
     static constexpr std::array<uint8_t, 15> VALID_NAM_REGS = {
         0x00,       // RESET

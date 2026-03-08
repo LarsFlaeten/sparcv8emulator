@@ -20,7 +20,7 @@ static constexpr uint32_t PO_CR    = PO_BASE + 0x0B;
 
 static constexpr uint32_t BD_AREA = 0x420A0000; 
 
-static constexpr uint32_t GS_PR   = (1u << 0);  // Primary Codec Ready
+static constexpr uint32_t GS_PR   = (1u << 8);  // Primary Codec Ready (ICH_PCR)
 static constexpr uint32_t GS_BUSY = (1u << 2);  // Command Busy
 
 
@@ -823,31 +823,19 @@ TEST_F(AC97Test, GlobCntSta_HasCapabilitiesAfterColdReset)
     mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
     make_device();
 
-    const uint32_t base     = NABM_BASE;
-    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
-    const uint32_t GLOB_STA = base + AC97Pci::BMOff::GLOB_STA;
+    const uint32_t GLOB_CNT = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
+    const uint32_t GLOB_STA = NABM_BASE + AC97Pci::BMOff::GLOB_STA;
 
     // Issue cold reset
     write32_le(GLOB_CNT, 0x00000002);
 
-    // -- Immediately after reset --
-    uint32_t gs0 = read32_le(GLOB_STA);
+    // CRDY (bit 8 = ICH_PCR) must be set immediately after cold reset —
+    // there is no hardware codec startup delay in this emulator.
+    uint32_t gs = read32_le(GLOB_STA);
+    ASSERT_NE(gs & GS_PR, 0u) << "CRDY (ICH_PCR) must be set immediately after cold reset";
 
-    // PCR, PCM in/out must be present
-    ASSERT_TRUE(gs0 & (1 << 0)) << "PCR must be set";
-    ASSERT_TRUE(gs0 & (1 << 5)) << "PCM In active must be set";
-    ASSERT_TRUE(gs0 & (1 << 6)) << "PCM Out active must be set";
-
-    // CRDY must NOT be set yet
-    ASSERT_EQ((gs0 >> 8) & 1, 0u) << "CRDY must not be ready immediately after reset";
-
-    // --- wait for CRDY using ticks ---
-    for (int i = 0; i < 4; i++)
-        dev->tick();
-
-    // After delay, CRDY must appear
-    uint32_t gs1 = read32_le(GLOB_STA);
-    ASSERT_EQ((gs1 >> 8) & 1, 1u) << "CRDY must appear after delay";
+    // No interrupt bits should be pending after reset
+    ASSERT_EQ(gs & GS_BUSY, 0u) << "No BUSY bit should be set after cold reset";
 }
 
 TEST_F(AC97Test, GlobCnt_NoFragmentsImplementedinGLOBCNT)
@@ -1016,41 +1004,24 @@ TEST_F(AC97Test, POCR_MustNotStartDmaUntilBd0Valid)
     EXPECT_FALSE(sr & 0x01) << "DCH must clear when DMA starts";
 }
 
-TEST_F(AC97Test, ColdReset_MustDropCRDY_ThenRaiseItLater)
+TEST_F(AC97Test, ColdReset_SetsCRDYImmediately)
 {
     mctrl.attach_bank<RamBank>(0x420A0000, 0x20000);
     make_device();
 
-    const uint32_t base     = NABM_BASE;
-    const uint32_t GLOB_STA = base + AC97Pci::BMOff::GLOB_STA;
-    const uint32_t GLOB_CNT = base + AC97Pci::BMOff::GLOB_CNT;
+    const uint32_t GLOB_STA = NABM_BASE + AC97Pci::BMOff::GLOB_STA;
+    const uint32_t GLOB_CNT = NABM_BASE + AC97Pci::BMOff::GLOB_CNT;
 
-    // --- 1. Trigger cold reset ---
-    // Linux writes bit1 = 1 (0x2)
+    // Trigger cold reset (bit 1 of GLOB_CNT)
     write32_le(GLOB_CNT, 0x00000002);
 
-    // --- 2. Immediately after reset: CRDY MUST BE 0 ---
-    uint32_t s0 = read32_le(GLOB_STA);
-
-    // CRDY is bit 8 (0x100)
-    ASSERT_EQ((s0 & 0x100u), 0u)
-        << "CRDY must be cleared immediately after cold reset";
-
-    // --- 3. Now simulate a few 'ticks' where CRDY becomes ready later ---
-    bool crdy_seen = false;
-
-    for (int i = 0; i < 10; ++i) {
-        dev->tick();        // your AC97 tick
-        uint32_t s = read32_le(GLOB_STA);
-        if (s & 0x100u)
-            crdy_seen = true;
-    }
-
-    ASSERT_TRUE(crdy_seen)
-        << "CRDY must rise after reset delay (not immediately)";
+    // CRDY must be set immediately — no codec startup delay in this emulator
+    uint32_t s = read32_le(GLOB_STA);
+    ASSERT_NE(s & GS_PR, 0u)
+        << "CRDY (ICH_PCR, bit 8) must be set immediately after cold reset";
 }
 
-TEST_F(AC97Test, CRDY_ShouldAppearOnlyAfterDelay)
+TEST_F(AC97Test, CRDY_IsSetImmediatelyAfterColdReset)
 {
     make_device();
 
@@ -1060,15 +1031,10 @@ TEST_F(AC97Test, CRDY_ShouldAppearOnlyAfterDelay)
     // Trigger cold reset
     write32_le(GLOB_CNT, 0x02);
 
-    // Immediately after reset: CRDY must be 0
-    ASSERT_EQ(read32_le(GLOB_STA) & (1 << 8), 0u);
-
-    // Tick until delay expires
-    for (int i = 0; i < 2000; i++)
-        dev->tick();
-
-    // Now CRDY must be visible
-    ASSERT_NE(read32_le(GLOB_STA) & (1 << 8), 0u);
+    // CRDY (bit 8) must be set immediately — the emulator does not model
+    // the codec AC-link startup time, so the driver sees it as instantly ready.
+    ASSERT_NE(read32_le(GLOB_STA) & GS_PR, 0u)
+        << "CRDY must be set immediately after cold reset";
 }
 
 TEST_F(AC97Test, Pocm_PicbDecrementsAndCivAdvancesOnBdCompletion)

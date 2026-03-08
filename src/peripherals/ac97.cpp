@@ -116,15 +116,6 @@ void AC97Pci::init_codec_warm() {
 
 void AC97Pci::tick()
 {
-    // ---- CRDY delayed ready handling ----
-    if (reset_delay_counter_ > 0) {
-        reset_delay_counter_--;
-        if (reset_delay_counter_ == 0) {
-            glob_sta_ |= (1 << 8);      // CRDY = ready
-            printf("[AC97] CRDY READY after delay\n");
-        }
-    }
-
     // 0. DMA not running?
     if (!po_running_)
         return;
@@ -558,12 +549,15 @@ uint32_t AC97Pci::read_glob_sta()
 {
     // Mask to only allow documented readable bits
     constexpr uint32_t allowed =
-        (1u << 0)  |   // PCR
-        (1u << 5)  |   // PCM in active
-        (1u << 6)  |   // PCM out active
-        (1u << 7)  |   // Mic ADC active
-        (1u << 8)  |   // CRDY (codec ready)
-        (1u << 15);    // S0R (sticky)
+        (1u << 0)  |   // GSCI  - Global Status Change Interrupt (W1C)
+        (1u << 1)  |   // MOINT - Modem Out Interrupt (W1C)
+        (1u << 2)  |   // MINT  - Modem In Interrupt (W1C)
+        (1u << 3)  |   // PIINT - PCM In Interrupt (W1C)
+        (1u << 4)  |   // POINT - PCM Out Interrupt (W1C)
+        (1u << 5)  |   // MINT  - Mic In Interrupt (W1C)
+        (1u << 6)  |   // RCS   - Read Completion Status (W1C)
+        (1u << 8)  |   // PCR   - Primary Codec Ready (R/O in hardware; emulator allows W1C)
+        (1u << 15);    // S0R   - Sticky (clears on read)
 
     uint32_t v = glob_sta_ & allowed;
 
@@ -1007,9 +1001,7 @@ void AC97Pci::cold_reset()
     //
     // --- GLOB_STA Hardware Reset State ---
     //
-    glob_sta_  = (1u << 5)    // PCM in active
-               | (1u << 6)   // PCM out active
-               | GS_PR;      // CRDY: primary codec ready (bit 8)
+    glob_sta_  = GS_PR;       // CRDY: primary codec ready (bit 8); all interrupt bits clear
 
     //
     // --- GLOB_CNT Codec Feature Bits ---
