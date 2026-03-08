@@ -118,6 +118,17 @@ class MMU {
     };
     FetchCache fetch_cache_;
 
+    // L0 data load cache: skip translate_va + get_bank for repeated loads
+    // within the same virtual page (kernel stack, struct fields, etc.).
+    struct DataCache {
+        u32  vpage = ~0u;
+        u32  pbase = 0;
+        u32  ctx   = ~0u;
+        bool super = false;
+        IMemoryBank* bank = nullptr;
+    };
+    DataCache data_cache_;
+
     public:
     MMU(MCtrl& mc) : mctrl(mc){
 
@@ -153,8 +164,10 @@ public:
     MCtrl&  GetMCTRL() {return mctrl;}
 
     void SetControlReg(u32 value) {
-        if ((value & 0x1) != (control_reg & 0x1))
+        if ((value & 0x1) != (control_reg & 0x1)) {
             fetch_cache_.vpage = ~0u; // Invalidate on MMU enable/disable transition
+            data_cache_.vpage  = ~0u;
+        }
         control_reg = value;
     }
     u32 GetControlReg() {return control_reg;}
@@ -207,6 +220,7 @@ public:
         fault_status_reg = 0x0;
         fault_address_reg = 0x0;
         fetch_cache_ = FetchCache{};
+        data_cache_  = DataCache{};
 
         itlb.flush();
         dtlb.flush();
@@ -217,6 +231,7 @@ public:
     // FLush TLB
     void flush() {
         fetch_cache_.vpage = ~0u; // Invalidate L0 fetch cache
+        data_cache_.vpage  = ~0u; // Invalidate L0 data cache
         itlb.flush();
         dtlb.flush();
     }
@@ -346,6 +361,25 @@ public:
                 }
             }
 
+            // L0 data load cache: bypass translate_va + get_bank for repeated
+            // loads within the same virtual page (kernel stack, struct fields, etc.).
+            if constexpr (rw == intent_load) {
+                const u32 vpage = virt_addr >> 12;
+                if (__builtin_expect(
+                        data_cache_.vpage == vpage &&
+                        data_cache_.super == supervisor &&
+                        data_cache_.ctx   == ctx_n, 1)) {
+                    const u32 paddr = data_cache_.pbase | (virt_addr & 0xFFF);
+                    switch(size) {
+                        case(1): value = data_cache_.bank->read8_nolock(paddr);         break;
+                        case(2): value = data_cache_.bank->read16_nolock(paddr, false); break;
+                        case(4): value = data_cache_.bank->read32_nolock(paddr, false); break;
+                        default: break;
+                    }
+                    return 0;
+                }
+            }
+
             auto res = translate_va(virt_addr, supervisor, rw, report_faults);
 
             if(!res.ok)
@@ -398,6 +432,16 @@ public:
                     fetch_cache_.ctx   = ctx_n;
                     fetch_cache_.super = supervisor;
                     fetch_cache_.bank  = pbank;
+                }
+            }
+            // Populate L0 data cache on load miss
+            if constexpr (rw == intent_load) {
+                if (mmu_on) {
+                    data_cache_.vpage = virt_addr >> 12;
+                    data_cache_.pbase = phys_addr & ~0xFFFu;
+                    data_cache_.ctx   = ctx_n;
+                    data_cache_.super = supervisor;
+                    data_cache_.bank  = pbank;
                 }
             }
 #if defined(PERF_STATS)
