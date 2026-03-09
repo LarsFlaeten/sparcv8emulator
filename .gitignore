@@ -7,3 +7,4 @@ test/asm/*.o
 test/asm/*.map
 *.swp
 perf.data*
+boot.log
