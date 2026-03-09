@@ -594,6 +594,9 @@ TEST_F(AC97Test, BcisAndLvBciAreClearedWhenStoppingDma)
     write16_le(bd_base + 4, 255);             // len (256 bytes)
     write16_le(bd_base + 6, 0x8000);          // IOCE=1
 
+    // Use fixed-rate ticking in test (bypass wall-clock pacing).
+    dev->force_frames_per_tick(2);
+
     // --- Start DMA ---
     write8(PO_CR, 0x01); // RUN=1
 
@@ -603,7 +606,7 @@ TEST_F(AC97Test, BcisAndLvBciAreClearedWhenStoppingDma)
     ASSERT_EQ(sr & 0x08, 0x00) << "BCIS must not be set immediately on RUN";
 
     // --- Tick until BD completes ---
-    // Skip spamming by doing enough ticks to guarantee completion.
+    // len=255 samples → 127 frames; at 2 frames/tick → 64 ticks. 200 is enough.
     for (int i = 0; i < 200; i++)
         dev->tick();
 

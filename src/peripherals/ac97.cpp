@@ -116,113 +116,112 @@ void AC97Pci::init_codec_warm() {
 
 void AC97Pci::tick()
 {
-    // 0. DMA not running?
-    if (!po_running_)
+    // 0. DMA not running or BD BAR not set?
+    if (!po_running_ || bdbar_playback_ == 0)
         return;
 
-    // 1. BD BAR not programmed? Do not run DMA.
-    if (bdbar_playback_ == 0)
-        return;
-
-    // 2. No valid BD loaded yet? Do not run DMA.
-    if (po_cur_len_ == 0)
-        return;
-
-    
-    
-    //
-    // 2. Consume a limited number of frames this tick
-    //
-
-    /*
-    using clock = std::chrono::steady_clock;
-    static auto last_time = clock::now();
-    static uint64_t tick_counter = 0;
-    static double smoothed_ticks_per_sec = 1000.0; // initial guess
-
-    tick_counter++;
-
-    auto now = clock::now();
-    auto diff_us = std::chrono::duration_cast<std::chrono::microseconds>(now - last_time).count();
-
-    if (diff_us >= 1'000'000) {   // 1 second
-        double measured = (double)tick_counter * 1'000'000.0 / diff_us;
-
-        // exponential smoothing (10% new, 90% old)
-        smoothed_ticks_per_sec = smoothed_ticks_per_sec * 0.90 + measured * 0.10;
-
-        tick_counter = 0;
-        last_time += std::chrono::seconds(1);
-
-        uint32_t ftp = (uint32_t)((48000.0 + smoothed_ticks_per_sec/2.0) / smoothed_ticks_per_sec);
-        frames_per_tick_dynamic_ = std::max<uint32_t>(1, ftp);
-
-        printf("[AC97] ticks/sec=%.2f frames/tick=%u\n",
-               smoothed_ticks_per_sec, frames_per_tick_dynamic_);
-    }*/
-    uint32_t todo = std::min<uint32_t>(po_picb_, frames_per_tick_dynamic_);
-
+    // 1. Load current BD if not yet loaded (initial start or resume after LVBCI halt).
+    if (po_cur_len_ == 0) {
+        uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
+        uint32_t ptr = mem_read32(bd_addr + 0);
+        uint16_t len = mem_read16(bd_addr + 4);
+        uint16_t ctl = mem_read16(bd_addr + 6);
 #ifdef AC97_DEBUG
-    printf("[TICK] picb=%u todo=%u offset=%u\n",
-       po_picb_, todo, po_cur_bd_frame_offset_bytes_);
+        printf("[AC97 BD LOAD] civ=%u ptr=%08x len=%u ctl=%04x\n", po_civ_, ptr, len, ctl);
 #endif
-    
-    //
-    // 3. Fetch 'todo' stereo frames from guest memory
-    //
-    std::vector<int16_t> samples(todo * 2);   // stereo: 2 samples per frame
-
-    uint32_t sample_ptr = po_cur_ptr_ + po_cur_bd_frame_offset_bytes_;
-
-    for (uint32_t i = 0; i < todo * 2; ++i) {
-        samples[i] = (int16_t)mem_read16(sample_ptr + i * 2);
+        if (ptr == 0 || len == 0) {
+            po_running_ = false;
+            po_status_  = (po_status_ & ~0x02u) | 0x01u; // DCH=1, CIP=0
+            TRACE_PO_SR_CHANGE();
+            return;
+        }
+        po_cur_ptr_               = ptr;
+        po_cur_len_               = (uint32_t)len;
+        po_cur_ctl_               = ctl;
+        po_cur_bd_frame_offset_bytes_ = 0;
+        po_picb_                  = len / 2;  // len in 16-bit samples → frames
     }
 
-    // Push audio to host
+    // 2. Determine how many frames to process this tick.
+    uint32_t todo;
+    if (use_wall_clock_) {
+        // Production mode: produce audio at exactly 48 kHz wall-clock rate regardless
+        // of how fast or slow the emulator runs.
+        using clock = std::chrono::steady_clock;
+        auto now = clock::now();
+        if (!po_wall_clock_initialized_) {
+            po_last_tick_wall_         = now;
+            po_frame_credit_           = 0.0;
+            po_wall_clock_initialized_ = true;
+            return;  // seed the clock; produce frames on next tick
+        }
+        double elapsed_s = std::chrono::duration<double>(now - po_last_tick_wall_).count();
+        po_last_tick_wall_ = now;
+        po_frame_credit_ += elapsed_s * 48000.0;
+        // Cap to one period to prevent latency burst after stalls
+        if (po_frame_credit_ > 4096.0) po_frame_credit_ = 4096.0;
+        todo = std::min<uint32_t>(static_cast<uint32_t>(po_frame_credit_), po_picb_);
+        if (todo == 0)
+            return;
+    } else {
+        // Test mode: fixed frames per tick (set by force_frames_per_tick()).
+        todo = std::min<uint32_t>(frames_per_tick_dynamic_, po_picb_);
+    }
+
+#ifdef AC97_DEBUG
+    printf("[TICK] picb=%u todo=%u offset=%u\n", po_picb_, todo, po_cur_bd_frame_offset_bytes_);
+#endif
+
+    // 3. Fetch 'todo' stereo frames from guest RAM and push to host audio.
+    std::vector<int16_t> samples(todo * 2);
+    uint32_t sample_ptr = po_cur_ptr_ + po_cur_bd_frame_offset_bytes_;
+    for (uint32_t i = 0; i < todo * 2; ++i)
+        samples[i] = static_cast<int16_t>(mem_read16(sample_ptr + i * 2));
     if (host_audio_)
         host_audio_->pushSamples(samples);
 
-    //
-    // 4. Advance pointers
-    //
-    po_cur_bd_frame_offset_bytes_ += todo * 4;  // 4 bytes per stereo frame
-    po_picb_ -= todo;
+    // 4. Advance pointers.
+    if (use_wall_clock_) po_frame_credit_ -= todo;
+    po_cur_bd_frame_offset_bytes_ += todo * 4;  // 4 bytes per stereo S16 frame
+    po_picb_                      -= todo;
 
-    //
-    // 5. If buffer is not finished, return
-    //
     if (po_picb_ > 0)
         return;
 
-    //
-    // 6. Buffer is COMPLETED
-    //
+    // 5. BD complete.
 #ifdef AC97_DEBUG
-    printf("[AC97 TICK] CIV=%u LVI=%u PICB=%u LEN=%u OFFS=%u CTL=%04x RUN=%u BD_PTR=%08x\n",
-        po_civ_, po_lvi_, po_picb_, po_cur_len_, po_cur_bd_frame_offset_bytes_,
-        po_cur_ctl_, po_running_, po_cur_ptr_);
+    printf("[AC97 TICK] CIV=%u LVI=%u BD done, CTL=%04x\n", po_civ_, po_lvi_, po_cur_ctl_);
 #endif
 
-    uint8_t old_civ = po_civ_;
-
-    // BCIS (buffer completion)
+    // BCIS: signal buffer completion if IOC bit set in BD control word.
     if (po_cur_ctl_ & 0x8000) {
         po_status_ |= 0x08;
         TRACE_PO_SR_CHANGE();
     }
 
-    // CIV always advances
-    po_civ_ = (old_civ + 1) & 0x1F;
+    // Advance CIV.
+    po_civ_ = (po_civ_ + 1) & 0x1Fu;
 
-    // LVBCI: fires when new CIV == LVI+1 (we've consumed the last valid BD)
-    if (po_civ_ == ((po_lvi_ + 1) & 0x1F)) {
-        po_status_ |= 0x04;
+    // LVBCI: last valid BD consumed — halt per AC'97 spec.
+    // Linux must update LVI to resume; hardware auto-resumes when LVI > CIV.
+    if (po_civ_ == ((po_lvi_ + 1) & 0x1Fu)) {
+        po_status_ |= 0x04;                          // LVBCI
+        po_status_  = (po_status_ & ~0x02u) | 0x01u; // DCH=1, CIP=0
+        po_running_ = false;
+        po_cur_len_ = 0;  // signal: no BD loaded (tick() top will reload on resume)
         TRACE_PO_SR_CHANGE();
+
+        // Raise interrupt and return — do NOT load next BD.
+        if ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) {
+            glob_sta_ |= GS_POINT;
+            if (raise_intx_) raise_intx_();
+        }
+        return;
     }
 
-    // Raise interrupt if enabled
-    if ((po_status_ & 0x0C) && (po_control_ & 0x10)) {
-        glob_sta_ |= GS_POINT;  // snd_intel8x0_interrupt checks GLOB_STA POINT before servicing
+    // Raise interrupt if BCIS is set and IOCE (bit 4 of CR) is enabled.
+    if ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) {
+        glob_sta_ |= GS_POINT;
         if (raise_intx_) {
             raise_intx_();
 #ifdef AC97_DEBUG
@@ -231,38 +230,28 @@ void AC97Pci::tick()
         }
     }
 
-    //
-    // 7. Load the next BD for playback
-    //
-    uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
-
-    uint32_t ptr  = mem_read32(bd_addr + 0);
-    uint16_t len  = mem_read16(bd_addr + 4);
-    uint16_t ctl  = mem_read16(bd_addr + 6);
+    // Load the next BD from the new po_civ_ so PICB is immediately visible.
+    {
+        uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
+        uint32_t ptr = mem_read32(bd_addr + 0);
+        uint16_t len = mem_read16(bd_addr + 4);
+        uint16_t ctl = mem_read16(bd_addr + 6);
 #ifdef AC97_DEBUG
-    printf("[AC97 BD LOAD from tick] %08x: ptr=%08x len=%08x ctl=%08x\n",
-        bd_addr, ptr, len, ctl);
+        printf("[AC97 BD LOAD from tick] civ=%u ptr=%08x len=%u ctl=%04x\n", po_civ_, ptr, len, ctl);
 #endif
-    po_cur_ptr_ = ptr;
-    po_cur_len_ = (uint32_t)len;
-    po_cur_ctl_ = ctl;
-
-    po_cur_bd_frame_offset_bytes_ = 0;
-
-    // Stop if BD is empty/invalid
-    if (ptr == 0 || len == 0) {
-        po_running_ = false;
-        po_status_ |= 0x01;      // DCH
-        TRACE_PO_SR_CHANGE();
-        return;
+        if (ptr == 0 || len == 0) {
+            po_running_ = false;
+            po_cur_len_ = 0;
+            po_status_  = (po_status_ & ~0x02u) | 0x01u; // DCH=1
+            TRACE_PO_SR_CHANGE();
+            return;
+        }
+        po_cur_ptr_               = ptr;
+        po_cur_len_               = (uint32_t)len;
+        po_cur_ctl_               = ctl;
+        po_cur_bd_frame_offset_bytes_ = 0;
+        po_picb_                  = len / 2;
     }
-
-    // len is in 16-bit samples; stereo S16 = 2 samples/frame
-    po_picb_ = len / 2;
-#ifdef AC97_DEBUG
-    printf("[BD in tick()] frames=%u\n", po_picb_);
-#endif
-    
 }
 
 
@@ -770,6 +759,8 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                     po_cur_ctl_ = 0;
                     po_picb_ = 0;
                     po_cur_bd_frame_offset_bytes_ = 0;
+                    po_wall_clock_initialized_ = false;
+                    po_frame_credit_ = 0.0;
 
                     // Status according to ICH spec: RUN=0, BCIS=0, LVBCI=0, DCH=1
                     po_status_ = 0x01;
@@ -842,6 +833,8 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                 // BD is valid → now it is safe to start
                 po_running_ = true;
+                po_wall_clock_initialized_ = false;  // re-seed wall clock on fresh start
+                po_frame_credit_ = 0.0;
 
                 // DMA running → clear DCH
                 po_status_ &= ~0x01;
@@ -881,6 +874,18 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 break;
             case BMOff::PO_BASE + BMOff::LVI:
                 po_lvi_ = value & 0x1F;
+                // Auto-resume: real ICH hardware resumes DMA automatically when LVI
+                // is extended past the stall point (where LVBCI fired and DCH was set).
+                if (!po_running_ && (po_status_ & 0x04u)) {  // LVBCI bit set
+                    // (po_civ_ - 1) & 0x1F is the old LVI that caused the halt.
+                    // If new LVI differs from that, there are new valid BDs.
+                    if (po_lvi_ != ((po_civ_ - 1 + 32u) & 0x1Fu)) {
+                        po_running_ = true;
+                        po_status_  = (po_status_ & ~0x01u) | 0x02u; // DCH=0, CIP=1
+                        // po_cur_len_ == 0, so tick() will load BD from po_civ_
+                        TRACE_PO_SR_CHANGE();
+                    }
+                }
                 break;
             case BMOff::MC_BASE + BMOff::LVI:
                 mc_lvi_ = value & 0x1F;
@@ -992,6 +997,8 @@ void AC97Pci::cold_reset()
     po_cur_ctl_ = 0;
     po_cur_bd_frame_offset_bytes_ = 0;
     po_picb_ = 0;
+    po_wall_clock_initialized_ = false;
+    po_frame_credit_ = 0.0;
 
     bdbar_playback_ = 0;
     bdbar_capture_  = 0;

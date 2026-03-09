@@ -266,6 +266,7 @@ public:
 
     void force_frames_per_tick(uint32_t val) {
         frames_per_tick_dynamic_ = val;
+        use_wall_clock_ = false;  // test mode: bypass real-time calibration
     }
 
 private:
@@ -280,7 +281,8 @@ private:
     //uint32_t dma_ticks_per_buffer_ = 417; // TODO: Guess for now, Dynamic update
     //uint32_t dma_ticks_per_buffer_ = 1; // TODO: Guess for now, Dynamic update
     //uint32_t dma_ticks_per_buffer_ = 10; // TODO: Guess for now, Dynamic update
-    uint32_t frames_per_tick_dynamic_ = 48;  // 48 frames/tick @ 1kHz = 48kHz
+    uint32_t frames_per_tick_dynamic_ = 48;  // 48 frames/tick @ 1kHz = 48kHz (used in test mode)
+    bool     use_wall_clock_           = true; // false in test mode (force_frames_per_tick called)
 
     uint32_t bar_values_[kNumBars]{};  // store assigned base addresses
     bool probing_bar_[kNumBars]{};     // optional flags for 0xFFFFFFFF probe
@@ -347,6 +349,12 @@ private:
     bool     po_running_ = false;
 
     uint64_t dma_tick_counter_ = 0;
+
+    // Wall-clock DMA rate calibration: produce audio at exactly 48 kHz real rate
+    // regardless of emulation speed (faster or slower than real-time).
+    std::chrono::steady_clock::time_point po_last_tick_wall_;
+    double   po_frame_credit_           = 0.0;
+    bool     po_wall_clock_initialized_ = false;
 
     // AD1881A valid registers:
     static constexpr std::array<uint8_t, 15> VALID_NAM_REGS = {
