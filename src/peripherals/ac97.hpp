@@ -284,9 +284,12 @@ private:
 
     //static constexpr uint32_t GS_CRDY_CODEC0 = 0x00000100;  // Codec-0 ready
     //static constexpr uint32_t GS_S0R  = (1u << 15);
-    static constexpr uint32_t GS_PR   = (1u << 8);  // Primary Codec Ready (ICH_PCR)
-    static constexpr uint32_t GS_BUSY = (1u << 2);  // Command Busy
-    static constexpr uint32_t GS_W1C_MASK = GS_BUSY;  // GS_PR is read-only, never W1C
+    static constexpr uint32_t GS_PR    = (1u << 8);  // Primary Codec Ready (ICH_PCR) — read-only
+    static constexpr uint32_t GS_BUSY  = (1u << 2);  // Modem In Int / command busy marker
+    static constexpr uint32_t GS_POINT = (1u << 4);  // PCM Out INTerrupt — set on BD completion
+    static constexpr uint32_t GS_PIINT = (1u << 3);  // PCM In INTerrupt
+    // W1C bits are the interrupt status bits (0-6); GS_PR is read-only hardware state
+    static constexpr uint32_t GS_W1C_MASK = 0x7Fu;
 
     static constexpr uint32_t CNT_COLD     = 0x00000002;
     static constexpr uint32_t CNT_WARM     = 0x00000004;

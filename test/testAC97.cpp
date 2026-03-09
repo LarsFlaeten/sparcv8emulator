@@ -219,17 +219,20 @@ TEST_F(AC97Test, POCR_StartLoadsBDAndInitializesPICB)
     write8(NABM_BASE + PO_LVI, 0x1F);
 
     // Write a BD entry @ index 0
+    // Linux writes BD len = period_bytes >> pos_shift (16-bit samples for S16).
+    // For a 4096-byte stereo S16 buffer: 4096 / 2 = 2048 samples.
     uint32_t bufaddr = 0x42000000;
-    uint16_t buflen  = 0x1000;   // len bytes
+    uint16_t buflen  = 0x1000;   // len in bytes
+    uint16_t bd_len  = buflen / 2;  // samples (Linux format: period_bytes >> pos_shift)
     uint16_t ctl     = 0x8000;   // IOC=1
-    write_playback_bd(BD_AREA, 0, bufaddr, buflen - 1, ctl);
+    write_playback_bd(BD_AREA, 0, bufaddr, bd_len, ctl);
 
     // Start playback → set RUN bit
     write8(NABM_BASE + PO_CR, 0x01);
 
-    // PICB should be initialized to buflen/4 (S16 * 2ch)
+    // PICB reports remaining 16-bit samples; starts at bd_len (= buflen/2)
     uint16_t picb = read16_le(NABM_BASE + PO_PICB);
-    ASSERT_EQ(picb, buflen / 4);
+    ASSERT_EQ(picb, bd_len);
 }
 
 TEST_F(AC97Test, InitialStatusMustBeZero)
@@ -1544,10 +1547,13 @@ TEST_F(AC97Test, MultiBdRing_FullCycle_new2)
     const uint32_t BD_BASE = 0x420A0000;
     const uint32_t BASE = NABM_BASE + AC97Pci::BMOff::PO_BASE;
 
+    // BD len = 16-bit samples (Linux format: period_bytes >> pos_shift).
+    // 4096-byte stereo S16 buffer → 4096/2 = 2048 samples.
+    constexpr uint16_t BD_LEN = 2048; // samples
     auto make_bd = [&](int idx, uint32_t buf) {
         uint32_t p = BD_BASE + idx * 8;
         write32_le(p + 0, buf);
-        write16_le(p + 4, 4095);      // 4096 bytes → 1024 frames
+        write16_le(p + 4, BD_LEN);    // 2048 samples = 1024 stereo S16 frames
         write16_le(p + 6, 0x8000);    // IOC=1
     };
 
@@ -1587,7 +1593,8 @@ TEST_F(AC97Test, MultiBdRing_FullCycle_new2)
                     ASSERT_NE(sr & 0x01, 0) << "DCH must be set";
                     return;
                 } else {
-                    ASSERT_EQ(picb, 1023);
+                    // PICB of freshly loaded BD = BD_LEN samples
+                    ASSERT_EQ(picb, BD_LEN);
                 }
 
                 expected_civ = civ;

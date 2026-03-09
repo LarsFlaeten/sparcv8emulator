@@ -372,6 +372,19 @@ TEST_F(GRPCI2Test, ahbm2pci_readwrite)
     }
 }
 
+TEST_F(GRPCI2Test, PciIrqRoutedToIRQ6)
+{
+    // The Linux GRPCI2 driver computes PCI INTA IRQ as:
+    //   amba_pnp_irq + 4 = 2 + 4 = 6
+    // Verified via /proc/interrupts: "6: grpci2 -pcilvl snd_intel8x0"
+    // raise_pci_irq must trigger IRQMP IRQ 6, not IRQ 2.
+    testable_.raise_pci_irq(0);  // slot 0, INTA
+
+    u32 ipend = irqmp.read(IRQMP_IPEND_OS);
+    ASSERT_NE(ipend & (1u << 6), 0u) << "IRQ 6 must be pending in IRQMP after PCI INTA";
+    ASSERT_EQ(ipend & (1u << 2), 0u) << "IRQ 2 must NOT be triggered (that is GRPCI2_JUMP, not device IRQ)";
+}
+
 TEST_F(GRPCI2Test, ac97_init)
 {
     auto ac97pci = std::make_unique<AC97Pci>(0, mctrl, false); // false = no host audio

@@ -205,16 +205,7 @@ void AC97Pci::tick()
         po_cur_ctl_, po_running_, po_cur_ptr_);
 #endif
 
-    // CIV always increments modulo 32
     uint8_t old_civ = po_civ_;
-    //po_civ_ = (old_civ + 1) & 0x1F;
-
-    // Compute next descriptor index
-    uint8_t next_civ = (old_civ + 1) & 0x1F;
-
-
-    // Not stopping → advance normally
-    po_civ_ = next_civ;
 
     // BCIS (buffer completion)
     if (po_cur_ctl_ & 0x8000) {
@@ -222,19 +213,22 @@ void AC97Pci::tick()
         TRACE_PO_SR_CHANGE();
     }
 
-    // LVBCI: CIV == (LVI+1)
-    uint8_t next_after_lvi = (po_lvi_ + 1) & 0x1F;
-    if (po_civ_ == next_after_lvi) {
+    // CIV always advances
+    po_civ_ = (old_civ + 1) & 0x1F;
+
+    // LVBCI: fires when new CIV == LVI+1 (we've consumed the last valid BD)
+    if (po_civ_ == ((po_lvi_ + 1) & 0x1F)) {
         po_status_ |= 0x04;
         TRACE_PO_SR_CHANGE();
     }
 
     // Raise interrupt if enabled
     if ((po_status_ & 0x0C) && (po_control_ & 0x10)) {
+        glob_sta_ |= GS_POINT;  // snd_intel8x0_interrupt checks GLOB_STA POINT before servicing
         if (raise_intx_) {
             raise_intx_();
 #ifdef AC97_DEBUG
-            printf("RAISE IRQ! STATUS=%04x\n", po_status_);
+            printf("RAISE IRQ! STATUS=%04x GLOB_STA=%08x\n", po_status_, glob_sta_);
 #endif
         }
     }
@@ -265,7 +259,8 @@ void AC97Pci::tick()
         return;
     }
 
-    po_picb_ = po_cur_len_ / 4; // frames
+    // len is in 16-bit samples; stereo S16 = 2 samples/frame
+    po_picb_ = len / 2;
 #ifdef AC97_DEBUG
     printf("[BD in tick()] frames=%u\n", po_picb_);
 #endif
@@ -666,7 +661,9 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
     } else if(width==2) {
         switch (offset) { 
             case BMOff::PO_BASE + BMOff::PICB:
-                val = po_picb_;
+                // Linux expects PICB in 16-bit samples; po_picb_ is in frames
+                // stereo S16: 1 frame = 2 samples
+                val = po_picb_ * 2;
                 break;
             default:
                 throw std::runtime_error("[AC97 NABM] read16 not valid for register " + to_hex(offset));
@@ -853,12 +850,12 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 TRACE_PO_SR_CHANGE();
 
                 po_cur_ptr_ = ptr;
-                po_cur_len_ = (uint32_t)len + 1;
+                po_cur_len_ = (uint32_t)len;   // len is in 16-bit samples
                 po_cur_ctl_ = ctl_field;
                 po_cur_bd_frame_offset_bytes_ = 0;
 
-                // Calculate frame count (stereo 16-bit = 4 bytes)
-                po_picb_ = po_cur_len_ / 4;
+                // len is in 16-bit samples; stereo S16 = 2 samples/frame
+                po_picb_ = len / 2;
 #ifdef AC97_DEBUG
                 printf("[BD_INIT PO CR] frames=%u len=%u ptr=%08x\n",
                     po_picb_, po_cur_len_, po_cur_ptr_);
@@ -886,7 +883,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 break;
             case BMOff::PO_BASE + BMOff::LVI:
                 po_lvi_ = value & 0x1F;
-                //printf("[AC97 DMA Setup] BD BAR=%08x LVI=%02x\n", bdbar_playback_, po_lvi_);
                 break;
             case BMOff::MC_BASE + BMOff::LVI:
                 mc_lvi_ = value & 0x1F;
