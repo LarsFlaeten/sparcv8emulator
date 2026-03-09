@@ -94,15 +94,24 @@ private:
 
     void stopThread() {
         running_ = false;
+        Pa_AbortStream(stream_);  // unblock any pending Pa_WriteStream
         if (thread_.joinable())
             thread_.join();
     }
 
     void feedAudio() {
-        std::lock_guard<std::mutex> lock(mtx_);
-        if (queue_.size() >= static_cast<size_t>(frames_ * 2)) { // stereo → *2
-            Pa_WriteStream(stream_, queue_.data(), frames_);
-            queue_.erase(queue_.begin(), queue_.begin() + frames_ * 2);
+        // Drain all complete frame-chunks from the queue without holding the lock
+        // during Pa_WriteStream (which may block for up to one period duration).
+        std::vector<int16_t> batch;
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            size_t n = (queue_.size() / (frames_ * 2)) * (frames_ * 2);
+            if (n == 0) return;
+            batch.assign(queue_.begin(), queue_.begin() + n);
+            queue_.erase(queue_.begin(), queue_.begin() + n);
+        }
+        for (size_t i = 0; i < batch.size() && running_; i += frames_ * 2) {
+            Pa_WriteStream(stream_, batch.data() + i, frames_);
         }
     }
 
@@ -220,7 +229,7 @@ public:
         : dev_num_(device_number), mctrl_(mctrl) {
 
         if(start_host_audio)
-            host_audio_ = std::make_unique<HostAudioOut>(48000, 2);
+            host_audio_ = std::make_unique<HostAudioOut>(48000, 1024);
 
         init_pci_config();
     }
