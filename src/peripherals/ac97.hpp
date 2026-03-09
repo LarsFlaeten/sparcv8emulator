@@ -271,7 +271,7 @@ private:
     //uint32_t dma_ticks_per_buffer_ = 417; // TODO: Guess for now, Dynamic update
     //uint32_t dma_ticks_per_buffer_ = 1; // TODO: Guess for now, Dynamic update
     //uint32_t dma_ticks_per_buffer_ = 10; // TODO: Guess for now, Dynamic update
-    uint32_t frames_per_tick_dynamic_ = 8;
+    uint32_t frames_per_tick_dynamic_ = 48;  // 48 frames/tick @ 1kHz = 48kHz
 
     uint32_t bar_values_[kNumBars]{};  // store assigned base addresses
     bool probing_bar_[kNumBars]{};     // optional flags for 0xFFFFFFFF probe

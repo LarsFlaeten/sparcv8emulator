@@ -160,8 +160,6 @@ void AC97Pci::tick()
         printf("[AC97] ticks/sec=%.2f frames/tick=%u\n",
                smoothed_ticks_per_sec, frames_per_tick_dynamic_);
     }*/
-    frames_per_tick_dynamic_ = 48;
-
     uint32_t todo = std::min<uint32_t>(po_picb_, frames_per_tick_dynamic_);
 
 #ifdef AC97_DEBUG

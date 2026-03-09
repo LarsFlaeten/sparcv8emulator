@@ -1091,11 +1091,11 @@ TEST_F(AC97Test, Pocm_PicbDecrementsAndCivAdvancesOnBdCompletion)
     for (uint32_t off = 0; off < 8; off += 2)
         write16_le(buf_base + off, 0x1234);
 
-    // BD0: 2 stereo frames á 4 byte = 8 byte
-    // => len = 7 (len+1 = 8), PICB = 8/4 = 2
+    // BD0: 2 stereo S16 frames = 4 16-bit samples (Linux format: BD len in samples)
+    // 2 frames × 2 channels = 4 samples → PICB starts at 4
     write32_le(bd_base + 0, buf_base);  // ptr
-    write16_le(bd_base + 4, 7);         // len = 7 → 8 bytes
-    write16_le(bd_base + 6, 0x8000);    // ctl: IOCE set, så BCIS skal trigges
+    write16_le(bd_base + 4, 4);         // len = 4 samples (2 stereo S16 frames)
+    write16_le(bd_base + 6, 0x8000);    // ctl: IOC set, so BCIS triggers
 
     // Sett BD BAR og LVI for 1 BD (index 0)
     write32_le(PO_BDBAR, bd_base);
@@ -1104,17 +1104,17 @@ TEST_F(AC97Test, Pocm_PicbDecrementsAndCivAdvancesOnBdCompletion)
     // Start DMA
     write8(PO_CR, 0x01);  // RUN=1
 
-    // Etter start: PICB må ha 2 frames
+    // After start: PICB reports 16-bit samples remaining = 4 (= BD len)
     uint16_t picb0 = read16_le(PO_PICB);
-    EXPECT_EQ(picb0, 2u) << "PICB must reflect (len+1)/4 frames at start";
+    EXPECT_EQ(picb0, 4u) << "PICB must reflect BD len in 16-bit samples at start";
 
     uint8_t civ0 = read8(PO_CIV);
     EXPECT_EQ(civ0, 0u) << "CIV must start at 0";
 
-    // Første tick: 2 → 1
+    // First tick (1 frame = 2 samples consumed): PICB 4 → 2
     dev->tick();
     uint16_t picb1 = read16_le(PO_PICB);
-    EXPECT_EQ(picb1, 1u) << "PICB must decrement by 1 frame per tick";
+    EXPECT_EQ(picb1, 2u) << "PICB must decrement by 2 samples (1 stereo frame) per tick";
 
     uint8_t civ1 = read8(PO_CIV);
     EXPECT_EQ(civ1, 0u) << "CIV must NOT advance until BD completes";
@@ -1812,7 +1812,7 @@ TEST_F(AC97Test, PICB_IsReadOnlyAndMustNotAffectDMAState)
     //
     const uint32_t BD0_ADDR = 0x42000000;      // arbitrary, but inside RAM
     const uint32_t BD0_PTR  = 0x43000000;      // pointer to audio samples
-    const uint16_t BD0_LEN  = 0x2000 - 1;      // AC'97 spec: length-1
+    const uint16_t BD0_LEN  = 0x2000;          // Linux format: samples (period_bytes >> pos_shift)
     const uint16_t BD0_CTL  = 0x8000;          // IOC + valid
 
     // Write BD0 into guest RAM
@@ -1867,7 +1867,8 @@ TEST_F(AC97Test, PICB_IsReadOnlyAndMustNotAffectDMAState)
     //
     // --- Now tick() once: PICB must decrement normally ---
     //
-    //de->frames_per_tick_dynamic_ = 8;   // small decrement to observe
+    // 4 frames/tick × 2 samples/frame = 8 samples per tick
+    dev->force_frames_per_tick(4);
     dev->tick();
 
     uint16_t picb_after_tick = read16_le(PO_PICB);
