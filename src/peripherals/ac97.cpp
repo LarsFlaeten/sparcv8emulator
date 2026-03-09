@@ -875,12 +875,17 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
             case BMOff::PO_BASE + BMOff::LVI:
                 po_lvi_ = value & 0x1F;
                 // Auto-resume: real ICH hardware resumes DMA automatically when LVI
-                // is extended past the stall point (where LVBCI fired and DCH was set).
-                if (!po_running_ && (po_status_ & 0x04u)) {  // LVBCI bit set
+                // is extended past the stall point.
+                // NOTE: Linux clears the LVBCI status bit (W1C) BEFORE writing the
+                // new LVI, so we cannot use LVBCI bit as the condition here.
+                // Instead, use DCH=1 (bit 0), which remains set until we resume.
+                if (!po_running_ && (po_status_ & 0x01u)) {  // DCH=1: DMA is halted
                     // (po_civ_ - 1) & 0x1F is the old LVI that caused the halt.
                     // If new LVI differs from that, there are new valid BDs.
                     if (po_lvi_ != ((po_civ_ - 1 + 32u) & 0x1Fu)) {
                         po_running_ = true;
+                        po_wall_clock_initialized_ = false;  // re-seed; avoid latency burst
+                        po_frame_credit_ = 0.0;
                         po_status_  = (po_status_ & ~0x01u) | 0x02u; // DCH=0, CIP=1
                         // po_cur_len_ == 0, so tick() will load BD from po_civ_
                         TRACE_PO_SR_CHANGE();
