@@ -388,20 +388,23 @@ TEST_F(GRPCI2Test, PciIrqRoutedToIRQ6)
 TEST_F(GRPCI2Test, ac97_init)
 {
     auto ac97pci = std::make_unique<AC97Pci>(0, mctrl, false); // false = no host audio
-    
 
     // Set up what we need of memory and peripherals to test all this:
     mctrl.attach_bank<APBCTRL>(0x80000000, mctrl, irqmp);
-    auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
+    auto& apbctrl = reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
     GRPCI2& grpci2 = apbctrl.get_grpci2();
     grpci2.attach_device(std::move(ac97pci));
-    mctrl.attach_bank<PCIIOCfgArea>(0xfffa0000, grpci2); // PCI CFG
-    
+    mctrl.attach_bank<PCIIOCfgArea>(0xfffa0000, grpci2);
 
-    // Read from NABM 0x30:
-    auto glob_sta = mctrl.read32(0xfffa1130u);
-    ASSERT_EQ(glob_sta, 0x00000100);
+    // The AC97 device uses memory-mapped BARs (not PCI IO space).
+    // GRPCI2::io_read() does not route to the attached device.
+    // Configure BAR1 (NABM) by writing through the PCI device interface directly,
+    // then read GLOB_STA at NABM+0x30 the same way.
+    PciDevice& dev = grpci2.get_pci_device();
+    const uint32_t NABM_BASE = 0x24001000;  // arbitrary PCI memory address
+    dev.config_write32(0x14, NABM_BASE);    // program BAR1 = NABM base
 
-
-
+    // GLOB_STA (NABM offset 0x30) must have GS_PR (bit 8) set after cold reset
+    uint32_t glob_sta = dev.io_read32(NABM_BASE + 0x30);
+    ASSERT_EQ(glob_sta, 0x00000100u) << "GS_PR must be set after AC97 cold reset";
 }

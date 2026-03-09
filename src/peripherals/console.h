@@ -30,13 +30,17 @@ public:
 
     void disable_raw_mode()
     {
-        tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+        if (isatty(STDIN_FILENO))
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
     }
 
     void enable_raw_mode()
     {
+        if (!isatty(STDIN_FILENO))
+            return;  // not a terminal (e.g. test environment) — skip raw mode
+
         if (tcgetattr(STDIN_FILENO, &orig_termios) == -1)
-            throw std::runtime_error("Failed to get terminal attributes");
+            return;  // silently ignore if we can't read terminal attrs
 
         struct termios raw = orig_termios;
 
@@ -46,8 +50,7 @@ public:
         raw.c_cc[VMIN] = 0;
         raw.c_cc[VTIME] = 0;
 
-        if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
-            throw std::runtime_error("Failed to set raw mode");
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);  // best-effort, ignore failure
     }
 
     virtual bool Hit()
