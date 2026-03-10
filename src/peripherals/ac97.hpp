@@ -347,6 +347,7 @@ private:
     uint16_t po_cur_ctl_ = 0;
     uint32_t po_cur_bd_frame_offset_bytes_ = 0;
     bool     po_running_ = false;
+    bool     po_lvbci_halted_ = false;  // true only when halted by LVBCI (not explicit stop)
 
     uint64_t dma_tick_counter_ = 0;
 

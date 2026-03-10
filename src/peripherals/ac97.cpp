@@ -208,8 +208,11 @@ void AC97Pci::tick()
         po_status_ |= 0x04;                          // LVBCI
         po_status_  = (po_status_ & ~0x02u) | 0x01u; // DCH=1, CIP=0
         po_running_ = false;
+        po_lvbci_halted_ = true;   // remember: halted by LVBCI (not explicit stop)
         po_cur_len_ = 0;  // signal: no BD loaded (tick() top will reload on resume)
         TRACE_PO_SR_CHANGE();
+        printf("[AC97 LVBCI] Halted: civ=%u lvi=%u status=%02x ctrl=%02x\n",
+               po_civ_, po_lvi_, po_status_, po_control_);
 
         // Raise interrupt and return — do NOT load next BD.
         if ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) {
@@ -753,6 +756,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                     // Reset state
                     po_running_ = false;
+                    po_lvbci_halted_ = false;
                     po_civ_ = 0;
                     po_cur_ptr_ = 0;
                     po_cur_len_ = 0;
@@ -774,6 +778,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // -------------------------------
                 if (!req_start) {
                     po_running_ = false;
+                    po_lvbci_halted_ = false;  // explicit stop cancels LVBCI auto-resume
 
                     // Clear BCIS+LVBCI, set DCH=1
                     po_status_ &= ~(0x0C);
@@ -873,25 +878,34 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 pi_lvi_ = value & 0x1F;
                 break;
             case BMOff::PO_BASE + BMOff::LVI:
+            {
+                uint8_t old_lvi = po_lvi_;
                 po_lvi_ = value & 0x1F;
                 // Auto-resume: real ICH hardware resumes DMA automatically when LVI
                 // is extended past the stall point.
                 // NOTE: Linux clears the LVBCI status bit (W1C) BEFORE writing the
                 // new LVI, so we cannot use LVBCI bit as the condition here.
                 // Instead, use DCH=1 (bit 0), which remains set until we resume.
-                if (!po_running_ && (po_status_ & 0x01u)) {  // DCH=1: DMA is halted
-                    // (po_civ_ - 1) & 0x1F is the old LVI that caused the halt.
-                    // If new LVI differs from that, there are new valid BDs.
-                    if (po_lvi_ != ((po_civ_ - 1 + 32u) & 0x1Fu)) {
-                        po_running_ = true;
-                        po_wall_clock_initialized_ = false;  // re-seed; avoid latency burst
-                        po_frame_credit_ = 0.0;
-                        po_status_  = (po_status_ & ~0x01u) | 0x02u; // DCH=0, CIP=1
-                        // po_cur_len_ == 0, so tick() will load BD from po_civ_
-                        TRACE_PO_SR_CHANGE();
-                    }
+                // Auto-resume: only if this halt was caused by LVBCI (not explicit stop).
+                // Using po_lvbci_halted_ instead of DCH bit avoids premature resume
+                // during clock-measurement setup where Linux stops/restarts DMA
+                // explicitly and writes LVI for the next measurement.
+                bool should_resume = !po_running_ && po_lvbci_halted_;
+                bool lvi_extended = (po_lvi_ != ((po_civ_ - 1 + 32u) & 0x1Fu));
+                printf("[AC97 LVI write] old_lvi=%u new_lvi=%u civ=%u running=%d lvbci_halt=%d should_resume=%d lvi_extended=%d\n",
+                       old_lvi, po_lvi_, po_civ_, (int)po_running_, (int)po_lvbci_halted_, (int)should_resume, (int)lvi_extended);
+                if (should_resume && lvi_extended) {
+                    po_running_ = true;
+                    po_lvbci_halted_ = false;  // consumed the halt
+                    po_wall_clock_initialized_ = false;  // re-seed; avoid latency burst
+                    po_frame_credit_ = 0.0;
+                    po_status_  = (po_status_ & ~0x01u) | 0x02u; // DCH=0, CIP=1
+                    // po_cur_len_ == 0, so tick() will load BD from po_civ_
+                    TRACE_PO_SR_CHANGE();
+                    printf("[AC97 LVI write] AUTO-RESUME triggered, civ=%u lvi=%u\n", po_civ_, po_lvi_);
                 }
                 break;
+            }
             case BMOff::MC_BASE + BMOff::LVI:
                 mc_lvi_ = value & 0x1F;
                 break;
@@ -996,6 +1010,7 @@ void AC97Pci::cold_reset()
     // --- DMA Engine Reset (correct for cold reset) ---
     //
     po_running_ = false;
+    po_lvbci_halted_ = false;
     po_civ_ = 0;
     po_cur_ptr_ = 0;
     po_cur_len_ = 0;
