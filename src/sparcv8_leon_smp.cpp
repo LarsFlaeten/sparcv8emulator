@@ -154,6 +154,7 @@ void cpu_thread(CPU& cpu) {
 
 
 int main(int argc, char **argv) {
+    setbuf(stdout, nullptr);  // unbuffered stdout so debug printfs are never lost
     const auto t_start = std::chrono::steady_clock::now();
     CVLOG_MUTE();
     
