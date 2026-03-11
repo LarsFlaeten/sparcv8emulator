@@ -223,14 +223,19 @@ void AC97Pci::tick()
     }
 
     // Raise interrupt if BCIS is set and IOCE (bit 4 of CR) is enabled.
+    {
+        static int bcis_count = 0;
+        if (po_status_ & 0x08) {
+            ++bcis_count;
+            if (bcis_count <= 4)
+                printf("[AC97 BCIS] #%d civ=%u ctrl=%02x ioce=%d - %s\n",
+                       bcis_count, po_civ_, po_control_, !!(po_control_ & 0x10u),
+                       ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) ? "RAISING IRQ" : "no irq (ioce off)");
+        }
+    }
     if ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) {
         glob_sta_ |= GS_POINT;
-        if (raise_intx_) {
-            raise_intx_();
-#ifdef AC97_DEBUG
-            printf("RAISE IRQ! STATUS=%04x GLOB_STA=%08x\n", po_status_, glob_sta_);
-#endif
-        }
+        if (raise_intx_) raise_intx_();
     }
 
     // Load the next BD from the new po_civ_ so PICB is immediately visible.
