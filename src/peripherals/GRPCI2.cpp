@@ -35,11 +35,13 @@ u32 GRPCI2::read(u32 offset) const
             // Bits 11-8 reflect live PCI INTx state (active-low: 0 = asserted).
             // irq_mode=1: all PCI INTs share AMBA IRQ 2; Linux dispatches via
             // grpci2_pci_flow_irq using pci_ints = (~sts_cap >> 8) & ctrl & 0xf.
-            // Our AC97 at slot 6 + INTA → rotated to INTC → bit 10.
+            // Linux sees AC97 at PCI slot 0 (grpci2_cfg_r32 adds devfn+=0x8*6 for hw access,
+            // but pci_dev->devfn=0). grpci2_map_irq(slot=0, INTA) → irq_map[0] → ctrl bit 0.
+            // So INTA (bit 8) must be cleared when AC97 asserts.
             uint32_t int_bits = 0xF00u; // default: all deasserted
             bool inta = device_ && device_->inta_asserted();
             if (inta)
-                int_bits &= ~(1u << 10); // INTC asserted (bit 10 = 0)
+                int_bits &= ~(1u << 8); // INTA asserted (bit 8 = 0)
             uint32_t result = (sts_cap_ & ~0xF00u) | int_bits;
             static int read_count = 0;
             if (inta && ++read_count <= 4)
