@@ -30,4 +30,7 @@ public:
     virtual void tick() {;} // empty tick if not implemented in derived
 
     virtual void set_intx_cb(std::function<void()> cb) = 0;
+
+    // Returns true if the device is currently asserting PCI INTA# (level-sensitive)
+    virtual bool inta_asserted() const { return false; }
 };

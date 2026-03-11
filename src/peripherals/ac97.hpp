@@ -260,6 +260,11 @@ public:
         raise_intx_ = std::move(cb);
     }
 
+    // Returns true while PCI INTA# is asserted (level-sensitive)
+    bool inta_asserted() const override {
+        return (po_status_ & 0x0Cu) && (po_control_ & 0x10u);
+    }
+
     void reset() {
         cold_reset();
     }

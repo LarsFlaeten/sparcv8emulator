@@ -92,6 +92,19 @@ protected:
         write16_le(off + 6, ctl);
     }
 
+    // Set up 32 BDs matching snd_intel8x0's speaker-test layout:
+    // 1024 16-bit samples (512 stereo frames) each, IOC=1 on every BD.
+    void setup_32bd_ring(uint32_t bdbar, uint32_t sample_buf)
+    {
+        for (int i = 0; i < 32; i++) {
+            write32_le(bdbar + i * 8,     sample_buf);
+            write16_le(bdbar + i * 8 + 4, 1024);       // 512 frames × 2 samples
+            write16_le(bdbar + i * 8 + 6, 0x8000);     // IOC=1
+        }
+        write32_le(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::BD_BAR, bdbar);
+        write8    (NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI, 31);
+    }
+
 };
 
 
@@ -1878,5 +1891,143 @@ TEST_F(AC97Test, PICB_IsReadOnlyAndMustNotAffectDMAState)
 
     EXPECT_EQ(picb_after_tick, picb_before - 8)
         << "PICB must be decremented only by DMA activity, not by writes.";
+}
+
+// ---------------------------------------------------------------------------
+// TEST: Each BD completion raises a BCIS IRQ; after all 32, LVBCI fires.
+//   Models the failure mode we see in the emulator: Linux never updates LVI
+//   because it never receives the BCIS IRQs.  Without LVI updates, CIV laps
+//   LVI and LVBCI fires after exactly 32 BDs.
+// ---------------------------------------------------------------------------
+TEST_F(AC97Test, DMA_32BD_WithoutLviUpdate_LVBCIFiresAfter32BDs)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x40000);
+    make_device();
+
+    constexpr uint32_t BDBAR      = 0x420A0000;
+    constexpr uint32_t SAMPLE_BUF = 0x420A8000;
+
+    setup_32bd_ring(BDBAR, SAMPLE_BUF);
+
+    // Start with RUN=1, IOCE=1 (0x11) — matches real Linux
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR, 0x11);
+    // One BD completes per tick
+    dev->force_frames_per_tick(512);
+
+    // --- Process BDs 0..30: expect BCIS each time, no LVBCI ---
+    for (int i = 0; i < 31; i++) {
+        irq_raised = false;
+        dev->tick();
+
+        EXPECT_TRUE(irq_raised)
+            << "BCIS IRQ must fire after BD " << i << " (IOC=1)";
+        EXPECT_EQ(read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV), (uint8_t)(i + 1))
+            << "CIV must have advanced to " << i + 1;
+
+        uint8_t sr = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+        EXPECT_EQ(sr & 0x04, 0) << "LVBCI must NOT fire at BD " << i;
+        EXPECT_EQ(sr & 0x01, 0) << "DCH must stay clear (DMA still running) at BD " << i;
+
+        // Simulate Linux ACK of BCIS (W1C on SR) — but do NOT update LVI
+        write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR, 0x08);
+    }
+
+    // --- BD 31: CIV wraps to 0, LVBCI fires ---
+    irq_raised = false;
+    dev->tick();
+
+    EXPECT_TRUE(irq_raised) << "IRQ must fire for LVBCI (BD 31)";
+
+    uint8_t sr_final = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+    EXPECT_EQ(sr_final & 0x04, 0x04) << "LVBCI bit must be set after BD 31";
+    EXPECT_EQ(sr_final & 0x01, 0x01) << "DCH must be set (DMA halted)";
+
+    uint8_t civ = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CIV);
+    EXPECT_EQ(civ, 0) << "CIV must wrap to 0 after 32 BDs";
+}
+
+// ---------------------------------------------------------------------------
+// TEST: If Linux properly updates LVI after each BCIS (advancing by 1), the
+//   ring runs continuously — LVBCI never fires even across 64 BDs (two ring
+//   cycles). This validates the "happy path" we need to achieve.
+// ---------------------------------------------------------------------------
+TEST_F(AC97Test, DMA_32BD_WithLinuxLviUpdate_NeverFiresLVBCI)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x40000);
+    make_device();
+
+    constexpr uint32_t BDBAR      = 0x420A0000;
+    constexpr uint32_t SAMPLE_BUF = 0x420A8000;
+
+    setup_32bd_ring(BDBAR, SAMPLE_BUF);
+
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR, 0x11);
+    dev->force_frames_per_tick(512);
+
+    // Mirrors snd_intel8x0_update(): ichdev->lvi = (ichdev->lvi + step) % 32
+    int ichdev_lvi = 31;
+
+    // Process 64 BDs (two full ring cycles) without LVBCI
+    for (int bd = 0; bd < 64; bd++) {
+        irq_raised = false;
+        dev->tick();
+
+        EXPECT_TRUE(irq_raised) << "BCIS IRQ must fire after BD " << bd;
+
+        uint8_t sr = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+        EXPECT_EQ(sr & 0x04, 0) << "LVBCI must NOT fire at BD " << bd;
+        EXPECT_EQ(sr & 0x01, 0) << "DMA must keep running at BD " << bd;
+
+        // Simulate Linux: clear BCIS (W1C), then advance LVI by 1
+        write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR, 0x08);
+        ichdev_lvi = (ichdev_lvi + 1) % 32;
+        write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI, ichdev_lvi);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TEST: After LVBCI halts DMA (civ=0, lvi=31), a Linux-like LVI write with
+//   the *same* value (lvi=31) must NOT resume DMA — the stall condition is
+//   still met: (lvi+1)%32 == civ → 0 == 0.
+//   But writing lvi=0 extends the buffer past the stall and MUST resume.
+// ---------------------------------------------------------------------------
+TEST_F(AC97Test, DMA_LVBCI_AutoResume_LviExtensionRequired)
+{
+    mctrl.attach_bank<RamBank>(0x420A0000, 0x40000);
+    make_device();
+
+    constexpr uint32_t BDBAR      = 0x420A0000;
+    constexpr uint32_t SAMPLE_BUF = 0x420A8000;
+
+    setup_32bd_ring(BDBAR, SAMPLE_BUF);
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::CR, 0x11);
+    dev->force_frames_per_tick(512);
+
+    // Run 32 BDs without LVI update → triggers LVBCI
+    for (int i = 0; i < 31; i++) {
+        dev->tick();
+        write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR, 0x08); // ACK BCIS
+    }
+    dev->tick(); // BD 31 → LVBCI, civ=0, lvi=31
+
+    uint8_t sr = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+    ASSERT_EQ(sr & 0x05, 0x05) << "Precondition: LVBCI+DCH must be set";
+
+    // Simulate Linux: clear LVBCI+BCIS via W1C, then write lvi=31 (step=0 case)
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR, 0x0C); // W1C LVBCI+BCIS
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI, 31);  // same LVI — no extension
+
+    uint8_t sr_after_lvi31 = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+    EXPECT_EQ(sr_after_lvi31 & 0x01, 0x01)
+        << "DMA must remain halted (DCH=1) after writing lvi=31 — stall condition still met";
+
+    // Now write lvi=0: (lvi+1)%32=1 != civ=0 — buffer extends, auto-resume expected
+    write8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::LVI, 0);
+
+    uint8_t sr_after_lvi0 = read8(NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR);
+    EXPECT_EQ(sr_after_lvi0 & 0x01, 0)
+        << "DMA must resume (DCH=0) after writing lvi=0 — buffer extended past stall";
+    EXPECT_EQ(sr_after_lvi0 & 0x02, 0x02)
+        << "CIP must be set (DMA active) after auto-resume";
 }
 

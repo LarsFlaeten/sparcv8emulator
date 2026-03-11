@@ -58,7 +58,7 @@ void IRQMP::trigger_irq(u32 IRL) {
             std::cout << "[IRQMP] Trigger irl 13 from trigger_irq\n";
 #endif
         std::unique_lock lock(mtx_);
-        
+
         // First, check if the irl is marked as broadcast
         if((brdcst_ >> irl) & 0x1U) {
             // Set irl to force register of all cpus

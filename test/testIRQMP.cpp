@@ -624,3 +624,90 @@ TEST_F(IRQMPTest, SMP_PIFORCE_write)
 
 }
 
+// ---------------------------------------------------------------------------
+// IRQ 6 is the PCI INTA interrupt used by snd_intel8x0 (AC97 audio).
+// Verify it is delivered correctly when pimask bit 6 is set, and suppressed
+// when the mask is absent — exactly the condition needed for BCIS delivery.
+// ---------------------------------------------------------------------------
+TEST_F(IRQMPTest, IRQ6_NotDelivered_WhenPimaskBit6NotSet)
+{
+    IRQMP intc(2);
+    CPU cpu0(mctrl, intc, 0);
+    CPU cpu1(mctrl, intc, 1);
+    intc.set_cpu_ptr(&cpu0, 0);
+    intc.set_cpu_ptr(&cpu1, 1);
+
+    // No IRQ 6 in pimask for either CPU → trigger_irq(6) must not surface as hint
+    intc.trigger_irq(6);
+    EXPECT_EQ(intc.get_irq_hint(0), 0u) << "IRQ 6 must NOT be hinted when pimask bit 6 is clear";
+    EXPECT_EQ(intc.get_irq_hint(1), 0u) << "IRQ 6 must NOT be hinted when pimask bit 6 is clear";
+}
+
+TEST_F(IRQMPTest, IRQ6_DeliveredToCPU0_WhenPimaskBit6Set)
+{
+    IRQMP intc(2);
+    CPU cpu0(mctrl, intc, 0);
+    CPU cpu1(mctrl, intc, 1);
+    intc.set_cpu_ptr(&cpu0, 0);
+    intc.set_cpu_ptr(&cpu1, 1);
+
+    // Linux sets pimask = 0xFFFE (all IRQs) for CPU 0 after request_irq()
+    intc.write(0x40, 0xFFFEu); // PIMASK for CPU 0
+
+    intc.trigger_irq(6);
+    EXPECT_EQ(intc.get_irq_hint(0), 6u) << "IRQ 6 must be hinted to CPU 0 when pimask bit 6 is set";
+
+    intc.clear_irq(6, 0);
+    EXPECT_EQ(intc.get_irq_hint(0), 0u) << "Hint must clear after CPU 0 acks IRQ 6";
+}
+
+TEST_F(IRQMPTest, IRQ6_CanBeRetriggered_AfterCpuAck)
+{
+    // Mirrors the real BCIS path: trigger_irq(6) is called once per BD completion.
+    // After the CPU handles one BCIS, the next BD fires trigger_irq(6) again.
+    IRQMP intc(2);
+    CPU cpu0(mctrl, intc, 0);
+    CPU cpu1(mctrl, intc, 1);
+    intc.set_cpu_ptr(&cpu0, 0);
+    intc.set_cpu_ptr(&cpu1, 1);
+
+    intc.write(0x40, 0xFFFEu); // enable all IRQs on CPU 0
+
+    for (int bd = 0; bd < 32; bd++) {
+        intc.trigger_irq(6);
+        EXPECT_EQ(intc.get_irq_hint(0), 6u)
+            << "IRQ 6 must be deliverable on BD " << bd;
+        intc.clear_irq(6, 0); // CPU takes the interrupt
+        EXPECT_EQ(intc.get_irq_hint(0), 0u)
+            << "Hint must clear after ack on BD " << bd;
+    }
+}
+
+TEST_F(IRQMPTest, IRQ8_DoesNotPreventIRQ6_AfterTimerIRQCleared)
+{
+    // Timer IRQ 8 and AC97 IRQ 6 can both be pending simultaneously.
+    // The CPU takes 8 first (higher priority), then 6.
+    IRQMP intc(2);
+    CPU cpu0(mctrl, intc, 0);
+    CPU cpu1(mctrl, intc, 1);
+    intc.set_cpu_ptr(&cpu0, 0);
+    intc.set_cpu_ptr(&cpu1, 1);
+
+    intc.write(0x40, 0xFFFEu);
+
+    intc.trigger_irq(8);
+    intc.trigger_irq(6);
+
+    // CPU sees highest pending = 8
+    EXPECT_EQ(intc.get_irq_hint(0), 8u) << "IRQ 8 must take priority over IRQ 6";
+
+    // CPU acks IRQ 8 (timer handler done)
+    intc.clear_irq(8, 0);
+
+    // IRQ 6 must now be visible
+    EXPECT_EQ(intc.get_irq_hint(0), 6u) << "IRQ 6 must become visible after IRQ 8 is cleared";
+
+    intc.clear_irq(6, 0);
+    EXPECT_EQ(intc.get_irq_hint(0), 0u);
+}
+

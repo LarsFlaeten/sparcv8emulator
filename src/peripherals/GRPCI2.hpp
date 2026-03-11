@@ -49,14 +49,14 @@ public:
     void    attach_device(std::unique_ptr<PciDevice>&& dev) {
         device_ = std::move(dev);
 
-        device_->set_intx_cb([this](){this->raise_pci_irq(6);});
+        device_->set_intx_cb([this](){this->raise_pci_irq(0);});
     }
 
-    void raise_pci_irq(uint8_t slot) {
-        // GRPCI2 AMBA PnP IRQ = 2 (set in Amba.cpp).
-        // Linux grpci2 driver maps PCI INTA as: amba_irq + 4 = 6.
-        // /proc/interrupts confirms: irq 6 = grpci2 snd_intel8x0.
-        irqmp_.trigger_irq(6);
+    void raise_pci_irq(uint8_t /*slot*/) {
+        // In single-IRQ mode (irq_mode=1), all PCI interrupts share AMBA IRQ 2.
+        // grpci2_pci_flow_irq reads sts_cap bits 11-8 (active-low) to dispatch.
+        // Our AC97 at slot 6 + INTA → rotated to INTC → sts_cap bit 10.
+        irqmp_.trigger_irq(2);
     }
 
     const PciDevice& get_pci_device() const {

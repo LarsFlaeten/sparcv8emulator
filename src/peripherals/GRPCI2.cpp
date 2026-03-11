@@ -31,9 +31,16 @@ u32 GRPCI2::read(u32 offset) const
         case(0x0):
             //std::cout << "[GRPCI2] Returning CTRL reg: " + to_hex(ctrl_) << "\n";
             return ctrl_;
-        case(0x04):
-            //std::cout << "[GRPCI2] Returning STS_CAP reg: " + to_hex(sts_cap_) << "\n";
-            return sts_cap_;
+        case(0x04): {
+            // Bits 11-8 reflect live PCI INTx state (active-low: 0 = asserted).
+            // irq_mode=1: all PCI INTs share AMBA IRQ 2; Linux dispatches via
+            // grpci2_pci_flow_irq using pci_ints = (~sts_cap >> 8) & ctrl & 0xf.
+            // Our AC97 at slot 6 + INTA → rotated to INTC → bit 10.
+            uint32_t int_bits = 0xF00u; // default: all deasserted
+            if (device_ && device_->inta_asserted())
+                int_bits &= ~(1u << 10); // INTC asserted (bit 10 = 0)
+            return (sts_cap_ & ~0xF00u) | int_bits;
+        }
         case(0x0C):
             //std::cout << "[GRPCI2] Returning IOMAP reg: " + to_hex(io_map_) << "\n";
             return io_map_;

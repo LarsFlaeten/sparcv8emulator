@@ -97,8 +97,9 @@ TEST_F(GRPCI2Test, CheckSTSCAPRegOnStartup)
 {
     auto sts_cap = testable_.read(0x4);
 
-    // PCI should have master bit enabled, and IRQ mode 1 set
-    u32 cmp = 0x1 << 30 | 0x1 << 24 | 0x1 << 28;
+    // PCI should have master bit enabled, and IRQ mode 1 set.
+    // Bits 11-8 (STS_INTSTS) are active-low PCI INTx status; 0xF00 = all deasserted.
+    u32 cmp = 0x1 << 30 | 0x1 << 24 | 0x1 << 28 | 0xF00u;
     ASSERT_EQ(sts_cap, cmp);
 }
 
@@ -106,8 +107,9 @@ TEST_F(GRPCI2Test, WriteSTSCAPReg)
 {
     auto sts_cap = testable_.read(0x4);
 
-    // PCI should have master bit enabled, and IRQ mode 1 set
-    u32 cmp = 0x1 << 30 | 0x1 << 24 | 0x1 << 28;
+    // PCI should have master bit enabled, and IRQ mode 1 set.
+    // Bits 11-8 (STS_INTSTS) are active-low; 0xF00 = all PCI INTx deasserted.
+    u32 cmp = 0x1 << 30 | 0x1 << 24 | 0x1 << 28 | 0xF00u;
     ASSERT_EQ(sts_cap, cmp);
 
     // bits 12-20 are write-clear, all other are read only
@@ -124,7 +126,8 @@ TEST_F(GRPCI2Test, WriteSTSCAPReg)
     testable_.sts_cap_ = mask_alt; // Alternating 1 and 0
     testable_.write(0x4, mask_ones); // Write all ones
     sts_cap = testable_.read(0x4);
-    ASSERT_EQ(sts_cap, 0xaaaaaaaa & (u32)~(0x1ff << 12)); // Expect alternating ones except bits 12-20
+    // bits 12-20 cleared (WC), bits 8-11 forced to 0xF (no interrupt asserted), rest from 0xAAAAAAAA
+    ASSERT_EQ(sts_cap, (0xaaaaaaaa & (u32)~((0x1ffu << 12) | 0xF00u)) | 0xF00u);
 
     // Set all to one, check that only 12-20 are cleared:
     testable_.sts_cap_ = (u32)~0;
@@ -174,8 +177,9 @@ TEST_F(GRPCI2Test, STSCAP_signal_cfg_access_done)
 {
     auto sts_cap = testable_.read(0x4);
 
-    // PCI should have master bit enabled, and IRQ mode 1 set
-    u32 cmp = 0x1 << 30 | 0x1 << 24 | 0x1 << 28;
+    // PCI should have master bit enabled, and IRQ mode 1 set.
+    // Bits 11-8 (STS_INTSTS) are active-low; 0xF00 = all PCI INTx deasserted.
+    u32 cmp = 0x1 << 30 | 0x1 << 24 | 0x1 << 28 | 0xF00u;
     ASSERT_EQ(sts_cap, cmp);
 
     testable_.signal_pci_cfg_access_complete();
@@ -372,17 +376,17 @@ TEST_F(GRPCI2Test, ahbm2pci_readwrite)
     }
 }
 
-TEST_F(GRPCI2Test, PciIrqRoutedToIRQ6)
+TEST_F(GRPCI2Test, PciIrqRoutedToIRQ2)
 {
-    // The Linux GRPCI2 driver computes PCI INTA IRQ as:
-    //   amba_pnp_irq + 4 = 2 + 4 = 6
-    // Verified via /proc/interrupts: "6: grpci2 -pcilvl snd_intel8x0"
-    // raise_pci_irq must trigger IRQMP IRQ 6, not IRQ 2.
-    testable_.raise_pci_irq(0);  // slot 0, INTA
+    // In single-IRQ mode (irq_mode=1), all PCI interrupts share AMBA IRQ 2.
+    // Linux installs grpci2_pci_flow_irq as the flow handler for IRQ 2
+    // and reads sts_cap bits 11-8 (active-low) to dispatch to individual devices.
+    // raise_pci_irq must trigger IRQMP IRQ 2 (the GRPCI2 AMBA IRQ in pimask bit 2).
+    testable_.raise_pci_irq(0);
 
     u32 ipend = irqmp.read(IRQMP_IPEND_OS);
-    ASSERT_NE(ipend & (1u << 6), 0u) << "IRQ 6 must be pending in IRQMP after PCI INTA";
-    ASSERT_EQ(ipend & (1u << 2), 0u) << "IRQ 2 must NOT be triggered (that is GRPCI2_JUMP, not device IRQ)";
+    ASSERT_NE(ipend & (1u << 2), 0u) << "IRQ 2 must be pending in IRQMP after PCI INTA";
+    ASSERT_EQ(ipend & (1u << 6), 0u) << "IRQ 6 must NOT be triggered (not in pimask)";
 }
 
 TEST_F(GRPCI2Test, ac97_init)
