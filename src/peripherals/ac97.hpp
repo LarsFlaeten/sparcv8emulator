@@ -265,6 +265,15 @@ public:
         return (po_status_ & 0x0Cu) && (po_control_ & 0x10u);
     }
 
+    // Set the physical MMIO base addresses as mapped by the host memory system.
+    // When set, these override the BAR-derived values for io_read/write dispatch.
+    // Needed because GRPCI2::config_write32 byte-swaps values before forwarding,
+    // so the BAR write gives a swapped address rather than the physical one.
+    void set_phys_bases(uint32_t nam_phys, uint32_t nabm_phys) {
+        phys_nam_base_  = nam_phys;
+        phys_nabm_base_ = nabm_phys;
+    }
+
     void reset() {
         cold_reset();
     }
@@ -294,6 +303,10 @@ private:
     bool running_ = false;
     uint32_t nam_base_ = 0;
     uint32_t nabm_base_ = 0;
+    // Physical addresses as seen by the host memory system (set via set_phys_bases).
+    // When non-zero, override nam_base_/nabm_base_ for io_read/write dispatch.
+    uint32_t phys_nam_base_  = 0;
+    uint32_t phys_nabm_base_ = 0;
     
     // NAM = codec register file (0x00–0x7F)
     uint16_t codec_regs_[0x80/2] = {};
@@ -455,18 +468,9 @@ private:
                     nam_base_ = 0;
                     
                 } else {
-                    //std::cout << "[AC97] write32, creating NAM bar, 0x" << to_hex(v) << "\n";
-
                     probing_bar_[bar_idx] = false;
-
-                    // Linux writes a physical MMIO address here
                     bar_values_[bar_idx] = (v & 0xFFFFFFF0u);
-
-                    // AC'97 NAM region = first BAR
                     nam_base_ = bar_values_[bar_idx];
-                    //std::cout << "[AC97] write32, creating new memory area at 0x" << to_hex(nam_base_) << "\n";
-
-                    //mctrl_.attach_bank<PCIMMIOBank>(*this, nam_base_);
                 }
                 break;
             }
@@ -474,30 +478,15 @@ private:
             case BAR1: {   // NABM BAR
                 uint8_t bar_idx = 1;
                 if (v == 0xFFFFFFFFu) {
-                    //std::cout << "[AC97] write32, probing NABM bar\n";
-
                     probing_bar_[bar_idx] = true;
                 } else if (v == 0) {
-                    //std::cout << "[AC97] write32, disabling NAM bar, idx=" << to_hex(bar_idx) << "\n";
-
-                    // BAR disabled
                     probing_bar_[bar_idx] = false;
                     bar_values_[bar_idx] = 0;
-
-                    // DO NOT ATTACH MEMORY
                     nabm_base_ = 0;
-                    
                 } else {
-                    //std::cout << "[AC97] write32, creating NABM bar, 0x" << to_hex(v) << "\n";
-
                     probing_bar_[bar_idx] = false;
-
                     bar_values_[bar_idx] = (v & 0xFFFFFFF0u);
-
-                    // AC'97 NABM region = second BAR
                     nabm_base_ = bar_values_[bar_idx];
-                    //std::cout << "[AC97] write32, creating new memory area at 0x" << to_hex(nabm_base_) << "\n";
-                    //mctrl_.attach_bank<PCIMMIOBank>(*this, nabm_base_);
                 }
                 break;
             }

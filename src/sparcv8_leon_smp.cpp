@@ -231,6 +231,7 @@ int main(int argc, char **argv) {
     auto ac97pci = std::make_unique<AC97Pci>(0, mctrl);
     mctrl.attach_bank<PCIMMIOBank>(*ac97pci, 0x24000800, 0x100); // NAM (BAR0)
     mctrl.attach_bank<PCIMMIOBank>(*ac97pci, 0x24000900, 0x100); // NABM (BAR1)
+    ac97pci->set_phys_bases(0x24000800, 0x24000900); // must match PCIMMIOBank addresses above
     GRPCI2& grpci2 = apbctrl.get_grpci2();
     grpci2.attach_device(std::move(ac97pci));
     mctrl.attach_bank<PCIIOCfgArea>(0xfffa0000, grpci2); // PCI config space

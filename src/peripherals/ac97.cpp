@@ -265,13 +265,15 @@ void AC97Pci::tick()
 
 uint32_t AC97Pci::io_read32(uint32_t addr) {
     uint32_t ret;
+    uint32_t eff_nam  = phys_nam_base_  ? phys_nam_base_  : nam_base_;
+    uint32_t eff_nabm = phys_nabm_base_ ? phys_nabm_base_ : nabm_base_;
 
-    if ((addr >= nam_base_) && (addr < (nam_base_ + 0x100))) {
-        uint32_t of = addr - nam_base_;
+    if ((addr >= eff_nam) && (addr < (eff_nam + 0x100))) {
+        uint32_t of = addr - eff_nam;
         uint32_t val = read_nam(of & 0xFF);
         ret = 0xFFFF0000u | val;     // REQUIRED BY AC'97
-    } else if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
-        uint32_t of = addr - nabm_base_;
+    } else if ((addr >= eff_nabm) && (addr < (eff_nabm + 0x100))) {
+        uint32_t of = addr - eff_nabm;
         ret = read_nabm(of & 0xFF, 4);
     } else {
         ret = 0xFFFFFFFF;
@@ -286,11 +288,14 @@ uint32_t AC97Pci::io_read32(uint32_t addr) {
 
 uint16_t AC97Pci::io_read16(uint32_t addr) {
     uint16_t ret;
-    if ((addr >= nam_base_) && (addr < (nam_base_ + 0x100))) {
-        uint32_t of = addr - nam_base_;
+    uint32_t eff_nam  = phys_nam_base_  ? phys_nam_base_  : nam_base_;
+    uint32_t eff_nabm = phys_nabm_base_ ? phys_nabm_base_ : nabm_base_;
+
+    if ((addr >= eff_nam) && (addr < (eff_nam + 0x100))) {
+        uint32_t of = addr - eff_nam;
         ret = read_nam(of & 0xFF);
-    } else if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
-        uint32_t of = addr - nabm_base_;
+    } else if ((addr >= eff_nabm) && (addr < (eff_nabm + 0x100))) {
+        uint32_t of = addr - eff_nabm;
         ret = read_nabm(of & 0xFF, 2);
     } else {
         ret = 0xFFFF;
@@ -305,15 +310,10 @@ uint16_t AC97Pci::io_read16(uint32_t addr) {
 
 uint8_t AC97Pci::io_read8(uint32_t addr) {
     uint8_t ret;
-    /*
-    if (port >= nam_base_ && port < nam_base_ + 0x100) {
-        uint32_t of = port - nam_base_;
-        return read_nam(of & 0xFF);
-    }
-    */
+    uint32_t eff_nabm = phys_nabm_base_ ? phys_nabm_base_ : nabm_base_;
 
-    if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
-        uint32_t of = addr - nabm_base_;
+    if ((addr >= eff_nabm) && (addr < (eff_nabm + 0x100))) {
+        uint32_t of = addr - eff_nabm;
         ret = read_nabm(of & 0xFF, 1);
     } else {
         ret = 0xFF;
@@ -325,16 +325,17 @@ uint8_t AC97Pci::io_read8(uint32_t addr) {
 }
 
 void AC97Pci::io_write32(uint32_t addr, uint32_t v) {
-    //std::cout << "[AC97] io_write32 addr=0x" << to_hex(addr) << " <- " << to_hex(v) << "\n";
-    
-    if ((addr >= nam_base_) && (addr < (nam_base_ + 0x100))) {
-        uint32_t of = addr - nam_base_;
+    uint32_t eff_nam  = phys_nam_base_  ? phys_nam_base_  : nam_base_;
+    uint32_t eff_nabm = phys_nabm_base_ ? phys_nabm_base_ : nabm_base_;
+
+    if ((addr >= eff_nam) && (addr < (eff_nam + 0x100))) {
+        uint32_t of = addr - eff_nam;
         write_nam(of & 0xFF, v);
         return;
     }
 
-    if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
-        uint32_t of = addr - nabm_base_;
+    if ((addr >= eff_nabm) && (addr < (eff_nabm + 0x100))) {
+        uint32_t of = addr - eff_nabm;
         write_nabm(of & 0xFF, v, 4);
         return;
     }
@@ -347,16 +348,17 @@ void AC97Pci::io_write32(uint32_t addr, uint32_t v) {
 }
 
 void AC97Pci::io_write16(uint32_t addr, uint16_t v) {
-    //std::cout << "[AC97] io_write16 addr=0x" << to_hex(addr) << " <- " << to_hex(v) << "\n";
-    
-    if ((addr >= nam_base_) && (addr < (nam_base_ + 0x100))) {
-        uint32_t of = addr - nam_base_;
+    uint32_t eff_nam  = phys_nam_base_  ? phys_nam_base_  : nam_base_;
+    uint32_t eff_nabm = phys_nabm_base_ ? phys_nabm_base_ : nabm_base_;
+
+    if ((addr >= eff_nam) && (addr < (eff_nam + 0x100))) {
+        uint32_t of = addr - eff_nam;
         write_nam(of & 0xFF, v);
         return;
     }
 
-    if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
-        uint32_t of = addr - nabm_base_;
+    if ((addr >= eff_nabm) && (addr < (eff_nabm + 0x100))) {
+        uint32_t of = addr - eff_nabm;
         write_nabm(of & 0xFF, v, 2);
         return;
     }
@@ -368,17 +370,10 @@ void AC97Pci::io_write16(uint32_t addr, uint16_t v) {
 }
 
 void AC97Pci::io_write8(uint32_t addr, uint8_t v) {
-    //std::cout << "[AC97] io_write8 addr=0x" << to_hex(addr) << " <- " << to_hex(v) << "\n";
-    
-    /*   
-    if (port >= nam_base_ && port < nam_base_ + 0x100) {
-        uint32_t of = port - nam_base_;
-        write_nam(of & 0xFF, v);
-        return;
-    }
-    */
-    if ((addr >= nabm_base_) && (addr < (nabm_base_ + 0x100))) {
-        uint32_t of = addr - nabm_base_;
+    uint32_t eff_nabm = phys_nabm_base_ ? phys_nabm_base_ : nabm_base_;
+
+    if ((addr >= eff_nabm) && (addr < (eff_nabm + 0x100))) {
+        uint32_t of = addr - eff_nabm;
         write_nabm(of & 0xFF, v, 1);
         return;
     }
@@ -545,6 +540,10 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
 //----------------------------------------------------------------------
 uint32_t AC97Pci::read_glob_sta()
 {
+    static int gs_read_count = 0;
+    if (++gs_read_count <= 12)
+        printf("[AC97 GLOB_STA read] glob_sta_=0x%08x\n", glob_sta_);
+
     // Mask to only allow documented readable bits
     constexpr uint32_t allowed =
         (1u << 0)  |   // GSCI  - Global Status Change Interrupt (W1C)
@@ -580,6 +579,9 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
 
                 // AC'97 semantics: BCIS is sticky until W1C
                 // BUT do NOT auto-clear on read — Linux checks repeatedly
+                static int sr_read_count = 0;
+                if (++sr_read_count <= 8)
+                    printf("[AC97 SR read8] offset=%02x -> %02x (po_status=%04x)\n", offset, val, po_status_);
                 break;
             }
 
@@ -707,6 +709,9 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
             
             case BMOff::PO_BASE + BMOff::SR: {
                 uint8_t clear_mask = value & 0x1E;   // bits 1..4 are W1C
+                static int sr_write8_count = 0;
+                if (++sr_write8_count <= 8)
+                    printf("[AC97 SR write8] val=%02x clear_mask=%02x po_status before=%04x\n", value, clear_mask, po_status_);
                 po_status_ &= ~clear_mask;
                 TRACE_PO_SR_CHANGE();
                 break;
@@ -927,12 +932,23 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
             // ----- PICB (playback PICB at least is used) -----
             case BMOff::PO_BASE + BMOff::PICB: { // 0x18
                 // PICB is read only!!!! Ignore
-                //po_picb_ = static_cast<uint16_t>(value);
                 break;
             }
-            
+
+            // SR can be written as 16-bit (iputword) to clear W1C bits
+            case BMOff::PO_BASE + BMOff::SR: { // 0x16
+                uint16_t clear_mask = value & 0x1E;
+                static int sr_write16_count = 0;
+                if (++sr_write16_count <= 8)
+                    printf("[AC97 SR write16] val=%04x clear_mask=%04x po_status before=%04x\n", value, clear_mask, po_status_);
+                po_status_ &= ~clear_mask;
+                TRACE_PO_SR_CHANGE();
+                break;
+            }
+
             default:
-                throw std::runtime_error("[AC97 NABM] Write16 not valid for register " + to_hex(offset));
+                printf("[AC97 NABM] WARN: write16 unhandled register %02x val=%04x\n", offset, value);
+                break;
 
         }
         return;
