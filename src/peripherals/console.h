@@ -2,6 +2,7 @@
 #pragma once
 
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <termios.h>
@@ -12,9 +13,10 @@ class Console
     struct termios orig_termios;
     uint8_t pending;
     bool has_pending;
+    bool escape_pending;  // true when last byte was Ctrl+] (escape char)
 
 public:
-    Console() : pending(0), has_pending(false)
+    Console() : pending(0), has_pending(false), escape_pending(false)
     {
         enable_raw_mode();
 
@@ -44,8 +46,10 @@ public:
 
         struct termios raw = orig_termios;
 
-        // Disable echo and canonical mode
-        raw.c_lflag &= ~(ECHO | ICANON);
+        // Disable echo, canonical mode, and signal generation.
+        // ISIG must be off so Ctrl+C (0x03) passes to the guest instead of
+        // raising SIGINT on the emulator process.  Use Ctrl+] X to quit.
+        raw.c_lflag &= ~(ECHO | ICANON | ISIG);
 
         raw.c_cc[VMIN] = 0;
         raw.c_cc[VTIME] = 0;
@@ -59,14 +63,36 @@ public:
 
         uint8_t c;
         int r = ::read(STDIN_FILENO, &c, 1);
+        if (r != 1)
+            return false;
 
-        if (r == 1) {
-            pending = c;
-            has_pending = true;
-            return true;
+        if (escape_pending) {
+            escape_pending = false;
+            if (c == 'x' || c == 'X') {
+                // Ctrl+A X → quit emulator
+                disable_raw_mode();
+                raise(SIGTERM);
+                return false;
+            }
+            if (c == 0x1D) {
+                // Ctrl+] Ctrl+] → send one Ctrl+] to guest
+                pending = 0x1D;
+                has_pending = true;
+                return true;
+            }
+            // Unrecognised sequence — silently drop both bytes.
+            return false;
         }
 
-        return false;
+        if (c == 0x1D) {
+            // Ctrl+] — start escape sequence, don't forward yet
+            escape_pending = true;
+            return false;
+        }
+
+        pending = c;
+        has_pending = true;
+        return true;
     }
 
     virtual uint8_t Getc()
