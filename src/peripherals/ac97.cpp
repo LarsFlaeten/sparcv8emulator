@@ -130,6 +130,10 @@ void AC97Pci::tick()
         printf("[AC97 BD LOAD] civ=%u ptr=%08x len=%u ctl=%04x\n", po_civ_, ptr, len, ctl);
 #endif
         if (ptr == 0 || len == 0) {
+            static int empty_bd_count = 0;
+            if (++empty_bd_count <= 4)
+                printf("[AC97 TICK] BD%u empty: ptr=0x%08x len=%u (bd_addr=0x%08x)\n",
+                       po_civ_, ptr, len, bd_addr);
             po_running_ = false;
             po_status_  = (po_status_ & ~0x02u) | 0x01u; // DCH=1, CIP=0
             TRACE_PO_SR_CHANGE();
@@ -227,10 +231,9 @@ void AC97Pci::tick()
         static int bcis_count = 0;
         if (po_status_ & 0x08) {
             ++bcis_count;
-            if (bcis_count <= 4)
-                printf("[AC97 BCIS] #%d civ=%u ctrl=%02x ioce=%d - %s\n",
-                       bcis_count, po_civ_, po_control_, !!(po_control_ & 0x10u),
-                       ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) ? "RAISING IRQ" : "no irq (ioce off)");
+            printf("[AC97 BCIS] #%d civ=%u ctrl=%02x ioce=%d - %s\n",
+                   bcis_count, po_civ_, po_control_, !!(po_control_ & 0x10u),
+                   ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) ? "RAISING IRQ" : "no irq (ioce off)");
         }
     }
     if ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) {
@@ -267,6 +270,10 @@ uint32_t AC97Pci::io_read32(uint32_t addr) {
     uint32_t ret;
     uint32_t eff_nam  = phys_nam_base_  ? phys_nam_base_  : nam_base_;
     uint32_t eff_nabm = phys_nabm_base_ ? phys_nabm_base_ : nabm_base_;
+
+    static int r32_count = 0;
+    if (++r32_count <= 50)
+        printf("[AC97 io_read32] #%d addr=0x%08x eff_nabm=0x%08x\n", r32_count, addr, eff_nabm);
 
     if ((addr >= eff_nam) && (addr < (eff_nam + 0x100))) {
         uint32_t of = addr - eff_nam;
@@ -540,20 +547,26 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
 //----------------------------------------------------------------------
 uint32_t AC97Pci::read_glob_sta()
 {
+    // Print on every read when interrupt bits are active (no counter limit).
+    // Also print first 8 reads unconditionally to see init reads.
     static int gs_read_count = 0;
-    if (++gs_read_count <= 12)
-        printf("[AC97 GLOB_STA read] glob_sta_=0x%08x\n", glob_sta_);
+    ++gs_read_count;
+    uint32_t v_preview = glob_sta_ & GS_W1C_MASK; // interrupt bits
+    if (gs_read_count <= 8 || v_preview)
+        printf("[AC97 GLOB_STA read] #%d glob_sta_=0x%08x\n", gs_read_count, glob_sta_);
 
     // Mask to only allow documented readable bits
+    // Bit assignments match Linux snd_intel8x0 definitions:
+    //   ICH_PIINT=0x20(bit5), ICH_POINT=0x40(bit6), ICH_MCINT=0x80(bit7),
+    //   ICH_PCR=0x100(bit8)
     constexpr uint32_t allowed =
-        (1u << 0)  |   // GSCI  - Global Status Change Interrupt (W1C)
+        (1u << 0)  |   // GSCI  - GPI Status Change Interrupt (W1C)
         (1u << 1)  |   // MOINT - Modem Out Interrupt (W1C)
         (1u << 2)  |   // MINT  - Modem In Interrupt (W1C)
-        (1u << 3)  |   // PIINT - PCM In Interrupt (W1C)
-        (1u << 4)  |   // POINT - PCM Out Interrupt (W1C)
-        (1u << 5)  |   // MINT  - Mic In Interrupt (W1C)
-        (1u << 6)  |   // RCS   - Read Completion Status (W1C)
-        (1u << 8)  |   // PCR   - Primary Codec Ready (R/O in hardware; emulator allows W1C)
+        (1u << 5)  |   // PIINT - PCM In Interrupt (ICH_PIINT = 0x20, W1C)
+        (1u << 6)  |   // POINT - PCM Out Interrupt (ICH_POINT = 0x40, W1C)
+        (1u << 7)  |   // MCINT - MIC capture Interrupt (ICH_MCINT = 0x80, W1C)
+        (1u << 8)  |   // PCR   - Primary Codec Ready (ICH_PCR = 0x100, R/O)
         (1u << 15);    // S0R   - Sticky (clears on read)
 
     uint32_t v = glob_sta_ & allowed;
@@ -652,22 +665,31 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
             default:
                 throw std::runtime_error("[AC97 NABM] read8 not valid for register " + to_hex(offset));
         }
-        //printf("[AC97 NABM] read8  @%02x -> %02x\n", offset, val);
-    
         return val;
     } else if(width==2) {
-        switch (offset) { 
+        switch (offset) {
+            case BMOff::PO_BASE + BMOff::SR:
+                val = po_status_;
+                break;
+            case BMOff::PI_BASE + BMOff::SR:
+                val = pi_status_;
+                break;
+            case BMOff::MC_BASE + BMOff::SR:
+                val = mc_status_;
+                break;
             case BMOff::PO_BASE + BMOff::PICB:
                 // Linux expects PICB in 16-bit samples; po_picb_ is in frames
                 // stereo S16: 1 frame = 2 samples
                 val = po_picb_ * 2;
                 break;
+            case BMOff::PI_BASE + BMOff::PICB:
+            case BMOff::MC_BASE + BMOff::PICB:
+                val = 0;
+                break;
             default:
                 throw std::runtime_error("[AC97 NABM] read16 not valid for register " + to_hex(offset));
-            
+
         }
-        //printf("[AC97 NABM] read16  @%02x -> %02x\n", offset, val);
-    
         return val;
     } else { // width = 4
         switch (offset) {
@@ -692,7 +714,6 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
         
         }
         
-        //printf("[AC97 NABM] read32  @%02x -> %08x\n", offset, val);
         return val;
     }
 
@@ -701,9 +722,8 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
 
 void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 {
-    
+
     if(width == 1) {
-        //printf("[AC97 NABM] write8 @%02x <- %02x\n", offset, value);
         value = value & 0xFFU;
         switch (offset) {
             
@@ -752,6 +772,8 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 break;
             case BMOff::PO_BASE + BMOff::CR: {
                 uint8_t ctl = value & 0x1F;
+                printf("[AC97 PO_CR write] val=0x%02x (reset=%d run=%d ioce=%d) po_status_=0x%04x\n",
+                       ctl, !!(ctl & 0x02), !!(ctl & 0x01), !!(ctl & 0x10), po_status_);
 
                 bool req_reset = ctl & 0x02;   // RESETREGS
                 bool req_start = ctl & 0x01;   // RUN
@@ -787,6 +809,8 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // 2. STOP request (RUN = 0)
                 // -------------------------------
                 if (!req_start) {
+                    printf("[AC97 PO_CR STOP] po_running_=%d po_status_=0x%04x glob_sta_=0x%08x po_picb_=%u\n",
+                           (int)po_running_, po_status_, glob_sta_, po_picb_);
                     po_running_ = false;
                     po_lvbci_halted_ = false;  // explicit stop cancels LVBCI auto-resume
 
@@ -808,10 +832,16 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                 // BD BAR unprogrammed → cannot start yet
                 if (bdbar_playback_ == 0 || !mctrl_.find_bank_or_null(bdbar_playback_)) {
+                    static int bdbar_fail_count = 0;
+                    if (++bdbar_fail_count <= 4)
+                        printf("[AC97 CR RUN] BDBAR check FAILED: bdbar=0x%08x bank=%p\n",
+                               bdbar_playback_, (void*)mctrl_.find_bank_or_null(bdbar_playback_));
                     po_running_ = false;
                     po_status_ |= 0x01;
                     return;
                 }
+                printf("[AC97 CR RUN] DMA STARTING: bdbar=0x%08x civ=%u lvi=%u\n",
+                       bdbar_playback_, po_civ_, po_lvi_);
                 
 
                 // Read BD0
@@ -819,11 +849,12 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 uint32_t ptr = mem_read32(bd_addr + 0);
                 uint16_t len = mem_read16(bd_addr + 4);
                 uint16_t ctl_field = mem_read16(bd_addr + 6);
-#ifdef AC97_DEBUG
-                printf("BD0 RAW len read = %04x\n", len);
-                printf("[BD_LOAD from PO CR] civ=%u ptr=%08x len=%u ctl=%04x\n",
-                    po_civ_, ptr, (unsigned)(len + 1), ctl_field);
-#endif
+                {
+                    static int bd_read_count = 0;
+                    if (++bd_read_count <= 4)
+                        printf("[AC97 CR RUN] BD%u at 0x%08x: ptr=0x%08x len=%u ctl=0x%04x\n",
+                               po_civ_, bd_addr, ptr, len, ctl_field);
+                }
 
                 // ------------------------------------------
                 // CORE FIX:
@@ -832,7 +863,11 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // ------------------------------------------
                 // 1. If ptr==0 → invalid BD → DMA must not start, DCH stays set
                 if (ptr == 0) {
-                    po_running_ = false; 
+                    static int null_ptr_count = 0;
+                    if (++null_ptr_count <= 4)
+                        printf("[AC97 CR RUN] BD%u ptr=0 at bd_addr=0x%08x len=%u ctl=0x%04x — DMA not started\n",
+                               po_civ_, bd_addr, len, ctl_field);
+                    po_running_ = false;
                     po_status_ |= 0x01;  // DCH stays set
                     return;
                 }
@@ -840,7 +875,10 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // 2. If len==0 → empty BD → DMA must NOT run, but must NOT clear DCH
                 // This matches hardware: empty BD stalls DMA without advancing CIV.
                 if (len == 0) {
-                    // Do not start DMA
+                    static int null_len_count = 0;
+                    if (++null_len_count <= 4)
+                        printf("[AC97 CR RUN] BD%u len=0 at bd_addr=0x%08x ptr=0x%08x — DMA not started\n",
+                               po_civ_, bd_addr, ptr);
                     po_running_ = false;
                     po_status_ |= 0x01;  // DCH must remain set
                     return;
@@ -854,6 +892,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // DMA running → clear DCH
                 po_status_ &= ~0x01;
                 TRACE_PO_SR_CHANGE();
+                printf("[AC97 CR RUN] DCH cleared → po_status_=0x%04x\n", po_status_);
 
                 po_cur_ptr_ = ptr;
                 po_cur_len_ = (uint32_t)len;   // len is in 16-bit samples
@@ -926,7 +965,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
         return;
     } else if(width == 2) {
         value = value & 0xFFFFu;
-        //printf("[AC97 NABM] write16 @%02x <- %08x\n", offset, value);
 
         switch (offset) {
             // ----- PICB (playback PICB at least is used) -----

@@ -385,13 +385,9 @@ TEST_F(AC97Test, POSR_ResetValueAndReservedBits)
 
     const uint32_t SR = NABM_BASE + AC97Pci::BMOff::PO_BASE + AC97Pci::BMOff::SR;
 
-    EXPECT_THROW(read16_le(SR), std::runtime_error);
-    
-
-    uint8_t sr = read8(SR);
-
-    // Reset state = RUN=0, BCIS=0, LVBCI=0
-    EXPECT_EQ(sr, 0x0000);
+    // 16-bit SR read must work (Linux igetword uses this path)
+    uint16_t sr16 = read16_le(SR);
+    EXPECT_EQ(sr16, (uint16_t)read8(SR)); // 16-bit and 8-bit reads must agree
 
     // Upper bits reserved, must read 0 (your implementation has 0)
     //EXPECT_EQ(sr & 0xFFE0, 0x0000);

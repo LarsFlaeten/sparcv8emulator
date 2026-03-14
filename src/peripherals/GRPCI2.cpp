@@ -44,7 +44,7 @@ u32 GRPCI2::read(u32 offset) const
                 int_bits &= ~(1u << 8); // INTA asserted (bit 8 = 0)
             uint32_t result = (sts_cap_ & ~0xF00u) | int_bits;
             static int read_count = 0;
-            if (inta && ++read_count <= 4)
+            if (inta && ++read_count <= 20)
                 printf("[GRPCI2] read sts_cap=0x%08x ctrl=0x%08x pci_ints=0x%x\n",
                        result, ctrl_, ((~result >> 8) & ctrl_ & 0xf));
             return result;

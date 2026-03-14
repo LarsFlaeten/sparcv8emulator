@@ -28,7 +28,8 @@ static void set_audio_thread_name() {
 #define TRACE_PO_SR_CHANGE() \
     printf("[AC97 Debug] PO_SR changed to %02x (file %s:%d)\n", po_status_, __FILE__, __LINE__);
 #else
-#define TRACE_PO_SR_CHANGE() do {} while(0)
+#define TRACE_PO_SR_CHANGE() \
+    printf("[AC97 PO_SR] = 0x%04x @ %s:%d\n", (unsigned)po_status_, __FILE__, __LINE__)
 #endif
 
 
@@ -313,12 +314,13 @@ private:
 
     //static constexpr uint32_t GS_CRDY_CODEC0 = 0x00000100;  // Codec-0 ready
     //static constexpr uint32_t GS_S0R  = (1u << 15);
-    static constexpr uint32_t GS_PR    = (1u << 8);  // Primary Codec Ready (ICH_PCR) — read-only
-    static constexpr uint32_t GS_BUSY  = (1u << 2);  // Modem In Int / command busy marker
-    static constexpr uint32_t GS_POINT = (1u << 4);  // PCM Out INTerrupt — set on BD completion
-    static constexpr uint32_t GS_PIINT = (1u << 3);  // PCM In INTerrupt
-    // W1C bits are the interrupt status bits (0-6); GS_PR is read-only hardware state
-    static constexpr uint32_t GS_W1C_MASK = 0x7Fu;
+    static constexpr uint32_t GS_PR    = (1u << 8);  // Primary Codec Ready (ICH_PCR = 0x100) — read-only
+    static constexpr uint32_t GS_BUSY  = (1u << 2);  // Codec busy / semaphore in use
+    static constexpr uint32_t GS_MCINT = (1u << 7);  // MIC capture interrupt (ICH_MCINT = 0x80)
+    static constexpr uint32_t GS_POINT = (1u << 6);  // PCM Out INTerrupt (ICH_POINT = 0x40)
+    static constexpr uint32_t GS_PIINT = (1u << 5);  // PCM In INTerrupt (ICH_PIINT = 0x20)
+    // W1C mask: bits 0-7 are interrupt/status bits; GS_PR(bit8) is read-only
+    static constexpr uint32_t GS_W1C_MASK = 0xFFu;
 
     static constexpr uint32_t CNT_COLD     = 0x00000002;
     static constexpr uint32_t CNT_WARM     = 0x00000004;
