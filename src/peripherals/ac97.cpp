@@ -34,7 +34,6 @@ void AC97Pci::init_pci_config(){
     init_codec_cold();
 
     po_status_  = 0x0000;   // RUN=0, BCIS=0, LVBCI=0
-    TRACE_PO_SR_CHANGE();
 }
 
 void AC97Pci::init_grpci2_cap(uint8_t off, uint8_t next) {
@@ -130,13 +129,8 @@ void AC97Pci::tick()
         printf("[AC97 BD LOAD] civ=%u ptr=%08x len=%u ctl=%04x\n", po_civ_, ptr, len, ctl);
 #endif
         if (ptr == 0 || len == 0) {
-            static int empty_bd_count = 0;
-            if (++empty_bd_count <= 4)
-                printf("[AC97 TICK] BD%u empty: ptr=0x%08x len=%u (bd_addr=0x%08x)\n",
-                       po_civ_, ptr, len, bd_addr);
             po_running_ = false;
             po_status_  = (po_status_ & ~0x02u) | 0x01u; // DCH=1, CIP=0
-            TRACE_PO_SR_CHANGE();
             return;
         }
         po_cur_ptr_               = ptr;
@@ -198,10 +192,8 @@ void AC97Pci::tick()
 #endif
 
     // BCIS: signal buffer completion if IOC bit set in BD control word.
-    if (po_cur_ctl_ & 0x8000) {
+    if (po_cur_ctl_ & 0x8000)
         po_status_ |= 0x08;
-        TRACE_PO_SR_CHANGE();
-    }
 
     // Advance CIV.
     po_civ_ = (po_civ_ + 1) & 0x1Fu;
@@ -214,9 +206,6 @@ void AC97Pci::tick()
         po_running_ = false;
         po_lvbci_halted_ = true;   // remember: halted by LVBCI (not explicit stop)
         po_cur_len_ = 0;  // signal: no BD loaded (tick() top will reload on resume)
-        TRACE_PO_SR_CHANGE();
-        printf("[AC97 LVBCI] Halted: civ=%u lvi=%u status=%02x ctrl=%02x\n",
-               po_civ_, po_lvi_, po_status_, po_control_);
 
         // Raise interrupt and return — do NOT load next BD.
         if ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) {
@@ -227,15 +216,6 @@ void AC97Pci::tick()
     }
 
     // Raise interrupt if BCIS is set and IOCE (bit 4 of CR) is enabled.
-    {
-        static int bcis_count = 0;
-        if (po_status_ & 0x08) {
-            ++bcis_count;
-            printf("[AC97 BCIS] #%d civ=%u ctrl=%02x ioce=%d - %s\n",
-                   bcis_count, po_civ_, po_control_, !!(po_control_ & 0x10u),
-                   ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) ? "RAISING IRQ" : "no irq (ioce off)");
-        }
-    }
     if ((po_status_ & 0x0Cu) && (po_control_ & 0x10u)) {
         glob_sta_ |= GS_POINT;
         if (raise_intx_) raise_intx_();
@@ -254,7 +234,6 @@ void AC97Pci::tick()
             po_running_ = false;
             po_cur_len_ = 0;
             po_status_  = (po_status_ & ~0x02u) | 0x01u; // DCH=1
-            TRACE_PO_SR_CHANGE();
             return;
         }
         po_cur_ptr_               = ptr;
@@ -270,10 +249,6 @@ uint32_t AC97Pci::io_read32(uint32_t addr) {
     uint32_t ret;
     uint32_t eff_nam  = phys_nam_base_  ? phys_nam_base_  : nam_base_;
     uint32_t eff_nabm = phys_nabm_base_ ? phys_nabm_base_ : nabm_base_;
-
-    static int r32_count = 0;
-    if (++r32_count <= 50)
-        printf("[AC97 io_read32] #%d addr=0x%08x eff_nabm=0x%08x\n", r32_count, addr, eff_nabm);
 
     if ((addr >= eff_nam) && (addr < (eff_nam + 0x100))) {
         uint32_t of = addr - eff_nam;
@@ -547,14 +522,6 @@ void AC97Pci::write_nam(uint32_t offset, uint16_t value)
 //----------------------------------------------------------------------
 uint32_t AC97Pci::read_glob_sta()
 {
-    // Print on every read when interrupt bits are active (no counter limit).
-    // Also print first 8 reads unconditionally to see init reads.
-    static int gs_read_count = 0;
-    ++gs_read_count;
-    uint32_t v_preview = glob_sta_ & GS_W1C_MASK; // interrupt bits
-    if (gs_read_count <= 8 || v_preview)
-        printf("[AC97 GLOB_STA read] #%d glob_sta_=0x%08x\n", gs_read_count, glob_sta_);
-
     // Mask to only allow documented readable bits
     // Bit assignments match Linux snd_intel8x0 definitions:
     //   ICH_PIINT=0x20(bit5), ICH_POINT=0x40(bit6), ICH_MCINT=0x80(bit7),
@@ -590,11 +557,6 @@ uint32_t AC97Pci::read_nabm(uint32_t offset, uint8_t width)
                 // Return correct 8-bit half
                 val = (s >> ((offset & 1) * 8)) & 0xFF;
 
-                // AC'97 semantics: BCIS is sticky until W1C
-                // BUT do NOT auto-clear on read — Linux checks repeatedly
-                static int sr_read_count = 0;
-                if (++sr_read_count <= 8)
-                    printf("[AC97 SR read8] offset=%02x -> %02x (po_status=%04x)\n", offset, val, po_status_);
                 break;
             }
 
@@ -729,11 +691,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
             
             case BMOff::PO_BASE + BMOff::SR: {
                 uint8_t clear_mask = value & 0x1E;   // bits 1..4 are W1C
-                static int sr_write8_count = 0;
-                if (++sr_write8_count <= 8)
-                    printf("[AC97 SR write8] val=%02x clear_mask=%02x po_status before=%04x\n", value, clear_mask, po_status_);
                 po_status_ &= ~clear_mask;
-                TRACE_PO_SR_CHANGE();
                 break;
             }
 
@@ -772,9 +730,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 break;
             case BMOff::PO_BASE + BMOff::CR: {
                 uint8_t ctl = value & 0x1F;
-                printf("[AC97 PO_CR write] val=0x%02x (reset=%d run=%d ioce=%d) po_status_=0x%04x\n",
-                       ctl, !!(ctl & 0x02), !!(ctl & 0x01), !!(ctl & 0x10), po_status_);
-
                 bool req_reset = ctl & 0x02;   // RESETREGS
                 bool req_start = ctl & 0x01;   // RUN
 
@@ -800,8 +755,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                     // Status according to ICH spec: RUN=0, BCIS=0, LVBCI=0, DCH=1
                     po_status_ = 0x01;
-
-                    TRACE_PO_SR_CHANGE();
                     return;
                 }
 
@@ -809,16 +762,12 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // 2. STOP request (RUN = 0)
                 // -------------------------------
                 if (!req_start) {
-                    printf("[AC97 PO_CR STOP] po_running_=%d po_status_=0x%04x glob_sta_=0x%08x po_picb_=%u\n",
-                           (int)po_running_, po_status_, glob_sta_, po_picb_);
                     po_running_ = false;
                     po_lvbci_halted_ = false;  // explicit stop cancels LVBCI auto-resume
 
                     // Clear BCIS+LVBCI, set DCH=1
                     po_status_ &= ~(0x0C);
                     po_status_ |= 0x01;
-
-                    TRACE_PO_SR_CHANGE();
                     return;
                 }
 
@@ -832,29 +781,16 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                 // BD BAR unprogrammed → cannot start yet
                 if (bdbar_playback_ == 0 || !mctrl_.find_bank_or_null(bdbar_playback_)) {
-                    static int bdbar_fail_count = 0;
-                    if (++bdbar_fail_count <= 4)
-                        printf("[AC97 CR RUN] BDBAR check FAILED: bdbar=0x%08x bank=%p\n",
-                               bdbar_playback_, (void*)mctrl_.find_bank_or_null(bdbar_playback_));
                     po_running_ = false;
                     po_status_ |= 0x01;
                     return;
                 }
-                printf("[AC97 CR RUN] DMA STARTING: bdbar=0x%08x civ=%u lvi=%u\n",
-                       bdbar_playback_, po_civ_, po_lvi_);
-                
 
                 // Read BD0
                 uint32_t bd_addr = bdbar_playback_ + (po_civ_ * 8);
                 uint32_t ptr = mem_read32(bd_addr + 0);
                 uint16_t len = mem_read16(bd_addr + 4);
                 uint16_t ctl_field = mem_read16(bd_addr + 6);
-                {
-                    static int bd_read_count = 0;
-                    if (++bd_read_count <= 4)
-                        printf("[AC97 CR RUN] BD%u at 0x%08x: ptr=0x%08x len=%u ctl=0x%04x\n",
-                               po_civ_, bd_addr, ptr, len, ctl_field);
-                }
 
                 // ------------------------------------------
                 // CORE FIX:
@@ -863,10 +799,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // ------------------------------------------
                 // 1. If ptr==0 → invalid BD → DMA must not start, DCH stays set
                 if (ptr == 0) {
-                    static int null_ptr_count = 0;
-                    if (++null_ptr_count <= 4)
-                        printf("[AC97 CR RUN] BD%u ptr=0 at bd_addr=0x%08x len=%u ctl=0x%04x — DMA not started\n",
-                               po_civ_, bd_addr, len, ctl_field);
                     po_running_ = false;
                     po_status_ |= 0x01;  // DCH stays set
                     return;
@@ -875,10 +807,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // 2. If len==0 → empty BD → DMA must NOT run, but must NOT clear DCH
                 // This matches hardware: empty BD stalls DMA without advancing CIV.
                 if (len == 0) {
-                    static int null_len_count = 0;
-                    if (++null_len_count <= 4)
-                        printf("[AC97 CR RUN] BD%u len=0 at bd_addr=0x%08x ptr=0x%08x — DMA not started\n",
-                               po_civ_, bd_addr, ptr);
                     po_running_ = false;
                     po_status_ |= 0x01;  // DCH must remain set
                     return;
@@ -891,8 +819,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                 // DMA running → clear DCH
                 po_status_ &= ~0x01;
-                TRACE_PO_SR_CHANGE();
-                printf("[AC97 CR RUN] DCH cleared → po_status_=0x%04x\n", po_status_);
 
                 po_cur_ptr_ = ptr;
                 po_cur_len_ = (uint32_t)len;   // len is in 16-bit samples
@@ -918,9 +844,7 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
             case BMOff::PO_BASE + BMOff::CIV:
             case BMOff::PI_BASE + BMOff::CIV:
             case BMOff::MC_BASE + BMOff::CIV:
-                // Read-only in spec; Linux may write 0 once after reset
-                if (value != 0)
-                    printf("[AC97] Unexpected write to CIV = %02x (ignored)\n", value);
+                // Read-only in spec; silently ignore
                 break;
             
             case BMOff::PI_BASE + BMOff::LVI:
@@ -928,7 +852,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 break;
             case BMOff::PO_BASE + BMOff::LVI:
             {
-                uint8_t old_lvi = po_lvi_;
                 po_lvi_ = value & 0x1F;
                 // Auto-resume: real ICH hardware resumes DMA automatically when LVI
                 // is extended past the stall point.
@@ -941,8 +864,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                 // explicitly and writes LVI for the next measurement.
                 bool should_resume = !po_running_ && po_lvbci_halted_;
                 bool lvi_extended = (po_lvi_ != ((po_civ_ - 1 + 32u) & 0x1Fu));
-                printf("[AC97 LVI write] old_lvi=%u new_lvi=%u civ=%u running=%d lvbci_halt=%d should_resume=%d lvi_extended=%d\n",
-                       old_lvi, po_lvi_, po_civ_, (int)po_running_, (int)po_lvbci_halted_, (int)should_resume, (int)lvi_extended);
                 if (should_resume && lvi_extended) {
                     po_running_ = true;
                     po_lvbci_halted_ = false;  // consumed the halt
@@ -950,8 +871,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
                     po_frame_credit_ = 0.0;
                     po_status_  = (po_status_ & ~0x01u) | 0x02u; // DCH=0, CIP=1
                     // po_cur_len_ == 0, so tick() will load BD from po_civ_
-                    TRACE_PO_SR_CHANGE();
-                    printf("[AC97 LVI write] AUTO-RESUME triggered, civ=%u lvi=%u\n", po_civ_, po_lvi_);
                 }
                 break;
             }
@@ -976,16 +895,11 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
             // SR can be written as 16-bit (iputword) to clear W1C bits
             case BMOff::PO_BASE + BMOff::SR: { // 0x16
                 uint16_t clear_mask = value & 0x1E;
-                static int sr_write16_count = 0;
-                if (++sr_write16_count <= 8)
-                    printf("[AC97 SR write16] val=%04x clear_mask=%04x po_status before=%04x\n", value, clear_mask, po_status_);
                 po_status_ &= ~clear_mask;
-                TRACE_PO_SR_CHANGE();
                 break;
             }
 
             default:
-                printf("[AC97 NABM] WARN: write16 unhandled register %02x val=%04x\n", offset, value);
                 break;
 
         }
@@ -998,7 +912,6 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
         switch (offset) {
             case BMOff::PO_BASE + BMOff::BD_BAR:
                 bdbar_playback_ = value;
-                printf("[AC97 DMA Setup] BD BAR=%08x LVI=%02x\n", bdbar_playback_, po_lvi_);
                 break;
             case BMOff::PI_BASE + BMOff::BD_BAR:
                 bdbar_capture_ = value;
@@ -1018,15 +931,12 @@ void AC97Pci::write_nabm(uint32_t offset, uint32_t value, uint8_t width)
 
                 // --- Cold reset: bit1 rises ---
                 if (!old_cold && new_cold) {
-                    printf("[AC97] Cold reset triggered\n");
                     cold_reset();
                     glob_cnt_ &= ~(CNT_COLD); // clear COLD after done
                 }
 
                 // --- Warm reset: bit2 rises ---
                 if (!old_warm && new_warm) {
-                    std::cout << "[AC97] Warm reset triggered\n";
-
                     warm_reset();
                     glob_cnt_ &= ~(CNT_WARM); // clear WARM after done
 
@@ -1096,8 +1006,6 @@ void AC97Pci::cold_reset()
     //
     glob_cnt_ = (1 << 18);      // VRA only
 
-    printf("AFTER COLD RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%08x glob_cnt_=0x%08x\n",
-           po_control_, po_status_, glob_sta_, glob_cnt_);
 }
 
 void AC97Pci::warm_reset()
@@ -1113,7 +1021,6 @@ void AC97Pci::warm_reset()
     // Warm reset synchronizes AC’97 link but does not reset codec features.
     //
     po_status_ = 0x0000;     // DCH=0 (temp), RUN=0, BCIS/LVBCI cleared
-    TRACE_PO_SR_CHANGE();
 
     mc_status_ = 0x0000;
 
@@ -1123,8 +1030,6 @@ void AC97Pci::warm_reset()
     glob_sta_ |= GS_PR;      // Codec ready
     glob_sta_ &= ~GS_BUSY;   // Clear busy
 
-    printf("AFTER WARM RESET: po_control_=0x%02x po_status_=0x%02x glob_sta_=0x%08x glob_cnt_=0x%08x\n",
-           po_control_, po_status_, glob_sta_, glob_cnt_);
 }
 
 

@@ -2,7 +2,6 @@
 #include "GRPCI2.hpp"
 
 // std
-#include <iostream>
 #include <bit>
 
 #define MST 0x1
@@ -43,31 +42,22 @@ u32 GRPCI2::read(u32 offset) const
             if (inta)
                 int_bits &= ~(1u << 8); // INTA asserted (bit 8 = 0)
             uint32_t result = (sts_cap_ & ~0xF00u) | int_bits;
-            static int read_count = 0;
-            if (inta && ++read_count <= 20)
-                printf("[GRPCI2] read sts_cap=0x%08x ctrl=0x%08x pci_ints=0x%x\n",
-                       result, ctrl_, ((~result >> 8) & ctrl_ & 0xf));
             return result;
         }
         case(0x0C):
             //std::cout << "[GRPCI2] Returning IOMAP reg: " + to_hex(io_map_) << "\n";
             return io_map_;
         case(0x10):
-            std::cout << "[GRPCI2] Returning DMACTRL reg: " + to_hex(dma_ctrl_) << "\n";
             return dma_ctrl_;
         case(0x14):
-            std::cout << "[GRPCI2] Returning DMABASE reg: " + to_hex(dma_base_) << "\n";
             return dma_base_;
         default:
             if(offset >= 0x40 && offset <= 0x7c) {
-                std::cout << "[GRPCI2] Returning AHBM2PCI reg[" + to_hex((offset - 0x40) / 4) + "]: " + to_hex(ahbm2pci_[(offset - 0x40) / 4]) << "\n";
                 return ahbm2pci_[(offset - 0x40) / 4];
             } else {
                 break;
             }
     }
-    std::cerr << "WARN: GRPCI2::read(" << std::hex << offset << std::dec << ") outside implemented.\n";
-    
     return 0;
 }
 
@@ -127,26 +117,11 @@ void GRPCI2::write(u32 offset, u32 value  )
     return;
 }
 
-void GRPCI2::pci_reset(){
-    std::cout << "[GRPCI2]: pci_reset() called.\n";
-}
-    
-void GRPCI2::pci_master_reset(){
-    std::cout << "[GRPCI2]: pci_master_reset() called.\n";
-}
-
-void GRPCI2::pci_target_reset(){
-    std::cout << "[GRPCI2]: pci_target_reset() called.\n";
-}
-
-void GRPCI2::enable_dma() {
-    std::cout << "[GRPCI2]: enable_dma() called.\n";
-}
-
-void GRPCI2::disable_dma() {
-    std::cout << "[GRPCI2]: disable_dma() called.\n";
-    
-}
+void GRPCI2::pci_reset(){}
+void GRPCI2::pci_master_reset(){}
+void GRPCI2::pci_target_reset(){}
+void GRPCI2::enable_dma(){}
+void GRPCI2::disable_dma(){}
 
 // Plain overwrite of the reg. Only to be used by the PCI cfg area?
 void GRPCI2::signal_pci_cfg_access_complete() const {

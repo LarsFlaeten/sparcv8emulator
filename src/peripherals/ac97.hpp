@@ -24,15 +24,6 @@ static void set_audio_thread_name() {
     pthread_setname_np(pthread_self(), "host audio");
 }
 
-#ifdef AC97_DEBUG
-#define TRACE_PO_SR_CHANGE() \
-    printf("[AC97 Debug] PO_SR changed to %02x (file %s:%d)\n", po_status_, __FILE__, __LINE__);
-#else
-#define TRACE_PO_SR_CHANGE() \
-    printf("[AC97 PO_SR] = 0x%04x @ %s:%d\n", (unsigned)po_status_, __FILE__, __LINE__)
-#endif
-
-
 
 #include <portaudio.h>
 #include <thread>
@@ -421,7 +412,6 @@ private:
     void write_po_sr(uint16_t val) {
         // Write-1-to-clear for bits 2–4
         po_status_ &= ~(val & 0x001C);
-        TRACE_PO_SR_CHANGE();
     }
 
     void set_run(bool enable) {
@@ -429,13 +419,9 @@ private:
         if (enable) {
             po_status_ &= ~0x0001;  // clear DCH
             po_status_ |=  0x0002;  // set CIP
-            TRACE_PO_SR_CHANGE();
-
-            
         } else {
             po_status_ |=  0x0001;  // halted
             po_status_ &= ~0x0002;  // clear CIP
-            TRACE_PO_SR_CHANGE();
         }
     }
 
