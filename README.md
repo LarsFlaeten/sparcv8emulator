@@ -3,16 +3,17 @@
 [![Build](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/build.yml/badge.svg)](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/build.yml)
 [![Tests](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/test.yml/badge.svg)](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/test.yml)
 
-A functional emulator for the **SPARC V8** ISA targeting the **Gaisler LEON3** SMP processor family. It boots an unmodified Linux kernel (Gaisler Buildroot image) with up to 4 CPUs and includes a full GDB remote debugging stub.
+A functional emulator for the **SPARC V8** ISA targeting the **Gaisler LEON3** SMP processor family. It boots an unmodified Linux kernel (Gaisler Buildroot image) with up to 8 CPUs and includes a full GDB remote debugging stub.
 
 ## Features
 
 - **Full SPARC V8 ISA** — integer, FPU, and LEON3 ASI extensions
-- **Symmetric Multi-Processing** — up to 4 CPUs with shared memory and IRQMP broadcast interrupts
+- **Symmetric Multi-Processing** — up to 8 CPUs with shared memory and IRQMP broadcast interrupts
 - **SRMMU** — Sparc Reference MMU with 16-entry ITLB + DTLB, L0 instruction/data translation caches
 - **GDB remote debugging** — multi-CPU stop-the-world via TCP (port 1234), works with `sparc-linux-gdb`
 - **LEON3 peripherals** — IRQMP, GPTIMER, APBUART, GRPCI2, MCTRL, SVGA framebuffer, AC97 audio
 - **ELF loader** — loads Gaisler Buildroot ELF images directly
+- **AC97 Soundcard** - Emulated PCI device via GRPCI2 bridge. Needs PCI Support, ALSA and Intel AC97 Controller enabled in buildroot when building Linux image for the device to be discovered. 
 
 ## Requirements
 
