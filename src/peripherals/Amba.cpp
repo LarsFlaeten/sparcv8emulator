@@ -138,9 +138,9 @@ void amba_apb_pnp_setup(MCtrl& mctrl) {
     //mctrl.write32(0x800ff02c, (0x004 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000400 - 800004ff
 
     
-    // slv4 at 0x800ff020 - SVGA CTRL IRQ 9
-    //mctrl.write32(0x800ff030, (VENDOR_GAISLER << 24) | (GAISLER_SVGACTRL << 12) | (AMB_VERSION << 5) | (0x9 & 0xf));
-    //mctrl.write32(0x800ff034, (0x005 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000500 - 800005ff
+    // slv5 at 0x800ff030 - SVGA CTRL IRQ 9
+    mctrl.write32(0x800ff030, (VENDOR_GAISLER << 24) | (GAISLER_SVGACTRL << 12) | (AMB_VERSION << 5) | (0x9 & 0xf));
+    mctrl.write32(0x800ff034, (0x005 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000500 - 800005ff
 
 
 
