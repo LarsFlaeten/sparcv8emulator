@@ -7,7 +7,7 @@
 #include "MCTRL.h"
 
 class SVGA : public apb_slave {
-    
+
 private:
     // regs
     u32 stat;
@@ -24,6 +24,9 @@ private:
 
     Display display;
     MCtrl&  mctrl;
+
+    bool display_started = false;
+
 public:
     SVGA(MCtrl& mctrl) : display(640, 480, 32, 60), mctrl(mctrl) {
         stat = 0;
@@ -32,108 +35,96 @@ public:
         dclk2 = 15385;
         dclk3 = 0;
         clut = 0;
-
-        // rest of regs are set in reset
-        reset();
-    }
-
-    u32 vendor_id() const {return VENDOR_GAISLER;}
-    u32 device_id() const {return GAISLER_SVGACTRL;}
-    
-
-    u32 read(u32 offset) const {
-        u32 ret;
-        switch(offset) {
-            case(0x0): ret = stat; break;
-            case(0x4): ret = vlen; break;
-            case(0x8): ret = fporch; break;
-            case(0xc): ret = synlen; break;
-            case(0x10): ret = linlen; break;
-            case(0x14): ret = fbuf; break;
-            case(0x18): ret = dclk0; break;
-            case(0x1c): ret = dclk1; break;
-            case(0x20): ret = dclk2; break;
-            case(0x24): ret = dclk3; break;
-            case(0x28): ret = clut; break;
-            
-            default: throw std::runtime_error("SVGA: Read outside regs address space.");
-        }
-
-        std::cout << "SVGACTRL read offset:" << std::hex << offset << ", ret: " << ret << std::dec << "\n";
-        
-        return ret;
-    }
-
-    virtual void write(u32 offset, u32 value) {
-        std::cout << "SVGACTRL write offset:" << std::hex << offset << ", val: " << value << std::dec << "\n";
-        u32* video_mem_ptr = 0;
-        switch(offset) {
-            case(0x0):
-                if(value & 0x2) {
-                    reset();
-                    break;
-                }
-                if(value & 0x1) {
-                    if(!display.isEnabled())
-                        display.enable();
-                } else if((value & 0x1) == 0) {
-                    if(display.isEnabled())
-                        display.disable(false);
-                }
-                stat = value;
-                break;
-            case(0x4):
-                vlen = value;
-                break;
-            case(0x8):
-                fporch = value;
-                break;
-            case(0xc):
-                synlen = value;
-                break;
-            case(0x10):
-                linlen = value;
-                break;
-            case(0x14): {
-                fbuf = value;
-                auto p = mctrl.find_bank_or_null(value);
-                if(p) {
-                    video_mem_ptr = p->get_ptr();
-                    display.set_framebuffer(video_mem_ptr);
-                } else
-                    std::cout << "Error: Video init: No memory mapped at " << std::hex << value << std::dec << "\n";
-                break;
-            }
-            case(0x28):
-                clut = value;
-                throw std::runtime_error("SVGA: CLUT writes to be implemented.");
-                break;
-            default:
-                throw std::runtime_error("SVGA: Write outside regs address space or ro value.");
-
-
-        }
-    }
-
-    void reset() {
-        // STAT: HPOL (bit 9), VPOL (bit 8) and BDSEL (bit 4,5) not reset
-        stat = stat & (0 | (0x3 << 4) | (0x3 << 8));
-
         vlen = 0;
         fporch = 0;
         synlen = 0;
         linlen = 0;
         fbuf = 0;
 
-        // clocks and CLUT not reset..    
-    
-        // Start up our display
-        if(!display.isRunning())
-            display.start();
-        
-                    
+        // Start the display thread and open a blank window immediately.
+        // Resolution and framebuffer will be updated when Linux configures the SVGA.
+        display.start();
+        display_started = true;
+        display.enable();
     }
 
+    u32 vendor_id() const {return VENDOR_GAISLER;}
+    u32 device_id() const {return GAISLER_SVGACTRL;}
+
+    void reset() override {
+        stat = stat & ((0x3 << 4) | (0x3 << 8)); // preserve BDSEL/polarity
+        vlen = fporch = synlen = linlen = fbuf = 0;
+        if (display.isEnabled())
+            display.disable(true);
+    }
+
+
+    u32 read(u32 offset) const {
+        printf("[SVGA] read offset=0x%02x\n", offset);
+        switch(offset) {
+            case(0x0):  return stat;
+            case(0x4):  return vlen;
+            case(0x8):  return fporch;
+            case(0xc):  return synlen;
+            case(0x10): return linlen;
+            case(0x14): return fbuf;
+            case(0x18): return dclk0;
+            case(0x1c): return dclk1;
+            case(0x20): return dclk2;
+            case(0x24): return dclk3;
+            case(0x28): return clut;
+            default:    return 0;
+        }
+    }
+
+    virtual void write(u32 offset, u32 value) {
+        switch(offset) {
+            case(0x0): {
+                if (value & 0x2) {
+                    reset();
+                    break;
+                }
+                bool enable_req = (value & 0x1) != 0;
+                bool was_enabled = (stat & 0x1) != 0;
+                stat = value;
+                if (enable_req && !was_enabled) {
+                    // Derive resolution from vlen register: [(yres-1)<<16 | (xres-1)]
+                    int xres = (vlen & 0xFFFF) + 1;
+                    int yres = ((vlen >> 16) & 0xFFFF) + 1;
+                    if (xres > 0 && yres > 0) {
+                        display.set_resolution(xres, yres);
+                    }
+                    if (!display_started) {
+                        display.start();
+                        display_started = true;
+                    }
+                    display.enable();
+                } else if (!enable_req && was_enabled) {
+                    display.disable(false);
+                }
+                break;
+            }
+            case(0x4):  vlen   = value; break;
+            case(0x8):  fporch = value; break;
+            case(0xc):  synlen = value; break;
+            case(0x10): linlen = value; break;
+            case(0x14): {
+                fbuf = value;
+                auto* p = mctrl.find_bank_or_null(value);
+                if (p) {
+                    // Compute pointer at exact physical address, not just bank start
+                    u8* bank_start = reinterpret_cast<u8*>(p->get_ptr());
+                    u8* fb_ptr = bank_start + (value - p->get_base());
+                    display.set_framebuffer(fb_ptr);
+                }
+                break;
+            }
+            case(0x18): dclk0 = value; break;
+            case(0x1c): dclk1 = value; break;
+            case(0x20): dclk2 = value; break;
+            case(0x24): dclk3 = value; break;
+            case(0x28): clut  = value; break;
+            default: break;
+        }
+    }
 };
-
-
