@@ -48,6 +48,8 @@ public:
         display.enable();
     }
 
+    Display& get_display() { return display; }
+
     u32 vendor_id() const {return VENDOR_GAISLER;}
     u32 device_id() const {return GAISLER_SVGACTRL;}
 

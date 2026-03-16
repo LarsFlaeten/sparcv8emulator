@@ -8,6 +8,7 @@
 #include "APBUART.h"
 #include "SVGA.h"
 #include "GRPCI2.hpp"
+#include "APBPS2.h"
 
 #include "../sparcv8/MMU.h"
 
@@ -32,6 +33,7 @@ class APBCTRL : public IMemoryBank {
         APBUART apbuart9;
         GRPCI2 pci;
         SVGA    svga;
+        APBPS2  apbps2;
 
         MCtrl&  mctrl_;
 
@@ -51,10 +53,11 @@ class APBCTRL : public IMemoryBank {
             apbuart9(c),
             pci(irq),
             svga(mctrl),
+            apbps2(intc, 5),
             mctrl_(mctrl)
-        
         {
-
+            // Route SDL key events from the display to the PS/2 controller
+            svga.get_display().set_key_callback([this](uint8_t b){ apbps2.push_byte(b); });
         }
 
         void add_slave(apb_slave& slave, u32 apb_pnp_base, u32 device_addr, u8 irq) {
@@ -111,9 +114,9 @@ class APBCTRL : public IMemoryBank {
                 //std::cout << "Read APBCTRL(APB UART), va = " << std::hex << va << std::dec << "\n";
                 return apbuart9.read(va & 0x0ff);        
             } else if ( (va & 0xfff00) >> 8 == 0x005) {
-                std::cout << "[APBCTRL] Read SVGA, va = " << std::hex << va << std::dec << "\n";
-                
                 return svga.read(va & 0x0ff);
+            } else if ( (va & 0xfff00) >> 8 == 0x006) {
+                return apbps2.read(va & 0x0ff);
             } else {
                 std::cerr << "APB Master was adressed ouside any registered peripheral.\n";
                 return 0;
@@ -149,9 +152,9 @@ class APBCTRL : public IMemoryBank {
                 // Return data from slv 9 (APB UART)
                 apbuart9.write(va & 0x0ff, value);        
             } else if ( (va & 0xfff00) >> 8 == 0x005) {
-                std::cout << "[APBCTRL] Write, va = 0x" << std::hex << va << " -> " << value << std::dec << "\n";
-                
                 svga.write(va & 0x0ff, value);
+            } else if ( (va & 0xfff00) >> 8 == 0x006) {
+                apbps2.write(va & 0x0ff, value);
             } else {
                 std::cerr << "APB Master was adressed ouside any registered peripheral.\n";
                 return;

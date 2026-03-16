@@ -142,6 +142,10 @@ void amba_apb_pnp_setup(MCtrl& mctrl) {
     mctrl.write32(0x800ff030, (VENDOR_GAISLER << 24) | (GAISLER_SVGACTRL << 12) | (AMB_VERSION << 5) | (0x9 & 0xf));
     mctrl.write32(0x800ff034, (0x005 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000500 - 800005ff
 
+    // slv6 at 0x800ff038 - APBPS2 keyboard IRQ 5
+    mctrl.write32(0x800ff038, (VENDOR_GAISLER << 24) | (GAISLER_APBPS2 << 12) | (AMB_VERSION << 5) | (0x5 & 0xf));
+    mctrl.write32(0x800ff03c, (0x006 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000600 - 800006ff
+
 
 
 }
