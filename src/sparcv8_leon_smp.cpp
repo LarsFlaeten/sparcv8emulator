@@ -24,6 +24,7 @@
 #include "mutexprofiler.hpp"
 
 #include "cv_log.hpp"
+#include "peripherals/amba_pnp_dump.hpp"
 
 #include "gdb/DebugStopController.hpp"
 
@@ -175,8 +176,8 @@ int main(int argc, char **argv) {
     bool debug_server = false; 
     int debug_port = 0; // Supress uninitiliazed warning
     std::string fname = "/home/lars//workspace/gaisler-buildroot-2024.02-1.1/output/images/image.ram";
-    
-    while ((option = getopt(argc, argv, "i:n:g:")) != EOF) {
+    bool dump_amba_pnp = false;
+    while ((option = getopt(argc, argv, "i:n:g:a")) != EOF) {
         switch(option) {
             case 'i':
                 fname = optarg;
@@ -187,6 +188,9 @@ int main(int argc, char **argv) {
             case 'g':
                 debug_port = (u32)strtol(optarg, NULL, 0);
                 debug_server = true;
+                break;
+            case 'a':
+                dump_amba_pnp = true;
                 break;
             default:
             std::cerr << 
@@ -215,12 +219,19 @@ int main(int argc, char **argv) {
 
     // Main RAM bank
     mctrl.attach_bank<RamBank>(0x40000000, 64 * 1024 * 1024); // Main memory
+
+    // Video RAM bank (5 MB at 0x20000000 — must be >= cmdline size:0x4b0000 = 4.69 MB)
+    mctrl.attach_bank<RamBank>(0x20000000, 5 * 1024 * 1024);
  
     // Amba PNP area
     mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
     mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
     amba_ahb_pnp_setup(mctrl);
     amba_apb_pnp_setup(mctrl);
+    if(dump_amba_pnp) {
+        print_amba_pnp([&mctrl](uint32_t addr) -> uint32_t { return mctrl.read32(addr); });
+    }
+
 
     IRQMP intc(num_cpus_requested);
     mctrl.attach_bank<APBCTRL>(0x80000000, mctrl ,intc);
