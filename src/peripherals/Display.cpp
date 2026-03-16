@@ -112,26 +112,38 @@ void Display::renderLoop() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(frameDelayMs));
                 continue;
             }
-            // One-time diagnostic: print first non-zero pixel offset and byte values
-            static bool fb_diag_done = false;
-            if (!fb_diag_done) {
-                fb_diag_done = true;
+            // Periodic diagnostic: print when framebuffer transitions from zero to non-zero
+            static bool fb_had_content = false;
+            static int fb_diag_counter = 0;
+            if (!fb_had_content && (fb_diag_counter++ % 60 == 0)) {  // check once per second
                 const uint8_t* fb = static_cast<const uint8_t*>(framebuffer);
                 size_t nonzero_off = SIZE_MAX;
-                for (size_t i = 0; i < (size_t)height * width * (bpp/8) && i < 4096; i++) {
+                size_t scan = (size_t)height * width * (bpp/8);
+                for (size_t i = 0; i < scan; i++) {
                     if (fb[i]) { nonzero_off = i; break; }
                 }
                 if (nonzero_off == SIZE_MAX)
-                    printf("[Display] framebuffer ptr=%p first 4096 bytes are all zero\n", framebuffer);
-                else
-                    printf("[Display] framebuffer ptr=%p first non-zero byte at offset %zu = 0x%02x; bytes[0..3]=%02x %02x %02x %02x\n",
-                           framebuffer, nonzero_off, fb[nonzero_off],
-                           fb[nonzero_off], fb[nonzero_off+1], fb[nonzero_off+2], fb[nonzero_off+3]);
+                    printf("[Display] t=%ds framebuffer all zero\n", fb_diag_counter / 60);
+                else {
+                    printf("[Display] framebuffer first non-zero at offset %zu = bytes %02x %02x %02x %02x\n",
+                           nonzero_off, fb[nonzero_off], fb[nonzero_off+1], fb[nonzero_off+2], fb[nonzero_off+3]);
+                    fb_had_content = true;
+                }
             }
             void* pixels;
             int pitch;
             SDL_LockTexture(texture, nullptr, &pixels, &pitch);
-            std::memcpy(pixels, framebuffer, (size_t)height * pitch);
+            // SPARC stores pixels big-endian [A,R,G,B] in memory; SDL ARGB8888 LE
+            // reads byte[0] as B and byte[3] as A, so we must bswap each pixel.
+            // Also force A=0xFF since fbcon sets transp=0 (alpha=0) for all colors.
+            {
+                const uint32_t* src = static_cast<const uint32_t*>(framebuffer);
+                uint32_t* dst = static_cast<uint32_t*>(pixels);
+                const int stride = pitch / 4;
+                for (int y = 0; y < height; y++)
+                    for (int x = 0; x < width; x++)
+                        dst[y * stride + x] = __builtin_bswap32(src[y * width + x]) | 0xFF000000;
+            }
             SDL_UnlockTexture(texture);
 
             SDL_RenderClear(renderer);
