@@ -89,9 +89,11 @@ public:
                 stat = value;
                 if (enable_req && !was_enabled) {
                     // Derive resolution from vlen register: [(yres-1)<<16 | (xres-1)]
-                    int xres = (vlen & 0xFFFF) + 1;
-                    int yres = ((vlen >> 16) & 0xFFFF) + 1;
-                    if (xres > 0 && yres > 0) {
+                    // grvga driver doesn't write timing registers (leaves PROM defaults),
+                    // so only call set_resolution if vlen was explicitly programmed.
+                    if (vlen != 0) {
+                        int xres = (vlen & 0xFFFF) + 1;
+                        int yres = ((vlen >> 16) & 0xFFFF) + 1;
                         display.set_resolution(xres, yres);
                     }
                     if (!display_started) {
