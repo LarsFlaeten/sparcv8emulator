@@ -121,6 +121,37 @@ TEST_F(APBPS2Test, DrainQueue_PreservesOrder) {
 }
 
 // =========================================================================
+// TX auto-ACK tests
+// =========================================================================
+
+TEST_F(APBPS2Test, TX_AnyByte_YieldsACK) {
+    kbd.write(0x00, 0xF4);  // enable scanning command
+    ASSERT_EQ(kbd.read(0x04) & 0x01, 1u);  // DR set
+    EXPECT_EQ(kbd.read(0x00), 0xFAu);      // ACK byte
+    EXPECT_EQ(kbd.read(0x04) & 0x01, 0u);  // queue empty after
+}
+
+TEST_F(APBPS2Test, TX_Reset_YieldsACK_Then_BAT) {
+    kbd.write(0x00, 0xFF);  // reset command
+    ASSERT_EQ(kbd.read(0x04) & 0x01, 1u);
+    EXPECT_EQ(kbd.read(0x00), 0xFAu);      // ACK first
+    ASSERT_EQ(kbd.read(0x04) & 0x01, 1u);
+    EXPECT_EQ(kbd.read(0x00), 0xAAu);      // BAT completion second
+    EXPECT_EQ(kbd.read(0x04) & 0x01, 0u);  // queue empty after
+}
+
+TEST_F(APBPS2Test, TX_IRQ_FiredOnACK_WhenRISet) {
+    kbd.write(0x08, 0x05); // RE | RI
+    kbd.write(0x00, 0xF4); // any TX command
+    EXPECT_TRUE(fix.irq5_pending());
+}
+
+TEST_F(APBPS2Test, TX_NoIRQ_WhenRINotSet) {
+    kbd.write(0x00, 0xF4);
+    EXPECT_FALSE(fix.irq5_pending());
+}
+
+// =========================================================================
 // IRQ delivery tests
 // =========================================================================
 

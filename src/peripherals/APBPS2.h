@@ -67,17 +67,29 @@ public:
     }
 
     void write(u32 offset, u32 value) override {
-        std::lock_guard<std::mutex> lock(mtx_);
-        switch (offset & 0x0c) {
-            case 0x04: // STATUS write clears error flags (ignored here)
-                break;
-            case 0x08: // CTRL
-                ctrl_ = value & 0xf;
-                break;
-            case 0x0c: // RELOAD
-                break;
-            default: break;
+        bool trigger = false;
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            switch (offset & 0x0c) {
+                case 0x00: // TX — auto-ACK every command byte
+                    if (rxq_.size() < 32) rxq_.push(0xFA); // ACK
+                    if ((value & 0xFF) == 0xFF) {
+                        // Reset command: also push BAT completion
+                        if (rxq_.size() < 32) rxq_.push(0xAA);
+                    }
+                    trigger = (ctrl_ & 0x4) != 0; // RI bit
+                    break;
+                case 0x04: // STATUS write clears error flags (ignored here)
+                    break;
+                case 0x08: // CTRL
+                    ctrl_ = value & 0xf;
+                    break;
+                case 0x0c: // RELOAD
+                    break;
+            }
         }
+        if (trigger)
+            irqmp_.trigger_irq(irq_line_);
     }
 
 private:
