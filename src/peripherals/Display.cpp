@@ -112,6 +112,22 @@ void Display::renderLoop() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(frameDelayMs));
                 continue;
             }
+            // One-time diagnostic: print first non-zero pixel offset and byte values
+            static bool fb_diag_done = false;
+            if (!fb_diag_done) {
+                fb_diag_done = true;
+                const uint8_t* fb = static_cast<const uint8_t*>(framebuffer);
+                size_t nonzero_off = SIZE_MAX;
+                for (size_t i = 0; i < (size_t)height * width * (bpp/8) && i < 4096; i++) {
+                    if (fb[i]) { nonzero_off = i; break; }
+                }
+                if (nonzero_off == SIZE_MAX)
+                    printf("[Display] framebuffer ptr=%p first 4096 bytes are all zero\n", framebuffer);
+                else
+                    printf("[Display] framebuffer ptr=%p first non-zero byte at offset %zu = 0x%02x; bytes[0..3]=%02x %02x %02x %02x\n",
+                           framebuffer, nonzero_off, fb[nonzero_off],
+                           fb[nonzero_off], fb[nonzero_off+1], fb[nonzero_off+2], fb[nonzero_off+3]);
+            }
             void* pixels;
             int pitch;
             SDL_LockTexture(texture, nullptr, &pixels, &pitch);
