@@ -48,7 +48,7 @@ public:
 
         // Disable echo, canonical mode, and signal generation.
         // ISIG must be off so Ctrl+C (0x03) passes to the guest instead of
-        // raising SIGINT on the emulator process.  Use Ctrl+] X to quit.
+        // raising SIGINT on the emulator process.  Use Ctrl+A X to quit.
         raw.c_lflag &= ~(ECHO | ICANON | ISIG);
 
         raw.c_cc[VMIN] = 0;
@@ -74,9 +74,9 @@ public:
                 raise(SIGTERM);
                 return false;
             }
-            if (c == 0x1D) {
-                // Ctrl+] Ctrl+] → send one Ctrl+] to guest
-                pending = 0x1D;
+            if (c == 0x01) {
+                // Ctrl+A Ctrl+A → send one Ctrl+A to guest
+                pending = 0x01;
                 has_pending = true;
                 return true;
             }
@@ -84,8 +84,8 @@ public:
             return false;
         }
 
-        if (c == 0x1D) {
-            // Ctrl+] — start escape sequence, don't forward yet
+        if (c == 0x01) {
+            // Ctrl+A — start escape sequence, don't forward yet
             escape_pending = true;
             return false;
         }
