@@ -60,7 +60,6 @@ public:
 
 
     u32 read(u32 offset) const {
-        printf("[SVGA] read offset=0x%02x\n", offset);
         switch(offset) {
             case(0x0):  return stat;
             case(0x4):  return vlen;
@@ -117,11 +116,7 @@ public:
                     // Compute pointer at exact physical address, not just bank start
                     u8* bank_start = reinterpret_cast<u8*>(p->get_ptr());
                     u8* fb_ptr = bank_start + (value - p->get_base());
-                    printf("[SVGA] set_framebuffer: phys=0x%08x ptr=%p bank_base=0x%08x\n",
-                           value, (void*)fb_ptr, p->get_base());
                     display.set_framebuffer(fb_ptr);
-                } else {
-                    printf("[SVGA] set_framebuffer: phys=0x%08x -> NO BANK FOUND\n", value);
                 }
                 break;
             }

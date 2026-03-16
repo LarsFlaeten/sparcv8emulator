@@ -112,24 +112,6 @@ void Display::renderLoop() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(frameDelayMs));
                 continue;
             }
-            // Periodic diagnostic: print when framebuffer transitions from zero to non-zero
-            static bool fb_had_content = false;
-            static int fb_diag_counter = 0;
-            if (!fb_had_content && (fb_diag_counter++ % 60 == 0)) {  // check once per second
-                const uint8_t* fb = static_cast<const uint8_t*>(framebuffer);
-                size_t nonzero_off = SIZE_MAX;
-                size_t scan = (size_t)height * width * (bpp/8);
-                for (size_t i = 0; i < scan; i++) {
-                    if (fb[i]) { nonzero_off = i; break; }
-                }
-                if (nonzero_off == SIZE_MAX)
-                    printf("[Display] t=%ds framebuffer all zero\n", fb_diag_counter / 60);
-                else {
-                    printf("[Display] framebuffer first non-zero at offset %zu = bytes %02x %02x %02x %02x\n",
-                           nonzero_off, fb[nonzero_off], fb[nonzero_off+1], fb[nonzero_off+2], fb[nonzero_off+3]);
-                    fb_had_content = true;
-                }
-            }
             void* pixels;
             int pitch;
             SDL_LockTexture(texture, nullptr, &pixels, &pitch);
