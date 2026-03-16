@@ -21,6 +21,12 @@ public:
     void stop();        // Stop thread and destroy window
 
     void set_framebuffer(const void* fb) {framebuffer = fb;}
+    void set_resolution(int w, int h) {
+        std::lock_guard<std::mutex> lock(mtx);
+        width = w;
+        height = h;
+        resolution_changed = true;
+    }
 
     bool isRunning() const;
     bool isEnabled() const;
@@ -29,6 +35,7 @@ private:
     void renderLoop();
 
     int width, height, bpp, refreshRateHz;
+    std::atomic<bool> resolution_changed{false};
     const void* framebuffer;
 
     std::thread renderThread;

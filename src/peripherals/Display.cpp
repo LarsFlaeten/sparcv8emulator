@@ -69,6 +69,10 @@ void Display::renderLoop() {
         cv.wait(lock, [this]() { return enabled.load(); });
     }
 
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        resolution_changed = false;
+    }
     window = SDL_CreateWindow("Screen Buffer",
                               SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                               width, height, 0);
@@ -84,6 +88,17 @@ void Display::renderLoop() {
         std::unique_lock<std::mutex> lock(mtx);
         cv.wait(lock, [this]() { return !running || enabled.load(); });
         if (!running) break;
+
+        // Apply resolution change if requested
+        if (resolution_changed.load()) {
+            resolution_changed = false;
+            SDL_DestroyTexture(texture);
+            SDL_SetWindowSize(window, width, height);
+            texture = SDL_CreateTexture(renderer,
+                                        SDL_PIXELFORMAT_ARGB8888,
+                                        SDL_TEXTUREACCESS_STREAMING,
+                                        width, height);
+        }
         lock.unlock();
 
         SDL_ShowWindow(window);
@@ -93,10 +108,14 @@ void Display::renderLoop() {
             while (SDL_PollEvent(&e)) {
                 // You can optionally handle SDL_QUIT here
             }
+            if (!framebuffer) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(frameDelayMs));
+                continue;
+            }
             void* pixels;
             int pitch;
             SDL_LockTexture(texture, nullptr, &pixels, &pitch);
-            std::memcpy(pixels, framebuffer, height * pitch);
+            std::memcpy(pixels, framebuffer, (size_t)height * pitch);
             SDL_UnlockTexture(texture);
 
             SDL_RenderClear(renderer);
