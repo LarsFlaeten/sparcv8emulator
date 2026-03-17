@@ -24,11 +24,12 @@ private:
 
     Display display;
     MCtrl&  mctrl;
+    bool fullscreen_;
 
     bool display_started = false;
 
 public:
-    SVGA(MCtrl& mctrl, bool enable = true) : display(640, 480, 32, 60), mctrl(mctrl) {
+    SVGA(MCtrl& mctrl, bool enable = true, bool fullscreen = false) : display(640, 480, 32, 60, nullptr, fullscreen), mctrl(mctrl), fullscreen_(fullscreen) {
         stat = 0;
         dclk0 = 40000;
         dclk1 = 20000;

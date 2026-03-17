@@ -128,9 +128,9 @@ void set_thread_name(const char* name) {
     pthread_setname_np(pthread_self(), name);
 }
 
-Display::Display(int width, int height, int bpp, int refreshRateHz, const void* framebuffer)
+Display::Display(int width, int height, int bpp, int refreshRateHz, const void* framebuffer, bool fullscreen)
     : width(width), height(height), bpp(bpp), refreshRateHz(refreshRateHz),
-      framebuffer(framebuffer), running(false), enabled(false) {}
+      framebuffer(framebuffer), running(false), enabled(false), fullscreen_(fullscreen) {}
 
 Display::~Display() {
     stop();
@@ -195,6 +195,8 @@ void Display::renderLoop() {
     window = SDL_CreateWindow("Screen Buffer",
                               SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                               width, height, 0);
+    if (fullscreen_)
+        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     texture = SDL_CreateTexture(renderer,
                                 SDL_PIXELFORMAT_ARGB8888,

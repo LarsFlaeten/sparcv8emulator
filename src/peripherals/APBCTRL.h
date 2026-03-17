@@ -43,7 +43,7 @@ class APBCTRL : public IMemoryBank {
     
         u32* get_ptr() override {return nullptr;}
     public:
-        APBCTRL(u32 base, MCtrl& mctrl, IRQMP& intc, bool enable_vga = true, Endian endian = Endian::Big) : IMemoryBank(endian),
+        APBCTRL(u32 base, MCtrl& mctrl, IRQMP& intc, bool enable_vga = true, bool fullscreen_vga = false, Endian endian = Endian::Big) : IMemoryBank(endian),
             size(1 * 1024 * 1024 - /*4096*/ 0x2000), // Allways 1 MB - 2*4096 high bytes
             base(base),
             mem(std::make_unique<RamBank>(0x0, 0x100)),
@@ -52,7 +52,7 @@ class APBCTRL : public IMemoryBank {
             timer(8, 31),
             apbuart9(c),
             pci(irq),
-            svga(mctrl, enable_vga),
+            svga(mctrl, enable_vga, fullscreen_vga),
             apbps2(intc, 5),
             mctrl_(mctrl)
         {

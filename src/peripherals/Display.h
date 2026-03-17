@@ -13,7 +13,7 @@
 
 class Display {
 public:
-    Display(int width, int height, int bpp, int refreshRateHz, const void* framebuffer = nullptr);
+    Display(int width, int height, int bpp, int refreshRateHz, const void* framebuffer = nullptr, bool fullscreen = false);
     ~Display();
 
     void start();       // Start render thread
@@ -54,6 +54,7 @@ private:
     std::condition_variable cv;
 
     std::function<void(uint8_t)> key_callback_;
+    bool fullscreen_;
 
     // Escape sequence state (render thread only): Ctrl+A is the prefix key
     bool escape_pending_{false};

@@ -241,8 +241,9 @@ int main(int argc, char **argv) {
     std::string cmdline_override;
     bool cmdline_append = false;
     bool enable_vga = true;
+    bool fullscreen_vga = false;
     bool dump_amba_pnp = false;
-    while ((option = getopt(argc, argv, "i:n:g:ac:C:V")) != EOF) {
+    while ((option = getopt(argc, argv, "i:n:g:ac:C:Vf")) != EOF) {
         switch(option) {
             case 'i':
                 fname = optarg;
@@ -268,6 +269,9 @@ int main(int argc, char **argv) {
             case 'V':
                 enable_vga = false;
                 break;
+            case 'f':
+                fullscreen_vga = true;
+                break;
             default:
             std::cerr <<
                     "Usage: " << argv[0] << "[-i <filename>] \n"
@@ -278,6 +282,7 @@ int main(int argc, char **argv) {
                      "    -c <cmdline>: Replace kernel command line\n"
                      "    -C <extra>:   Append to kernel command line\n"
                      "    -V:           Disable GRVGA display and PS/2 keyboard\n"
+                     "    -f:           Run GRVGA display in fullscreen\n"
                     "\n";
             exit(EXIT_SUCCESS);
             break;
@@ -314,7 +319,7 @@ int main(int argc, char **argv) {
 
 
     IRQMP intc(num_cpus_requested);
-    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl, intc, enable_vga);
+    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl, intc, enable_vga, fullscreen_vga);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
 
     // PCI memory space: 2KB RAM for DMA descriptors/PCM data, then AC97 BAR windows
