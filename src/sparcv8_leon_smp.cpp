@@ -136,11 +136,12 @@ void dump_ram_mutex_profile(std::vector<std::unique_ptr<CPU>>& cpus) {
 }
 #endif
 
-// Scan one bank for the PROM bootargs string.
-// To avoid false positives from kernel code strings that also contain "console=",
-// we require the match to be >= min_len bytes long (the real bootargs are long).
+// Scan one bank for the PROM bootargs string and patch it.
+// append=false: replace entire cmdline with new_cmd.
+// append=true:  append new_cmd (with a space separator) to existing cmdline.
+// min_len: skip matches shorter than this (avoids kernel code false positives).
 static bool try_patch_cmdline_in_bank(MCtrl& mctrl, uint32_t bank_base, const std::string& new_cmd,
-                                      uint32_t min_len = 0) {
+                                      bool append, uint32_t min_len = 0) {
     auto* bank = mctrl.find_bank_or_null(bank_base);
     if (!bank || !bank->get_ptr()) return false;
 
@@ -165,32 +166,34 @@ static bool try_patch_cmdline_in_bank(MCtrl& mctrl, uint32_t bank_base, const st
         while (cap_end < max_scan && mem[cap_end] == '\0') ++cap_end;
         uint32_t capacity = cap_end - i;
 
-        // Print what we found so the user can verify
-        std::string found(reinterpret_cast<char*>(mem + i), str_len);
+        // Build the string to write
+        std::string existing(reinterpret_cast<char*>(mem + i), str_len);
         std::cout << "[INFO] Found cmdline at 0x" << std::hex << (bank_base + i)
-                  << ": \"" << found << "\"\n" << std::dec;
+                  << ": \"" << existing << "\"\n" << std::dec;
 
-        if (new_cmd.size() >= capacity) {
-            std::cerr << "[WARN] cmdline override too long (" << new_cmd.size()
+        std::string write_cmd = append ? (existing + " " + new_cmd) : new_cmd;
+
+        if (write_cmd.size() >= capacity) {
+            std::cerr << "[WARN] cmdline too long (" << write_cmd.size()
                       << " >= " << capacity << " bytes capacity), truncating\n";
         }
-        size_t write_len = std::min(new_cmd.size(), (size_t)(capacity - 1));
+        size_t write_len = std::min(write_cmd.size(), (size_t)(capacity - 1));
         memset(mem + i, 0, capacity);
-        memcpy(mem + i, new_cmd.c_str(), write_len);
+        memcpy(mem + i, write_cmd.c_str(), write_len);
 
         std::cout << "[INFO] Patched cmdline at 0x" << std::hex << (bank_base + i)
                   << " (capacity=" << std::dec << capacity << "): \""
-                  << new_cmd << "\"\n";
+                  << write_cmd << "\"\n";
         return true;
     }
     return false;
 }
 
-static void patch_cmdline(MCtrl& mctrl, const std::string& new_cmd) {
+static void patch_cmdline(MCtrl& mctrl, const std::string& new_cmd, bool append) {
     // Try ROM first — the Gaisler PROM bootargs live at 0xffff0000
-    if (try_patch_cmdline_in_bank(mctrl, 0xffff0000, new_cmd)) return;
+    if (try_patch_cmdline_in_bank(mctrl, 0xffff0000, new_cmd, append)) return;
     // Fall back to main RAM, but require a long string to avoid kernel code false positives
-    if (try_patch_cmdline_in_bank(mctrl, 0x40000000, new_cmd, 40)) return;
+    if (try_patch_cmdline_in_bank(mctrl, 0x40000000, new_cmd, append, 40)) return;
     std::cerr << "[WARN] kernel cmdline string not found, override ignored\n";
 }
 
@@ -236,9 +239,10 @@ int main(int argc, char **argv) {
     int debug_port = 0; // Supress uninitiliazed warning
     std::string fname = "/home/lars//workspace/gaisler-buildroot-2024.02-1.1/output/images/image.ram";
     std::string cmdline_override;
+    bool cmdline_append = false;
     bool enable_vga = true;
     bool dump_amba_pnp = false;
-    while ((option = getopt(argc, argv, "i:n:g:ac:V")) != EOF) {
+    while ((option = getopt(argc, argv, "i:n:g:ac:C:V")) != EOF) {
         switch(option) {
             case 'i':
                 fname = optarg;
@@ -255,6 +259,11 @@ int main(int argc, char **argv) {
                 break;
             case 'c':
                 cmdline_override = optarg;
+                cmdline_append = false;
+                break;
+            case 'C':
+                cmdline_override = optarg;
+                cmdline_append = true;
                 break;
             case 'V':
                 enable_vga = false;
@@ -266,7 +275,8 @@ int main(int argc, char **argv) {
                      "    -i path/file: Path to the linux buildroot image\n"
                      "    -n [num]: Number of CPUs to emulate\n"
                      "    -g (port) Start gdb server on specified port\n"
-                     "    -c <cmdline>: Override kernel command line\n"
+                     "    -c <cmdline>: Replace kernel command line\n"
+                     "    -C <extra>:   Append to kernel command line\n"
                      "    -V:           Disable GRVGA display and PS/2 keyboard\n"
                     "\n";
             exit(EXIT_SUCCESS);
@@ -336,7 +346,7 @@ int main(int argc, char **argv) {
     std::cout << "** Read " << word_count << " bytes of image, entry point 0x" << std::hex << entry_va << std::dec << ". Resetting CPU(s).\n";
 
     if (!cmdline_override.empty())
-        patch_cmdline(mctrl, cmdline_override);
+        patch_cmdline(mctrl, cmdline_override, cmdline_append);
         
     // Create the cpus
     config.num_cpus = num_cpus_requested;
