@@ -136,7 +136,11 @@ void dump_ram_mutex_profile(std::vector<std::unique_ptr<CPU>>& cpus) {
 }
 #endif
 
-static bool try_patch_cmdline_in_bank(MCtrl& mctrl, uint32_t bank_base, const std::string& new_cmd) {
+// Scan one bank for the PROM bootargs string.
+// To avoid false positives from kernel code strings that also contain "console=",
+// we require the match to be >= min_len bytes long (the real bootargs are long).
+static bool try_patch_cmdline_in_bank(MCtrl& mctrl, uint32_t bank_base, const std::string& new_cmd,
+                                      uint32_t min_len = 0) {
     auto* bank = mctrl.find_bank_or_null(bank_base);
     if (!bank || !bank->get_ptr()) return false;
 
@@ -147,27 +151,34 @@ static bool try_patch_cmdline_in_bank(MCtrl& mctrl, uint32_t bank_base, const st
     for (uint32_t i = 0; i + sizeof(needle) - 1 < sz; ++i) {
         if (memcmp(mem + i, needle, sizeof(needle) - 1) != 0) continue;
 
-        // Walk back to find start of the full cmdline string
-        uint32_t start = i;
-        while (start > 0 && mem[start - 1] != '\0') --start;
-
-        // Walk forward to end of string, then count trailing zeros (buffer capacity)
-        uint32_t end = start;
+        // Walk forward to end of string, then count trailing zeros (buffer capacity).
+        // Do NOT walk backward — bytes before 'i' belong to the containing PROM structure.
+        uint32_t end = i;
         while (end < sz && mem[end] != '\0') ++end;
+        uint32_t str_len = end - i;
+
+        // Skip short strings — likely kernel code/format strings, not the real bootargs
+        if (str_len < min_len) continue;
+
         uint32_t cap_end = end;
-        uint32_t max_scan = std::min(sz, start + 512u);
+        uint32_t max_scan = std::min(sz, i + 512u);
         while (cap_end < max_scan && mem[cap_end] == '\0') ++cap_end;
-        uint32_t capacity = cap_end - start;
+        uint32_t capacity = cap_end - i;
+
+        // Print what we found so the user can verify
+        std::string found(reinterpret_cast<char*>(mem + i), str_len);
+        std::cout << "[INFO] Found cmdline at 0x" << std::hex << (bank_base + i)
+                  << ": \"" << found << "\"\n" << std::dec;
 
         if (new_cmd.size() >= capacity) {
             std::cerr << "[WARN] cmdline override too long (" << new_cmd.size()
                       << " >= " << capacity << " bytes capacity), truncating\n";
         }
         size_t write_len = std::min(new_cmd.size(), (size_t)(capacity - 1));
-        memset(mem + start, 0, capacity);
-        memcpy(mem + start, new_cmd.c_str(), write_len);
+        memset(mem + i, 0, capacity);
+        memcpy(mem + i, new_cmd.c_str(), write_len);
 
-        std::cout << "[INFO] Patched cmdline at 0x" << std::hex << (bank_base + start)
+        std::cout << "[INFO] Patched cmdline at 0x" << std::hex << (bank_base + i)
                   << " (capacity=" << std::dec << capacity << "): \""
                   << new_cmd << "\"\n";
         return true;
@@ -176,9 +187,11 @@ static bool try_patch_cmdline_in_bank(MCtrl& mctrl, uint32_t bank_base, const st
 }
 
 static void patch_cmdline(MCtrl& mctrl, const std::string& new_cmd) {
-    if (try_patch_cmdline_in_bank(mctrl, 0x40000000, new_cmd)) return;
+    // Try ROM first — the Gaisler PROM bootargs live at 0xffff0000
     if (try_patch_cmdline_in_bank(mctrl, 0xffff0000, new_cmd)) return;
-    std::cerr << "[WARN] kernel cmdline string not found in RAM, override ignored\n";
+    // Fall back to main RAM, but require a long string to avoid kernel code false positives
+    if (try_patch_cmdline_in_bank(mctrl, 0x40000000, new_cmd, 40)) return;
+    std::cerr << "[WARN] kernel cmdline string not found, override ignored\n";
 }
 
 void cpu_thread(CPU& cpu) {
