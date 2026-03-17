@@ -244,7 +244,60 @@ class CPU
             write_back(d);
         }
 
-        void decode(pDecode_t d);
+        inline void decode(pDecode_t d) {
+            const u32 fmt_bits = (d->opcode >> FMTSTARTBIT) & LOBITS2;
+            const u32 op2      = (d->opcode >> OP2STARTBIT) & LOBITS3;
+            const u32 op3      = (d->opcode >> OP3STARTBIT) & LOBITS6;
+            u32 I_idx, regvalue;
+
+            // By default, no change to program counter and PSR, and no writeback
+            d->pc      = pc;
+            d->npc     = npc;
+            d->psr     = psr;
+            d->wb_type = WriteBackType::NO_WRITEBACK;
+
+            switch (fmt_bits) {
+            case 1:
+                d->function     = format1;
+                d->imm_disp_rs2 = d->opcode & LOBITS30;
+                break;
+            case 0:
+                d->function     = format2[op2];
+                d->rd           = (d->opcode >> RDSTARTBIT) & LOBITS5;
+                d->op_2_3       = (d->opcode >> OP2STARTBIT) & LOBITS3;
+                d->imm_disp_rs2 = (d->opcode & LOBITS22);
+                break;
+            case 3:
+            case 2:
+                d->function     = format3[op3 + ((fmt_bits & 1) << 6)];
+                d->rd           = (d->opcode >> RDSTARTBIT)  & LOBITS5;
+                d->op_2_3       = (d->opcode >> OP3STARTBIT) & LOBITS6;
+                d->rs1          = (d->opcode >> RS1STARTBIT) & LOBITS5;
+                d->i            = (d->opcode >> ISTARTBIT)   & LOBITS1;
+                d->imm_disp_rs2 = (d->opcode >> RS2STARTBIT) & LOBITS13;
+
+                read_reg(d->rs1, &d->rs1_value);
+
+                I_idx    = op3 + ((fmt_bits & 1) << 6);
+                regvalue = (I_idx < FIRST_RS1_EVAL_IDX) ? 0 : d->rs1_value;
+
+                if (d->i)
+                    d->ev = regvalue + sign_ext13(d->imm_disp_rs2);
+                else {
+                    read_reg(d->imm_disp_rs2 & LOBITS5, &d->ev);
+                    d->ev += regvalue;
+                }
+
+                if (I_idx == STORE_DBL_IDX) {
+                    read_reg(d->rd & ~LOBITS1, &d->value);
+                    read_reg((d->rd & ~LOBITS1)+1, &d->value1);
+                } else if (I_idx == TICC_IDX && !d->i)
+                    read_reg(d->imm_disp_rs2 & LOBITS5, &d->value);
+                else if (fmt_bits & 1)
+                    read_reg(d->rd, &d->value);
+                break;
+            }
+        }
         
         inline void write_back(const pDecode_t d) {
             pc  = d->pc;
