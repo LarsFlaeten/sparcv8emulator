@@ -3,6 +3,7 @@
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <signal.h>
 
 #include <pthread.h>
 
@@ -224,8 +225,40 @@ void Display::renderLoop() {
         while (running && enabled) {
             SDL_Event e;
             while (SDL_PollEvent(&e)) {
-                if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP)
-                    handle_key_event(e.key, key_callback_);
+                if (e.type != SDL_KEYDOWN && e.type != SDL_KEYUP)
+                    continue;
+                auto& ke = e.key;
+                auto sc  = ke.keysym.scancode;
+                bool ctrl = (ke.keysym.mod & KMOD_CTRL) != 0;
+
+                if (escape_pending_) {
+                    if (e.type == SDL_KEYUP && sc == SDL_SCANCODE_A && a_keydown_suppressed_) {
+                        // Suppress the A keyup that matched the suppressed keydown
+                        a_keydown_suppressed_ = false;
+                        continue;
+                    }
+                    if (e.type == SDL_KEYDOWN) {
+                        escape_pending_    = false;
+                        a_keydown_suppressed_ = false;
+                        if (sc == SDL_SCANCODE_X) {
+                            raise(SIGTERM);
+                            continue;
+                        }
+                        // Ctrl+A Ctrl+A → forward A normally; Ctrl is already held in guest
+                        // Any other key → forward normally
+                    }
+                    handle_key_event(ke, key_callback_);
+                    continue;
+                }
+
+                // Ctrl+A → start escape sequence, suppress A keydown
+                if (e.type == SDL_KEYDOWN && ctrl && sc == SDL_SCANCODE_A) {
+                    escape_pending_       = true;
+                    a_keydown_suppressed_ = true;
+                    continue;
+                }
+
+                handle_key_event(ke, key_callback_);
             }
             if (!framebuffer) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(frameDelayMs));

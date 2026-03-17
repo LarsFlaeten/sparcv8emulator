@@ -17,9 +17,12 @@
 //   0x0C RELOAD clock prescaler (write-only in practice)
 
 class APBPS2 : public apb_slave {
+    // TX command state machine
+    enum class TxState { IDLE, WAIT_F0, WAIT_ED, WAIT_F3 };
+
 public:
     APBPS2(IRQMP& irqmp, uint8_t irq_line)
-        : irqmp_(irqmp), irq_line_(irq_line), ctrl_(0) {}
+        : irqmp_(irqmp), irq_line_(irq_line), ctrl_(0), tx_state_(TxState::IDLE) {}
 
     u32 vendor_id() const override { return VENDOR_GAISLER; }
     u32 device_id() const override { return GAISLER_APBPS2; }
@@ -27,6 +30,7 @@ public:
     void reset() override {
         std::lock_guard<std::mutex> lock(mtx_);
         ctrl_ = 0;
+        tx_state_ = TxState::IDLE;
         while (!rxq_.empty()) rxq_.pop();
     }
 
@@ -71,12 +75,8 @@ public:
         {
             std::lock_guard<std::mutex> lock(mtx_);
             switch (offset & 0x0c) {
-                case 0x00: // TX — auto-ACK every command byte
-                    if (rxq_.size() < 32) rxq_.push(0xFA); // ACK
-                    if ((value & 0xFF) == 0xFF) {
-                        // Reset command: also push BAT completion
-                        if (rxq_.size() < 32) rxq_.push(0xAA);
-                    }
+                case 0x00: // TX — handle atkbd command protocol
+                    tx_respond(value & 0xFF);
                     trigger = (ctrl_ & 0x4) != 0; // RI bit
                     break;
                 case 0x04: // STATUS write clears error flags (ignored here)
@@ -93,9 +93,40 @@ public:
     }
 
 private:
+    // Must be called with mtx_ held.
+    void push(uint8_t b) { if (rxq_.size() < 32) rxq_.push(b); }
+    void ack()           { push(0xFA); }
+
+    void tx_respond(uint8_t cmd) {
+        switch (tx_state_) {
+            case TxState::WAIT_F0:
+                tx_state_ = TxState::IDLE;
+                ack();
+                if (cmd == 0x00) push(0x02); // report current set = 2
+                return;
+            case TxState::WAIT_ED:
+            case TxState::WAIT_F3:
+                tx_state_ = TxState::IDLE;
+                ack();
+                return;
+            default: break;
+        }
+        // Single-byte commands
+        switch (cmd) {
+            case 0xFF: ack(); push(0xAA); break;           // reset → ACK + BAT
+            case 0xF2: ack(); push(0xAB); push(0x83); break; // get ID → MF2 keyboard
+            case 0xF0: ack(); tx_state_ = TxState::WAIT_F0; break; // set/get scancode set
+            case 0xED: ack(); tx_state_ = TxState::WAIT_ED; break; // set LEDs
+            case 0xF3: ack(); tx_state_ = TxState::WAIT_F3; break; // set typematic
+            case 0xEE: push(0xEE); break;                  // echo
+            default:   ack(); break;                       // all others: ACK
+        }
+    }
+
     IRQMP&              irqmp_;
     uint8_t             irq_line_;
     uint32_t            ctrl_;
+    TxState             tx_state_;
     mutable std::queue<uint8_t> rxq_;
     mutable std::mutex  mtx_;
 };

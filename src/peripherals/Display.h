@@ -54,4 +54,8 @@ private:
     std::condition_variable cv;
 
     std::function<void(uint8_t)> key_callback_;
+
+    // Escape sequence state (render thread only): Ctrl+A is the prefix key
+    bool escape_pending_{false};
+    bool a_keydown_suppressed_{false};
 };
