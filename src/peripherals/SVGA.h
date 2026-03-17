@@ -28,7 +28,7 @@ private:
     bool display_started = false;
 
 public:
-    SVGA(MCtrl& mctrl) : display(640, 480, 32, 60), mctrl(mctrl) {
+    SVGA(MCtrl& mctrl, bool enable = true) : display(640, 480, 32, 60), mctrl(mctrl) {
         stat = 0;
         dclk0 = 40000;
         dclk1 = 20000;
@@ -41,11 +41,13 @@ public:
         linlen = 0;
         fbuf = 0;
 
-        // Start the display thread and open a blank window immediately.
-        // Resolution and framebuffer will be updated when Linux configures the SVGA.
-        display.start();
-        display_started = true;
-        display.enable();
+        if (enable) {
+            // Start the display thread and open a blank window immediately.
+            // Resolution and framebuffer will be updated when Linux configures the SVGA.
+            display.start();
+            display_started = true;
+            display.enable();
+        }
     }
 
     Display& get_display() { return display; }

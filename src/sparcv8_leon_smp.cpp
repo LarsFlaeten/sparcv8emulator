@@ -223,8 +223,9 @@ int main(int argc, char **argv) {
     int debug_port = 0; // Supress uninitiliazed warning
     std::string fname = "/home/lars//workspace/gaisler-buildroot-2024.02-1.1/output/images/image.ram";
     std::string cmdline_override;
+    bool enable_vga = true;
     bool dump_amba_pnp = false;
-    while ((option = getopt(argc, argv, "i:n:g:ac:")) != EOF) {
+    while ((option = getopt(argc, argv, "i:n:g:ac:V")) != EOF) {
         switch(option) {
             case 'i':
                 fname = optarg;
@@ -242,6 +243,9 @@ int main(int argc, char **argv) {
             case 'c':
                 cmdline_override = optarg;
                 break;
+            case 'V':
+                enable_vga = false;
+                break;
             default:
             std::cerr <<
                     "Usage: " << argv[0] << "[-i <filename>] \n"
@@ -250,6 +254,7 @@ int main(int argc, char **argv) {
                      "    -n [num]: Number of CPUs to emulate\n"
                      "    -g (port) Start gdb server on specified port\n"
                      "    -c <cmdline>: Override kernel command line\n"
+                     "    -V:           Disable GRVGA display and PS/2 keyboard\n"
                     "\n";
             exit(EXIT_SUCCESS);
             break;
@@ -272,20 +277,21 @@ int main(int argc, char **argv) {
     mctrl.attach_bank<RamBank>(0x40000000, 64 * 1024 * 1024); // Main memory
 
     // Video RAM bank (5 MB at 0x20000000 — must be >= cmdline size:0x4b0000 = 4.69 MB)
-    mctrl.attach_bank<RamBank>(0x20000000, 5 * 1024 * 1024);
- 
+    if (enable_vga)
+        mctrl.attach_bank<RamBank>(0x20000000, 5 * 1024 * 1024);
+
     // Amba PNP area
     mctrl.attach_bank<RomBank<64 * 1024>>(0xffff0000);
     mctrl.attach_bank<RomBank<4 * 1024>>(0x800ff000);
     amba_ahb_pnp_setup(mctrl);
-    amba_apb_pnp_setup(mctrl);
+    amba_apb_pnp_setup(mctrl, enable_vga);
     if(dump_amba_pnp) {
         print_amba_pnp([&mctrl](uint32_t addr) -> uint32_t { return mctrl.read32(addr); });
     }
 
 
     IRQMP intc(num_cpus_requested);
-    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl ,intc);
+    mctrl.attach_bank<APBCTRL>(0x80000000, mctrl, intc, enable_vga);
     auto& apbctrl= reinterpret_cast<APBCTRL&>(*mctrl.find_bank(0x80000000));
 
     // PCI memory space: 2KB RAM for DMA descriptors/PCM data, then AC97 BAR windows

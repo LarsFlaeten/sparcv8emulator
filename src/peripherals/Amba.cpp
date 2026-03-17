@@ -106,7 +106,7 @@ void amba_ahb_setup(SDRAM2& io_area) {
  
 }
 */
-void amba_apb_pnp_setup(MCtrl& mctrl) {
+void amba_apb_pnp_setup(MCtrl& mctrl, bool enable_vga) {
 
     // slv0 at 0x800ff000 - European Space Agency Leon2 Memory Controller
     mctrl.write32(0x800ff000, (VENDOR_ESA << 24) | (ESA_MCTRL << 12) | (AMB_VERSION << 5));
@@ -138,13 +138,15 @@ void amba_apb_pnp_setup(MCtrl& mctrl) {
     //mctrl.write32(0x800ff02c, (0x004 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000400 - 800004ff
 
     
-    // slv5 at 0x800ff030 - SVGA CTRL IRQ 9
-    mctrl.write32(0x800ff030, (VENDOR_GAISLER << 24) | (GAISLER_SVGACTRL << 12) | (AMB_VERSION << 5) | (0x9 & 0xf));
-    mctrl.write32(0x800ff034, (0x005 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000500 - 800005ff
+    if (enable_vga) {
+        // slv5 at 0x800ff030 - SVGA CTRL IRQ 9
+        mctrl.write32(0x800ff030, (VENDOR_GAISLER << 24) | (GAISLER_SVGACTRL << 12) | (AMB_VERSION << 5) | (0x9 & 0xf));
+        mctrl.write32(0x800ff034, (0x005 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000500 - 800005ff
 
-    // slv6 at 0x800ff038 - APBPS2 keyboard IRQ 5
-    mctrl.write32(0x800ff038, (VENDOR_GAISLER << 24) | (GAISLER_APBPS2 << 12) | (AMB_VERSION << 5) | (0x5 & 0xf));
-    mctrl.write32(0x800ff03c, (0x006 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000600 - 800006ff
+        // slv6 at 0x800ff038 - APBPS2 keyboard IRQ 5
+        mctrl.write32(0x800ff038, (VENDOR_GAISLER << 24) | (GAISLER_APBPS2 << 12) | (AMB_VERSION << 5) | (0x5 & 0xf));
+        mctrl.write32(0x800ff03c, (0x006 << 20) | (0xfff << 4) | AMBA_TYPE_APBIO); // 80000600 - 800006ff
+    }
 
 
 
