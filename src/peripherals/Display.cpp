@@ -202,6 +202,10 @@ void Display::renderLoop() {
                                 SDL_PIXELFORMAT_ARGB8888,
                                 SDL_TEXTUREACCESS_STREAMING,
                                 width, height);
+    // Clear texture to black so uninitialized pixels don't show white
+    { void* px; int pt; SDL_LockTexture(texture, nullptr, &px, &pt); memset(px, 0, pt * height); SDL_UnlockTexture(texture); }
+    SDL_RenderClear(renderer);
+    SDL_RenderPresent(renderer);
 
     const int frameDelayMs = 1000 / refreshRateHz;
 
@@ -219,6 +223,7 @@ void Display::renderLoop() {
                                         SDL_PIXELFORMAT_ARGB8888,
                                         SDL_TEXTUREACCESS_STREAMING,
                                         width, height);
+            { void* px; int pt; SDL_LockTexture(texture, nullptr, &px, &pt); memset(px, 0, pt * height); SDL_UnlockTexture(texture); }
         }
         lock.unlock();
 
