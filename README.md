@@ -71,8 +71,14 @@ bin/sparcv8_leon_smp -n 4 -g 1234
 # Override kernel command line (patches cmdline in loaded ELF image)
 bin/sparcv8_leon_smp -n 4 -c "console=ttyS0,38400 quiet"
 
+# Append to kernel command line
+bin/sparcv8_leon_smp -n 4 -C "quiet"
+
 # Disable GRVGA display and PS/2 keyboard (pure terminal mode)
 bin/sparcv8_leon_smp -n 4 -V
+
+# Run GRVGA display in fullscreen
+bin/sparcv8_leon_smp -n 4 -f
 ```
 
 The emulator prints Linux boot output to stdout. Press **Ctrl+C** to stop (UART mode), or **Ctrl+A, X** to exit from the VGA window.
