@@ -9,6 +9,7 @@
 #include <iomanip>
 
 #include <signal.h>
+#include <cstring>
 
 #include "sparcv8/CPU.h"
 #include "sparcv8/MMU.h"
@@ -135,6 +136,51 @@ void dump_ram_mutex_profile(std::vector<std::unique_ptr<CPU>>& cpus) {
 }
 #endif
 
+static bool try_patch_cmdline_in_bank(MCtrl& mctrl, uint32_t bank_base, const std::string& new_cmd) {
+    auto* bank = mctrl.find_bank_or_null(bank_base);
+    if (!bank || !bank->get_ptr()) return false;
+
+    auto* mem = reinterpret_cast<uint8_t*>(bank->get_ptr());
+    uint32_t sz = bank->get_size();
+
+    const char needle[] = "console=";
+    for (uint32_t i = 0; i + sizeof(needle) - 1 < sz; ++i) {
+        if (memcmp(mem + i, needle, sizeof(needle) - 1) != 0) continue;
+
+        // Walk back to find start of the full cmdline string
+        uint32_t start = i;
+        while (start > 0 && mem[start - 1] != '\0') --start;
+
+        // Walk forward to end of string, then count trailing zeros (buffer capacity)
+        uint32_t end = start;
+        while (end < sz && mem[end] != '\0') ++end;
+        uint32_t cap_end = end;
+        uint32_t max_scan = std::min(sz, start + 512u);
+        while (cap_end < max_scan && mem[cap_end] == '\0') ++cap_end;
+        uint32_t capacity = cap_end - start;
+
+        if (new_cmd.size() >= capacity) {
+            std::cerr << "[WARN] cmdline override too long (" << new_cmd.size()
+                      << " >= " << capacity << " bytes capacity), truncating\n";
+        }
+        size_t write_len = std::min(new_cmd.size(), (size_t)(capacity - 1));
+        memset(mem + start, 0, capacity);
+        memcpy(mem + start, new_cmd.c_str(), write_len);
+
+        std::cout << "[INFO] Patched cmdline at 0x" << std::hex << (bank_base + start)
+                  << " (capacity=" << std::dec << capacity << "): \""
+                  << new_cmd << "\"\n";
+        return true;
+    }
+    return false;
+}
+
+static void patch_cmdline(MCtrl& mctrl, const std::string& new_cmd) {
+    if (try_patch_cmdline_in_bank(mctrl, 0x40000000, new_cmd)) return;
+    if (try_patch_cmdline_in_bank(mctrl, 0xffff0000, new_cmd)) return;
+    std::cerr << "[WARN] kernel cmdline string not found in RAM, override ignored\n";
+}
+
 void cpu_thread(CPU& cpu) {
     set_thread_name(std::format("cpu{}", cpu.get_cpu_id()));
 
@@ -173,11 +219,12 @@ int main(int argc, char **argv) {
 
     int    option;
     int    num_cpus_requested = 0;
-    bool debug_server = false; 
+    bool debug_server = false;
     int debug_port = 0; // Supress uninitiliazed warning
     std::string fname = "/home/lars//workspace/gaisler-buildroot-2024.02-1.1/output/images/image.ram";
+    std::string cmdline_override;
     bool dump_amba_pnp = false;
-    while ((option = getopt(argc, argv, "i:n:g:a")) != EOF) {
+    while ((option = getopt(argc, argv, "i:n:g:ac:")) != EOF) {
         switch(option) {
             case 'i':
                 fname = optarg;
@@ -192,13 +239,17 @@ int main(int argc, char **argv) {
             case 'a':
                 dump_amba_pnp = true;
                 break;
+            case 'c':
+                cmdline_override = optarg;
+                break;
             default:
-            std::cerr << 
+            std::cerr <<
                     "Usage: " << argv[0] << "[-i <filename>] \n"
                     "\n"
                      "    -i path/file: Path to the linux buildroot image\n"
-                     "    -n [num]: Number of CPUs to emulate\n" 
+                     "    -n [num]: Number of CPUs to emulate\n"
                      "    -g (port) Start gdb server on specified port\n"
+                     "    -c <cmdline>: Override kernel command line\n"
                     "\n";
             exit(EXIT_SUCCESS);
             break;
@@ -264,6 +315,9 @@ int main(int argc, char **argv) {
     std::cout << "** Reading ELF..\n"; 
     u32 word_count = ReadElf(fname, mctrl, entry_va, false, std::cout); 
     std::cout << "** Read " << word_count << " bytes of image, entry point 0x" << std::hex << entry_va << std::dec << ". Resetting CPU(s).\n";
+
+    if (!cmdline_override.empty())
+        patch_cmdline(mctrl, cmdline_override);
         
     // Create the cpus
     config.num_cpus = num_cpus_requested;

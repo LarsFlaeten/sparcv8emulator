@@ -11,7 +11,7 @@ A functional emulator for the **SPARC V8** ISA targeting the **Gaisler LEON3** S
 - **Symmetric Multi-Processing** — up to 8 CPUs with shared memory and IRQMP broadcast interrupts
 - **SRMMU** — Sparc Reference MMU with 16-entry ITLB + DTLB, L0 instruction/data translation caches
 - **GDB remote debugging** — multi-CPU stop-the-world via TCP (port 1234), works with `sparc-linux-gdb`
-- **LEON3 peripherals** — IRQMP, GPTIMER, APBUART, GRPCI2, MCTRL, SVGA framebuffer, AC97 audio
+- **LEON3 peripherals** — IRQMP, GPTIMER, APBUART, GRPCI2, MCTRL, GRVGA framebuffer, APBPS2 PS/2 keyboard, AC97 audio
 - **ELF loader** — loads Gaisler Buildroot ELF images directly
 - **AC97 Soundcard** - Emulated PCI device via GRPCI2 bridge. Needs PCI Support, ALSA and Intel AC97 Controller enabled in buildroot when building Linux image for the device to be discovered. 
 
@@ -69,7 +69,7 @@ bin/sparcv8_leon_smp -i path/to/vmlinux -n 2
 bin/sparcv8_leon_smp -n 4 -g 1234
 ```
 
-The emulator prints Linux boot output to stdout. Press **Ctrl+C** to stop.
+The emulator prints Linux boot output to stdout. Press **Ctrl+C** to stop (UART mode), or **Ctrl+A, X** to exit from the VGA window.
 
 ### Timing a boot
 
@@ -122,7 +122,9 @@ src/
 │   ├── GPTIMER.h                     # General-purpose timers
 │   ├── APBUART.h                     # APB UART
 │   ├── GRPCI2.cpp / GRPCI2.hpp       # PCI bridge
-│   ├── SVGA.h                        # SVGA framebuffer
+│   ├── SVGA.h                        # GRVGA framebuffer controller
+│   ├── Display.h / Display.cpp       # SDL2 window, PS/2 Set 2 keyboard translation
+│   ├── APBPS2.h                      # GRLIB APBPS2 PS/2 keyboard controller
 │   └── ac97.cpp / ac97.hpp           # AC97 audio
 ├── gdb/
 │   ├── gdb_stub.cpp / gdb_stub.hpp   # GDB remote protocol (TCP)
