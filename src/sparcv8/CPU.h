@@ -233,7 +233,7 @@ class CPU
         
         bool instr_fetch(u32 virt_addr, pDecode_t d);
 
-        inline void excute_one(pDecode_t d) {
+        __attribute__((always_inline)) void excute_one(pDecode_t d) {
             // ---- Decode ----
             decode (d);
 
@@ -244,7 +244,7 @@ class CPU
             write_back(d);
         }
 
-        inline void decode(pDecode_t d) {
+        __attribute__((always_inline)) void decode(pDecode_t d) {
             const u32 fmt_bits = (d->opcode >> FMTSTARTBIT) & LOBITS2;
             const u32 op2      = (d->opcode >> OP2STARTBIT) & LOBITS3;
             const u32 op3      = (d->opcode >> OP3STARTBIT) & LOBITS6;

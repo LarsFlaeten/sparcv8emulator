@@ -157,6 +157,11 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
     // Set before run(), won't change mid-run in practice.
     DebugStopController* const dbg = DebugStopController::Global();
 
+    // IRQ polling throttle: check get_irq_hint only every N instructions.
+    // Timer IRQ arrives at ~100 Hz; even at N=64 we add negligible latency.
+    static constexpr int IRQ_CHECK_INTERVAL = 64;
+    int irq_check_countdown = IRQ_CHECK_INTERVAL;
+
     // Start executing program
     running = true;
     while ((ExecCount == 0) ? 1 : (count < (u64)ExecCount)) {
@@ -166,31 +171,33 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
 
 #ifdef PERFORMANCE_MONITOR
 		lt.start();
-#endif		
-        ++count;
-        
-        // Check interrupt controller for pending interrupts (lock-free atomic read)
-        u32 _incoming_irl = intc.get_irq_hint(this->cpu_id_);
-        if(_incoming_irl>irl && trap_type == 0) {
-            set_irl(_incoming_irl);
-        }
-
-#ifdef IRQMP_DEBUG
-        static thread_local bool printed_masked_13 = false;
-        if (_incoming_irl == 13 &&
-            !(p->et && (13 > p->pil)) &&
-            !printed_masked_13)
-        {
-            printed_masked_13 = true;
-            std::cout
-                << "[CPU" << cpu_id_ << "] IRQ13 PENDING but MASKED"
-                << " ET=" << p->et
-                << " PIL=" << int(p->pil)
-                << " PSR=0x" << std::hex << d->psr
-                << std::dec
-                << "\n";
-        }
 #endif
+        ++count;
+
+        // Check interrupt controller for pending interrupts (throttled, lock-free atomic read)
+        if (--irq_check_countdown == 0) {
+            irq_check_countdown = IRQ_CHECK_INTERVAL;
+            u32 _incoming_irl = intc.get_irq_hint(this->cpu_id_);
+            if(_incoming_irl>irl && trap_type == 0) {
+                set_irl(_incoming_irl);
+            }
+#ifdef IRQMP_DEBUG
+            static thread_local bool printed_masked_13 = false;
+            if (_incoming_irl == 13 &&
+                !(p->et && (13 > p->pil)) &&
+                !printed_masked_13)
+            {
+                printed_masked_13 = true;
+                std::cout
+                    << "[CPU" << cpu_id_ << "] IRQ13 PENDING but MASKED"
+                    << " ET=" << p->et
+                    << " PIL=" << int(p->pil)
+                    << " PSR=0x" << std::hex << d->psr
+                    << std::dec
+                    << "\n";
+            }
+#endif
+        }
 
         // Process interrupts if ther are no traps being handled
         if (trap_type == 0 && (p->et && (irl > p->pil))) {
