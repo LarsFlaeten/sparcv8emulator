@@ -129,6 +129,11 @@ class MMU {
     };
     DataCache data_cache_;
 
+#ifdef PERF_STATS
+    std::atomic<uint64_t> dc_hits_{0};
+    std::atomic<uint64_t> dc_misses_{0};
+#endif
+
     public:
     MMU(MCtrl& mc) : mctrl(mc){
 
@@ -176,6 +181,10 @@ public:
  
     TLB& get_itlb() {return itlb;}
     TLB& get_dtlb() {return dtlb;}
+#ifdef PERF_STATS
+    struct DCStats { std::atomic<uint64_t>& hits; std::atomic<uint64_t>& misses; };
+    DCStats get_dc_stats() { return {dc_hits_, dc_misses_}; }
+#endif
     
     bool get_no_fault() {return (control_reg & 0x2) >> 1 == 0x1;};
 
@@ -369,6 +378,9 @@ public:
                         data_cache_.vpage == vpage &&
                         data_cache_.super == supervisor &&
                         data_cache_.ctx   == ctx_n, 1)) {
+#ifdef PERF_STATS
+                    dc_hits_.fetch_add(1, std::memory_order_relaxed);
+#endif
                     const u32 paddr = data_cache_.pbase | (virt_addr & 0xFFF);
                     switch(size) {
                         case(1): value = data_cache_.bank->read8_nolock(paddr);         break;
@@ -378,6 +390,9 @@ public:
                     }
                     return 0;
                 }
+#ifdef PERF_STATS
+                dc_misses_.fetch_add(1, std::memory_order_relaxed);
+#endif
             }
 
             auto res = translate_va(virt_addr, supervisor, rw, report_faults);

@@ -78,6 +78,7 @@ void dump_perf_stats(std::vector<std::unique_ptr<CPU>>& cpus, MCtrl& mctrl) {
     // TLB stats (aggregate across all CPUs)
     uint64_t total_i_hits = 0, total_i_misses = 0;
     uint64_t total_d_hits = 0, total_d_misses = 0;
+    uint64_t total_dc_hits = 0, total_dc_misses = 0;
 
     for (auto& cpu : cpus) {
         const auto& itlb = cpu->get_mmu().get_itlb().get_stats();
@@ -86,6 +87,9 @@ void dump_perf_stats(std::vector<std::unique_ptr<CPU>>& cpus, MCtrl& mctrl) {
         total_i_misses += itlb.misses.load(std::memory_order_relaxed);
         total_d_hits   += dtlb.hits  .load(std::memory_order_relaxed);
         total_d_misses += dtlb.misses.load(std::memory_order_relaxed);
+        auto dc = cpu->get_mmu().get_dc_stats();
+        total_dc_hits   += dc.hits  .load(std::memory_order_relaxed);
+        total_dc_misses += dc.misses.load(std::memory_order_relaxed);
     }
 
     auto hit_rate = [](uint64_t h, uint64_t m) -> double {
@@ -98,6 +102,9 @@ void dump_perf_stats(std::vector<std::unique_ptr<CPU>>& cpus, MCtrl& mctrl) {
     printf("[PERF] DTLB: hits=%llu misses=%llu hit_rate=%.2f%%\n",
         (unsigned long long)total_d_hits, (unsigned long long)total_d_misses,
         hit_rate(total_d_hits, total_d_misses));
+    printf("[PERF] L0DC: hits=%llu misses=%llu hit_rate=%.2f%%\n",
+        (unsigned long long)total_dc_hits, (unsigned long long)total_dc_misses,
+        hit_rate(total_dc_hits, total_dc_misses));
 
     // RAM mutex contention
     auto* rb = dynamic_cast<RamBank*>(mctrl.get_bank(0x40000000));
