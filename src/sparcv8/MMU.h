@@ -460,9 +460,7 @@ public:
                 }
             }
 #if defined(PERF_STATS)
-            auto& mtx = pbank->get_mutex(phys_addr);
-            pbank->perf_lock_shared(mtx);
-            std::shared_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
+            pbank->perf_count_read();  // count without locking (reads need no host lock)
 #endif
             switch(size) {
                 case(1): value = pbank->read8_nolock(phys_addr);           break;

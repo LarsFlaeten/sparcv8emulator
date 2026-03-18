@@ -201,6 +201,7 @@ public:
 #ifdef PERF_STATS
     virtual void perf_lock(std::shared_mutex& m)        { m.lock(); }
     virtual void perf_lock_shared(std::shared_mutex& m) { m.lock_shared(); }
+    virtual void perf_count_read() {}  // count a read access without taking a lock
 #endif
 
 protected:
@@ -456,6 +457,7 @@ public:
         if (!m.try_lock_shared()) { perf_lock_contended(); m.lock_shared(); }
         perf_lock_acquired();
     }
+    void perf_count_read() override { perf_lock_acquired(); }
 private:
 #endif
 

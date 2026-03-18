@@ -231,7 +231,20 @@ class CPU
 
         u32  run(u32 ExecCount = 0, RunSummary* _rs = nullptr);
         
-        bool instr_fetch(u32 virt_addr, pDecode_t d);
+        __attribute__((always_inline)) bool instr_fetch(u32 virt_addr, pDecode_t d) {
+            u32& opcode = d->opcode;
+            bool super = (psr >> 7) & 0x1;
+            if (mmu.MemAccess<intent_execute, 4>(virt_addr, opcode, CROSS_ENDIAN, super) < 0) {
+                u32 f  = mmu.get_fault_status();
+                u32 AT = (f >> 5) & 0x7;
+                if (AT < 2 || AT > 3)
+                    throw std::runtime_error("AT != 2 | 3 is not possible in an instruction fetch!");
+                u32 nf = (mmu.get_control_reg() & 0x2) >> 1;
+                if (nf == 0) { trap(d, SPARC_INSTRUCTION_ACCESS_EXCEPTION); return false; }
+                else throw std::runtime_error("Unhandled error in instruction fetch (MMU nofault == 1)");
+            }
+            return true;
+        }
 
         __attribute__((always_inline)) void excute_one(pDecode_t d) {
             // ---- Decode ----

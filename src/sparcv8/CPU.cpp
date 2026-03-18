@@ -99,38 +99,7 @@ void CPU::reset(u32 entry_va = 0x0)
     
 }
 
-bool CPU::instr_fetch(u32 virt_addr, pDecode_t d){
- 
-    u32& opcode = d->opcode;
-    
-	bool super = (psr >> 7) & 0x1;
-    
-    if(mmu.MemAccess<intent_execute, 4>(virt_addr, opcode, CROSS_ENDIAN, super) < 0)
-    {
-        // Get the fault from MMU:
-        u32 f = mmu.get_fault_status();
-            
-        // We have a fault..
-        u32 AT = (f >> 5) & 0x7;
-        
-        if( AT<2 || AT>3)
-            throw std::runtime_error("AT != 2 | 3 is not possible in an instruction fetch!");
-   
-        // The NF field in the MMU control regs governs wether we should TRAP    
-        u32 nf = (mmu.get_control_reg() & 0x2) >> 1;
-
-        // Only throw trap if nf == 0
-        if(nf == 0) { 
-            trap(d,  SPARC_INSTRUCTION_ACCESS_EXCEPTION); 
-        	return false;
-		} else {
-			throw std::runtime_error("Unhandled error in instruction fetch (MMU nofault == 1)");
-		}
-        return false;
-    } 
-
-    return true;
-}
+// instr_fetch() is now always_inline in CPU.h
 
 u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
     rs.reason = TerminateReason::INSTRUCTION;
