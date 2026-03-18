@@ -425,27 +425,21 @@ public:
         if constexpr (rw == intent_store)
         {
             // Exclusive lock for writes — only needed in SMP mode.
+            std::unique_lock<std::shared_mutex> lk;
             if (g_smp_mode) {
                 auto& mtx = pbank->get_mutex(phys_addr);
 #if defined(PERF_STATS)
                 pbank->perf_lock(mtx);
-                std::unique_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
+                lk = std::unique_lock<std::shared_mutex>(mtx, std::adopt_lock);
 #else
-                std::unique_lock<std::shared_mutex> lk(mtx);
+                lk = std::unique_lock<std::shared_mutex>(mtx);
 #endif
-                switch(size) {
-                    case(1): pbank->write8_nolock(phys_addr, value);           break;
-                    case(2): pbank->write16_nolock(phys_addr, value, false);   break;
-                    case(4): pbank->write32_nolock(phys_addr, value, false);   break;
-                    default: throw std::runtime_error("Error write size != {1,2,4}");
-                }
-            } else {
-                switch(size) {
-                    case(1): pbank->write8_nolock(phys_addr, value);           break;
-                    case(2): pbank->write16_nolock(phys_addr, value, false);   break;
-                    case(4): pbank->write32_nolock(phys_addr, value, false);   break;
-                    default: throw std::runtime_error("Error write size != {1,2,4}");
-                }
+            }
+            switch(size) {
+                case(1): pbank->write8_nolock(phys_addr, value);           break;
+                case(2): pbank->write16_nolock(phys_addr, value, false);   break;
+                case(4): pbank->write32_nolock(phys_addr, value, false);   break;
+                default: throw std::runtime_error("Error write size != {1,2,4}");
             }
         }
         else // read or execute: no host lock needed (concurrent reads safe; read-write races are SPARC UB)
