@@ -403,6 +403,9 @@ int main(int argc, char **argv) {
     bus->set_frequency(config.system_freq_hz);
     timer.set_system_freq(config.system_freq_hz);
    
+    // Enable SMP write-locking only when multiple CPUs share RAM concurrently.
+    if (config.num_cpus > 1) g_smp_mode = true;
+
     std::cout << "Creating " << (int)config.num_cpus << " cpu threads\n";
     std::cout.flush(); // flush before threads start to avoid interleaved output
     std::vector<std::thread> threads;

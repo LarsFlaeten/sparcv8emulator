@@ -6,6 +6,10 @@
 
 #include <format>
 
+// Set to true before spawning CPU threads when n_cpus > 1.
+// Controls whether the write path in MemAccess takes the per-bank mutex.
+bool g_smp_mode = false;
+
 constexpr u32 L3_PAGE_MASK = 0xfffff000;
 constexpr u32 L2_PAGE_MASK = 0xfffc0000;
 constexpr u32 L1_PAGE_MASK = 0xff000000;

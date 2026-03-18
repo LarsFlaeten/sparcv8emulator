@@ -21,6 +21,10 @@
 #define NOfprintf(...) /**/
 #define CROSS_ENDIAN (LITTLE_ENDIAN_HOST != LITTLE_ENDIAN_SLAVE)
 
+// Defined in MMU.cpp; set to true before CPU threads launch when n_cpus > 1.
+// When false, MemAccess<intent_store> skips the per-bank mutex (no contention possible).
+extern bool g_smp_mode;
+
 #define SRMMU_PRIV 0x1c
 #define SRMMU_VALID 0x02
 #define SRMMU_CACHE 0x80
@@ -109,23 +113,21 @@ class MMU {
 
     // L0 instruction fetch cache: skip translate_va + get_bank for consecutive
     // fetches within the same virtual page (common for sequential execution).
+    // page_data points to host byte 0 of the mapped virtual page (big-endian).
     struct FetchCache {
-        u32  vpage = ~0u;       // virtual page number (vaddr >> 12); ~0u = invalid
-        u32  pbase = 0;         // physical page base (paddr & ~0xFFF)
-        u32  ctx   = ~0u;       // MMU context at fill time
-        bool super = false;     // supervisor mode at fill time
-        IMemoryBank* bank = nullptr;
+        u32       vpage     = ~0u;    // virtual page number (vaddr >> 12); ~0u = invalid
+        u32       ctx       = ~0u;    // MMU context at fill time
+        bool      super     = false;  // supervisor mode at fill time
+        const u8* page_data = nullptr;// host ptr to byte 0 of this virtual page
     };
     FetchCache fetch_cache_;
 
-    // L0 data load cache: skip translate_va + get_bank for repeated loads
-    // within the same virtual page (kernel stack, struct fields, etc.).
+    // L0 data load cache: same idea for data loads.
     struct DataCache {
-        u32  vpage = ~0u;
-        u32  pbase = 0;
-        u32  ctx   = ~0u;
-        bool super = false;
-        IMemoryBank* bank = nullptr;
+        u32       vpage     = ~0u;
+        u32       ctx       = ~0u;
+        bool      super     = false;
+        const u8* page_data = nullptr;
     };
     DataCache data_cache_;
 
@@ -364,8 +366,8 @@ public:
                         fetch_cache_.vpage == vpage &&
                         fetch_cache_.super == supervisor &&
                         fetch_cache_.ctx   == ctx_n, 1)) {
-                    value = fetch_cache_.bank->read32_nolock(
-                        fetch_cache_.pbase | (virt_addr & 0xFFF), reverse);
+                    const u8* p = fetch_cache_.page_data + (virt_addr & 0xFFF);
+                    value = (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]);
                     return 0;
                 }
             }
@@ -381,11 +383,11 @@ public:
 #ifdef PERF_STATS
                     dc_hits_.fetch_add(1, std::memory_order_relaxed);
 #endif
-                    const u32 paddr = data_cache_.pbase | (virt_addr & 0xFFF);
+                    const u8* p = data_cache_.page_data + (virt_addr & 0xFFF);
                     switch(size) {
-                        case(1): value = data_cache_.bank->read8_nolock(paddr);         break;
-                        case(2): value = data_cache_.bank->read16_nolock(paddr, false); break;
-                        case(4): value = data_cache_.bank->read32_nolock(paddr, false); break;
+                        case(1): value = p[0]; break;
+                        case(2): value = (u32(p[0]) << 8) | u32(p[1]); break;
+                        case(4): value = (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]); break;
                         default: break;
                     }
                     return 0;
@@ -422,19 +424,28 @@ public:
 
         if constexpr (rw == intent_store)
         {
-            // Exclusive lock for writes
-            auto& mtx = pbank->get_mutex(phys_addr);
+            // Exclusive lock for writes — only needed in SMP mode.
+            if (g_smp_mode) {
+                auto& mtx = pbank->get_mutex(phys_addr);
 #if defined(PERF_STATS)
-            pbank->perf_lock(mtx);
-            std::unique_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
+                pbank->perf_lock(mtx);
+                std::unique_lock<std::shared_mutex> lk(mtx, std::adopt_lock);
 #else
-            std::unique_lock<std::shared_mutex> lk(mtx);
+                std::unique_lock<std::shared_mutex> lk(mtx);
 #endif
-            switch(size) {
-                case(1): pbank->write8_nolock(phys_addr, value);           break;
-                case(2): pbank->write16_nolock(phys_addr, value, false);   break;
-                case(4): pbank->write32_nolock(phys_addr, value, false);   break;
-                default: throw std::runtime_error("Error write size != {1,2,4}");
+                switch(size) {
+                    case(1): pbank->write8_nolock(phys_addr, value);           break;
+                    case(2): pbank->write16_nolock(phys_addr, value, false);   break;
+                    case(4): pbank->write32_nolock(phys_addr, value, false);   break;
+                    default: throw std::runtime_error("Error write size != {1,2,4}");
+                }
+            } else {
+                switch(size) {
+                    case(1): pbank->write8_nolock(phys_addr, value);           break;
+                    case(2): pbank->write16_nolock(phys_addr, value, false);   break;
+                    case(4): pbank->write32_nolock(phys_addr, value, false);   break;
+                    default: throw std::runtime_error("Error write size != {1,2,4}");
+                }
             }
         }
         else // read or execute: no host lock needed (concurrent reads safe; read-write races are SPARC UB)
@@ -442,21 +453,21 @@ public:
             // Populate L0 fetch cache on instruction fetch miss
             if constexpr (rw == intent_execute) {
                 if (mmu_on) {
-                    fetch_cache_.vpage = virt_addr >> 12;
-                    fetch_cache_.pbase = phys_addr & ~0xFFFu;
-                    fetch_cache_.ctx   = ctx_n;
-                    fetch_cache_.super = supervisor;
-                    fetch_cache_.bank  = pbank;
+                    const u8* bdata = reinterpret_cast<const u8*>(pbank->get_ptr());
+                    fetch_cache_.vpage     = virt_addr >> 12;
+                    fetch_cache_.ctx       = ctx_n;
+                    fetch_cache_.super     = supervisor;
+                    fetch_cache_.page_data = bdata + (phys_addr & ~0xFFFu) - pbank->get_base();
                 }
             }
             // Populate L0 data cache on load miss
             if constexpr (rw == intent_load) {
                 if (mmu_on) {
-                    data_cache_.vpage = virt_addr >> 12;
-                    data_cache_.pbase = phys_addr & ~0xFFFu;
-                    data_cache_.ctx   = ctx_n;
-                    data_cache_.super = supervisor;
-                    data_cache_.bank  = pbank;
+                    const u8* bdata = reinterpret_cast<const u8*>(pbank->get_ptr());
+                    data_cache_.vpage     = virt_addr >> 12;
+                    data_cache_.ctx       = ctx_n;
+                    data_cache_.super     = supervisor;
+                    data_cache_.page_data = bdata + (phys_addr & ~0xFFFu) - pbank->get_base();
                 }
             }
 #if defined(PERF_STATS)
