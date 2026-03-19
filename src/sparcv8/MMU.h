@@ -124,7 +124,7 @@ class MMU {
 
     // L0 data load cache: 4-entry direct-mapped (indexed by vpage & 3).
     // Same hit-path cost as 1-entry but handles 4 simultaneously live pages.
-    static constexpr int DC_WAYS = 4;  // must be power of 2
+    static constexpr int DC_WAYS = 16; // must be power of 2
     struct DataCache {
         u32       vpage     = ~0u;
         u32       ctx       = ~0u;
@@ -414,25 +414,25 @@ public:
 #endif
             }
 
-            // L0 store cache fast path: direct write for single-CPU mode
+            // L0 store cache fast path: direct write (single-CPU and SMP).
+            // x86 TSO cache coherence serialises concurrent stores; Linux spinlocks
+            // provide SPARC-level ordering, so no host lock is needed here.
             if constexpr (rw == intent_store) {
-                if (!g_smp_mode) {
-                    const u32 vpage = virt_addr >> 12;
-                    auto& sc = store_cache_[vpage & (DC_WAYS - 1)];
-                    if (__builtin_expect(
-                            sc.vpage == vpage &&
-                            sc.super == supervisor &&
-                            sc.ctx   == ctx_n, 1)) {
-                        u8* p = sc.page_data + (virt_addr & 0xFFF);
-                        switch(size) {
-                            case(1): p[0] = u8(value); break;
-                            case(2): p[0] = (value >> 8) & 0xFF; p[1] = value & 0xFF; break;
-                            case(4): p[0] = (value >> 24) & 0xFF; p[1] = (value >> 16) & 0xFF;
-                                     p[2] = (value >>  8) & 0xFF; p[3] = value & 0xFF; break;
-                            default: break;
-                        }
-                        return 0;
+                const u32 vpage = virt_addr >> 12;
+                auto& sc = store_cache_[vpage & (DC_WAYS - 1)];
+                if (__builtin_expect(
+                        sc.vpage == vpage &&
+                        sc.super == supervisor &&
+                        sc.ctx   == ctx_n, 1)) {
+                    u8* p = sc.page_data + (virt_addr & 0xFFF);
+                    switch(size) {
+                        case(1): p[0] = u8(value); break;
+                        case(2): p[0] = (value >> 8) & 0xFF; p[1] = value & 0xFF; break;
+                        case(4): p[0] = (value >> 24) & 0xFF; p[1] = (value >> 16) & 0xFF;
+                                 p[2] = (value >>  8) & 0xFF; p[3] = value & 0xFF; break;
+                        default: break;
                     }
+                    return 0;
                 }
             }
 
@@ -464,8 +464,8 @@ public:
         if constexpr (rw == intent_store)
         {
             u8* bdata = reinterpret_cast<u8*>(pbank->get_ptr());
-            if (!g_smp_mode && mmu_on && bdata) {
-                // Single-CPU RAM store: fill store cache and write directly (no lock, no virtual call).
+            if (mmu_on && bdata) {
+                // RAM store: fill store cache and write directly (no lock, no virtual call).
                 const u32 vpage = virt_addr >> 12;
                 auto& sc = store_cache_[vpage & (DC_WAYS - 1)];
                 sc.vpage     = vpage;
