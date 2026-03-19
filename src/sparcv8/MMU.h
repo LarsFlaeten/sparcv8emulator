@@ -122,14 +122,26 @@ class MMU {
     };
     FetchCache fetch_cache_;
 
-    // L0 data load cache: same idea for data loads.
+    // L0 data load cache: 4-entry direct-mapped (indexed by vpage & 3).
+    // Same hit-path cost as 1-entry but handles 4 simultaneously live pages.
+    static constexpr int DC_WAYS = 4;  // must be power of 2
     struct DataCache {
         u32       vpage     = ~0u;
         u32       ctx       = ~0u;
         bool      super     = false;
         const u8* page_data = nullptr;
     };
-    DataCache data_cache_;
+    DataCache data_cache_[DC_WAYS];
+
+    // L0 store cache: same layout but with writable page_data.
+    // Used in single-CPU mode to bypass translate_va + virtual write on stores.
+    struct StoreCache {
+        u32  vpage     = ~0u;
+        u32  ctx       = ~0u;
+        bool super     = false;
+        u8*  page_data = nullptr;
+    };
+    StoreCache store_cache_[DC_WAYS];
 
 #ifdef PERF_STATS
     std::atomic<uint64_t> dc_hits_{0};
@@ -173,7 +185,8 @@ public:
     void set_control_reg(u32 value) {
         if ((value & 0x1) != (control_reg & 0x1)) {
             fetch_cache_.vpage = ~0u; // Invalidate on MMU enable/disable transition
-            data_cache_.vpage  = ~0u;
+            for (auto& dc : data_cache_)  dc.vpage = ~0u;
+            for (auto& sc : store_cache_) sc.vpage = ~0u;
         }
         control_reg = value;
     }
@@ -231,7 +244,8 @@ public:
         fault_status_reg = 0x0;
         fault_address_reg = 0x0;
         fetch_cache_ = FetchCache{};
-        data_cache_  = DataCache{};
+        for (auto& dc : data_cache_)  dc = DataCache{};
+        for (auto& sc : store_cache_) sc = StoreCache{};
 
         itlb.flush();
         dtlb.flush();
@@ -242,7 +256,8 @@ public:
     // FLush TLB
     void flush() {
         fetch_cache_.vpage = ~0u; // Invalidate L0 fetch cache
-        data_cache_.vpage  = ~0u; // Invalidate L0 data cache
+        for (auto& dc : data_cache_)  dc.vpage = ~0u;
+        for (auto& sc : store_cache_) sc.vpage = ~0u;
         itlb.flush();
         dtlb.flush();
     }
@@ -376,14 +391,15 @@ public:
             // loads within the same virtual page (kernel stack, struct fields, etc.).
             if constexpr (rw == intent_load) {
                 const u32 vpage = virt_addr >> 12;
+                const auto& dc = data_cache_[vpage & (DC_WAYS - 1)];
                 if (__builtin_expect(
-                        data_cache_.vpage == vpage &&
-                        data_cache_.super == supervisor &&
-                        data_cache_.ctx   == ctx_n, 1)) {
+                        dc.vpage == vpage &&
+                        dc.super == supervisor &&
+                        dc.ctx   == ctx_n, 1)) {
 #ifdef PERF_STATS
                     dc_hits_.fetch_add(1, std::memory_order_relaxed);
 #endif
-                    const u8* p = data_cache_.page_data + (virt_addr & 0xFFF);
+                    const u8* p = dc.page_data + (virt_addr & 0xFFF);
                     switch(size) {
                         case(1): value = p[0]; break;
                         case(2): value = (u32(p[0]) << 8) | u32(p[1]); break;
@@ -395,6 +411,28 @@ public:
 #ifdef PERF_STATS
                 dc_misses_.fetch_add(1, std::memory_order_relaxed);
 #endif
+            }
+
+            // L0 store cache fast path: direct write for single-CPU mode
+            if constexpr (rw == intent_store) {
+                if (!g_smp_mode) {
+                    const u32 vpage = virt_addr >> 12;
+                    auto& sc = store_cache_[vpage & (DC_WAYS - 1)];
+                    if (__builtin_expect(
+                            sc.vpage == vpage &&
+                            sc.super == supervisor &&
+                            sc.ctx   == ctx_n, 1)) {
+                        u8* p = sc.page_data + (virt_addr & 0xFFF);
+                        switch(size) {
+                            case(1): p[0] = u8(value); break;
+                            case(2): p[0] = (value >> 8) & 0xFF; p[1] = value & 0xFF; break;
+                            case(4): p[0] = (value >> 24) & 0xFF; p[1] = (value >> 16) & 0xFF;
+                                     p[2] = (value >>  8) & 0xFF; p[3] = value & 0xFF; break;
+                            default: break;
+                        }
+                        return 0;
+                    }
+                }
             }
 
             auto res = translate_va(virt_addr, supervisor, rw, report_faults);
@@ -424,49 +462,83 @@ public:
 
         if constexpr (rw == intent_store)
         {
-            // Exclusive lock for writes — only needed in SMP mode.
-            std::unique_lock<std::shared_mutex> lk;
-            if (g_smp_mode) {
-                auto& mtx = pbank->get_mutex(phys_addr);
+            u8* bdata = reinterpret_cast<u8*>(pbank->get_ptr());
+            if (!g_smp_mode && mmu_on && bdata) {
+                // Single-CPU RAM store: fill store cache and write directly (no lock, no virtual call).
+                const u32 vpage = virt_addr >> 12;
+                auto& sc = store_cache_[vpage & (DC_WAYS - 1)];
+                sc.vpage     = vpage;
+                sc.ctx       = ctx_n;
+                sc.super     = supervisor;
+                sc.page_data = bdata + (phys_addr & ~0xFFFu) - pbank->get_base();
+                u8* p = sc.page_data + (virt_addr & 0xFFF);
+                switch(size) {
+                    case(1): p[0] = u8(value); break;
+                    case(2): p[0] = (value >> 8) & 0xFF; p[1] = value & 0xFF; break;
+                    case(4): p[0] = (value >> 24) & 0xFF; p[1] = (value >> 16) & 0xFF;
+                             p[2] = (value >>  8) & 0xFF; p[3] = value & 0xFF; break;
+                    default: throw std::runtime_error("Error write size != {1,2,4}");
+                }
+            } else {
+                // Peripheral bank (bdata==null), SMP, or MMU-disabled: lock + virtual write.
+                std::unique_lock<std::shared_mutex> lk;
+                if (g_smp_mode) {
+                    auto& mtx = pbank->get_mutex(phys_addr);
 #if defined(PERF_STATS)
-                pbank->perf_lock(mtx);
-                lk = std::unique_lock<std::shared_mutex>(mtx, std::adopt_lock);
+                    pbank->perf_lock(mtx);
+                    lk = std::unique_lock<std::shared_mutex>(mtx, std::adopt_lock);
 #else
-                lk = std::unique_lock<std::shared_mutex>(mtx);
+                    lk = std::unique_lock<std::shared_mutex>(mtx);
 #endif
-            }
-            switch(size) {
-                case(1): pbank->write8_nolock(phys_addr, value);           break;
-                case(2): pbank->write16_nolock(phys_addr, value, false);   break;
-                case(4): pbank->write32_nolock(phys_addr, value, false);   break;
-                default: throw std::runtime_error("Error write size != {1,2,4}");
+                }
+                switch(size) {
+                    case(1): pbank->write8_nolock(phys_addr, value);           break;
+                    case(2): pbank->write16_nolock(phys_addr, value, false);   break;
+                    case(4): pbank->write32_nolock(phys_addr, value, false);   break;
+                    default: throw std::runtime_error("Error write size != {1,2,4}");
+                }
             }
         }
         else // read or execute: no host lock needed (concurrent reads safe; read-write races are SPARC UB)
         {
-            // Populate L0 fetch cache on instruction fetch miss
+            // On fetch miss: fill L0I cache, then read directly via host pointer.
             if constexpr (rw == intent_execute) {
                 if (mmu_on) {
                     const u8* bdata = reinterpret_cast<const u8*>(pbank->get_ptr());
-                    fetch_cache_.vpage     = virt_addr >> 12;
-                    fetch_cache_.ctx       = ctx_n;
-                    fetch_cache_.super     = supervisor;
-                    fetch_cache_.page_data = bdata + (phys_addr & ~0xFFFu) - pbank->get_base();
+                    if (bdata) {
+                        fetch_cache_.vpage     = virt_addr >> 12;
+                        fetch_cache_.ctx       = ctx_n;
+                        fetch_cache_.super     = supervisor;
+                        fetch_cache_.page_data = bdata + (phys_addr & ~0xFFFu) - pbank->get_base();
+                        const u8* p = fetch_cache_.page_data + (virt_addr & 0xFFF);
+                        value = (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]);
+                        return 0;
+                    }
                 }
             }
-            // Populate L0 data cache on load miss
+            // On load miss: fill L0DC, then read directly via host pointer.
             if constexpr (rw == intent_load) {
                 if (mmu_on) {
                     const u8* bdata = reinterpret_cast<const u8*>(pbank->get_ptr());
-                    data_cache_.vpage     = virt_addr >> 12;
-                    data_cache_.ctx       = ctx_n;
-                    data_cache_.super     = supervisor;
-                    data_cache_.page_data = bdata + (phys_addr & ~0xFFFu) - pbank->get_base();
+                    if (bdata) {
+                        const u32 vpage = virt_addr >> 12;
+                        auto& dc = data_cache_[vpage & (DC_WAYS - 1)];
+                        dc.vpage     = vpage;
+                        dc.ctx       = ctx_n;
+                        dc.super     = supervisor;
+                        dc.page_data = bdata + (phys_addr & ~0xFFFu) - pbank->get_base();
+                        const u8* p = dc.page_data + (virt_addr & 0xFFF);
+                        switch(size) {
+                            case(1): value = p[0]; break;
+                            case(2): value = (u32(p[0]) << 8) | u32(p[1]); break;
+                            case(4): value = (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]); break;
+                            default: break;
+                        }
+                        return 0;
+                    }
                 }
             }
-#if defined(PERF_STATS)
-            pbank->perf_count_read();  // count without locking (reads need no host lock)
-#endif
+            // Peripheral bank (get_ptr==null) or MMU disabled: fall back to virtual read.
             switch(size) {
                 case(1): value = pbank->read8_nolock(phys_addr);           break;
                 case(2): value = pbank->read16_nolock(phys_addr, false);   break;
