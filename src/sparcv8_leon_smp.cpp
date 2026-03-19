@@ -309,7 +309,7 @@ int main(int argc, char **argv) {
     
 
     // Main RAM bank
-    mctrl.attach_bank<RamBank>(0x40000000, 64 * 1024 * 1024); // Main memory
+    mctrl.attach_bank<RamBank>(0x40000000, 128 * 1024 * 1024); // Main memory
 
     // Video RAM bank (5 MB at 0x20000000 — must be >= cmdline size:0x4b0000 = 4.69 MB)
     if (enable_vga)
