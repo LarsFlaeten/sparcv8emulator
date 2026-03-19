@@ -1083,6 +1083,19 @@ void CPU::ADD (pDecode_t d)
 
 void CPU::AND (pDecode_t d)
 {
+    // Fast path: AND/OR/XOR without CC update or complement (op3 bits 4 and 2 clear).
+    if (__builtin_expect((d->op_2_3 & (BIT4 | BIT2)) == 0, 1)) {
+        u32 x = d->rs1_value, y = d->ev, z;
+        switch (d->op_2_3 & LOBITS2) {
+        case 1:  z = x & y; break;
+        case 2:  z = x | y; break;
+        default: z = x ^ y; break;
+        }
+        d->value = z; d->wb_type = WRITEBACKREG;
+        d->pc = d->npc; d->npc += 4;
+        return;
+    }
+
     u32 x, y, z, cc;
     u32 y_sign;
 
