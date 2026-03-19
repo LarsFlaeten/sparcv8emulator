@@ -223,32 +223,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
         // ---- IFetch ----
         if(instr_fetch(virt_addr, d)) {
 
-            // ---- Fast path: format-3 no-CC arithmetic (ADD, AND, OR, XOR) ----
-            // Checks bits 31:30 == 10 (fmt=2) AND bits 24:21 == 0 (op3 ≤ 3).
-            // Skips decode/write_back/dispatch overhead for ~12-15% of instructions.
-            const u32 opc = d->opcode;
-            if (__builtin_expect((opc & 0xC1E00000u) == 0x80000000u, 0)) {
-                const u32 rs1_no = (opc >> 14) & 0x1fu;
-                const u32 rd_no  = (opc >> 25) & 0x1fu;
-                u32 lhs, rhs;
-                read_reg(rs1_no, &lhs);
-                if (opc & (1u << 13))
-                    rhs = sign_ext13(opc & 0x1fffu);
-                else
-                    read_reg(opc & 0x1fu, &rhs);
-                u32 result;
-                switch ((opc >> 19) & 3u) {
-                case 0: result = lhs + rhs; break;  // ADD
-                case 1: result = lhs & rhs; break;  // AND
-                case 2: result = lhs | rhs; break;  // OR
-                default:result = lhs ^ rhs; break;  // XOR
-                }
-                write_reg(result, rd_no);
-                pc = npc;
-                npc += 4;
-            } else {
-                excute_one(d);
-            }
+            excute_one(d);
 
         } else {
             // we could not fetch instruction, and no Traps occured.. Not much more to do.
