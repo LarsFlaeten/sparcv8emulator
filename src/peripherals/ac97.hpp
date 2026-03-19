@@ -164,7 +164,7 @@ public:
     }
 
     // Gets a pointer to the host data buffer
-    virtual u32* get_ptr() {throw std::runtime_error("get_ptr not implemented for PCIMMIO.");};
+    virtual u32* get_ptr() { return nullptr; };
 
     u32 get_base() const override { return base_addr_; }
     u64 get_end_exclusive() const override { return (u64)base_addr_ + (u64)size_; }
