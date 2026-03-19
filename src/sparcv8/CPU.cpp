@@ -402,44 +402,6 @@ std::string CPU::DispRegStr (const u32 regnum)
 }
 
 
-int CPU::test_cc (pDecode_t d) {
-
-    int cond; 
-
-    cond = d->rd & LOBITS4;
-
-    switch (cond & LOBITS3) {
-    case 0 :
-        return (cond >> 3) & LOBITS1;
-        break;
-    case 1 :
-        return ((cond >> 3) ^ d->p->z);
-        break;
-    case 2 :
-        return ((cond >> 3) ^ (d->p->z | (d->p->n ^ d->p->v)));
-        break;
-    case 3 :
-        return ((cond >> 3) ^ (d->p->n ^ d->p->v));
-        break;
-    case 4 :
-        return ((cond >> 3) ^ (d->p->c | d->p->z));
-        break;
-    case 5 :
-        return ((cond >> 3) ^ d->p->c);
-        break;
-    case 6 :
-        return ((cond >> 3) ^ d->p->n);
-        break;
-    case 7 :
-        return ((cond >> 3) ^ d->p->v);
-        break;
-    default:
-        std::cerr << "*** test_cc(): fatal error\n";
-        throw std::runtime_error("*** test_cc(): fatal error");
-    }
-
-    return 0;
-}
 
 
 //------------------------------------------------------------------------

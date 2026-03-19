@@ -380,7 +380,20 @@ class CPU
         
 
         // Helper CC test
-        int test_cc (pDecode_t d);
+        __attribute__((always_inline)) int test_cc(pDecode_t d) {
+            const int cond = d->rd & LOBITS4;
+            switch (cond & LOBITS3) {
+            case 0: return (cond >> 3) & LOBITS1;
+            case 1: return ((cond >> 3) ^ d->p->z);
+            case 2: return ((cond >> 3) ^ (d->p->z | (d->p->n ^ d->p->v)));
+            case 3: return ((cond >> 3) ^ (d->p->n ^ d->p->v));
+            case 4: return ((cond >> 3) ^ (d->p->c | d->p->z));
+            case 5: return ((cond >> 3) ^ d->p->c);
+            case 6: return ((cond >> 3) ^ d->p->n);
+            case 7: return ((cond >> 3) ^ d->p->v);
+            default: throw std::runtime_error("*** test_cc(): fatal error");
+            }
+        }
 
 
         // Emulator control and debugging
