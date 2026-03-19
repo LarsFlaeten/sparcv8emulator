@@ -58,7 +58,7 @@ void CPU::reset(u32 entry_va = 0x0)
     psr = (1 << PSR_ENABLE_TRAPS) | (0 << PSR_PREV_SUPER_MODE)
         | (1 << PSR_SUPER_MODE) | (1 << PSR_ENABLE_FLOATING_POINT)
         | (0x3 << PSR_VER) | (0xf << PSR_IMPL) ;
-    cwp_base_ = (psr & LOBITS5) << 3;
+    update_cwp_bases();
     //((pPSR_t)&psr)->et = 1;
     //((pPSR_t)&psr)->s  = 1;
     //((pPSR_t)&psr)->ps  = 0; // Previus trap supervisor bit
@@ -204,7 +204,7 @@ u32  CPU::run(u32 ExecCount, RunSummary* _rs) {
             u32 n_cwp = p->cwp;
             n_cwp = ((n_cwp - 1) & LOBITS5) % NWINDOWS;
             p->cwp = n_cwp;
-            cwp_base_ = (psr & LOBITS5) << 3;
+            update_cwp_bases();
 
             write_reg (pc,  LOCALREG1);
             write_reg (npc, LOCALREG2);

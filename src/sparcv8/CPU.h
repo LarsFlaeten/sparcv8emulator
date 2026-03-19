@@ -174,6 +174,11 @@ class CPU
         u32 cpu_id_;
         u32 fsr; // FPU state register
         u32 cwp_base_ = 0; // Cached: (psr & LOBITS5) << 3, updated whenever CWP changes
+        u32 in_base_  = 0; // Cached: next-window outs base for i-register reads, = (cwp_base_ + 8) & (NWINDOWS*8-1)
+        __attribute__((always_inline)) void update_cwp_bases() {
+            cwp_base_ = (psr & LOBITS5) << 3;
+            in_base_  = (cwp_base_ + 8) & (NWINDOWS * 8 - 1);
+        }
         ///////////////////////
         // Registers
         u32 globals [9];              // Global[8] is a pseudo register used only for SWAP
@@ -316,7 +321,7 @@ class CPU
             pc  = d->pc;
             npc = d->npc;
             psr = d->psr;
-            cwp_base_ = (psr & LOBITS5) << 3;
+            update_cwp_bases();
             if (d->wb_type == WriteBackType::WRITEBACKREG)
                 write_reg(d->value, d->rd);
         }
@@ -329,22 +334,22 @@ class CPU
 
         // Read/write registers (inlined for hot-path performance)
         inline void read_reg(const u32 reg_no, u32* const value) {
-            if (reg_no == GLOBALREG8) { *value = *p_swap_reg; return; }
+            if (__builtin_expect(reg_no == GLOBALREG8, 0)) { *value = *p_swap_reg; return; }
             switch (reg_no >> 3) {
             case 0: *value = globals[reg_no & LOBITS3]; break;
             case 1: *value = outs  [cwp_base_ | (reg_no & LOBITS3)]; break;
             case 2: *value = locals[cwp_base_ | (reg_no & LOBITS3)]; break;
-            case 3: *value = outs  [(((cwp_base_ >> 3) + 1) & (NWINDOWS-1)) << 3 | (reg_no & LOBITS3)]; break;
+            case 3: *value = outs  [in_base_  | (reg_no & LOBITS3)]; break;
             }
         }
 
         inline void write_reg(const u32 value, const u32 reg_no) {
-            if (reg_no == GLOBALREG8) { *p_swap_reg = value; return; }
+            if (__builtin_expect(reg_no == GLOBALREG8, 0)) { *p_swap_reg = value; return; }
             switch ((reg_no >> 3) & LOBITS2) {
             case 0: globals[reg_no & LOBITS3] = value; globals[0] = 0; break;
             case 1: outs  [cwp_base_ | (reg_no & LOBITS3)] = value; break;
             case 2: locals[cwp_base_ | (reg_no & LOBITS3)] = value; break;
-            case 3: outs  [(((cwp_base_ >> 3) + 1) & (NWINDOWS-1)) << 3 | (reg_no & LOBITS3)] = value; break;
+            case 3: outs  [in_base_  | (reg_no & LOBITS3)] = value; break;
             }
         }
         
@@ -365,7 +370,7 @@ class CPU
         u32 get_cpu_id() const { return cpu_id_; }
         // State Accessors
         u32 get_psr() const {return psr;}
-        void set_psr(u32 value) { psr = value; cwp_base_ = (psr & 0x1f) << 3; }
+        void set_psr(u32 value) { psr = value; update_cwp_bases(); }
         u32 get_wim() const {return wim;}
         u32 get_tbr() const {return tbr;}
         u32 get_y_reg() const {return y_reg;}
