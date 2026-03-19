@@ -1003,9 +1003,19 @@ void CPU::DIV (pDecode_t d)
 
 void CPU::ADD (pDecode_t d)
 {
+    // Fast path: plain ADD (op3=0x00) — no CC update, no carry, no tagged arithmetic.
+    // Skips all CC computation that the general path always performs unnecessarily.
+    if (__builtin_expect(d->op_2_3 == 0x00, 1)) {
+        d->value   = d->rs1_value + d->ev;
+        d->wb_type = WriteBackType::WRITEBACKREG;
+        d->pc      = d->npc;
+        d->npc    += 4;
+        return;
+    }
+
     u32 x, y, z, cc;
     u32 xtop, ytop, ztop, carry;
-    u32 y_sign; 
+    u32 y_sign;
     u32 tag_inst, tag_overflow, tag_sub;
     // Opcode is a tagged add/sub
     tag_inst = d->op_2_3 & BIT5;
