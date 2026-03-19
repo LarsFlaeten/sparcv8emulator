@@ -88,8 +88,8 @@ void dump_perf_stats(std::vector<std::unique_ptr<CPU>>& cpus, MCtrl& mctrl) {
         total_d_hits   += dtlb.hits  .load(std::memory_order_relaxed);
         total_d_misses += dtlb.misses.load(std::memory_order_relaxed);
         auto dc = cpu->get_mmu().get_dc_stats();
-        total_dc_hits   += dc.hits  .load(std::memory_order_relaxed);
-        total_dc_misses += dc.misses.load(std::memory_order_relaxed);
+        total_dc_hits   += dc.hits;
+        total_dc_misses += dc.misses;
     }
 
     auto hit_rate = [](uint64_t h, uint64_t m) -> double {

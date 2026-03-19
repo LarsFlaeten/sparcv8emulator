@@ -144,8 +144,9 @@ class MMU {
     StoreCache store_cache_[DC_WAYS];
 
 #ifdef PERF_STATS
-    std::atomic<uint64_t> dc_hits_{0};
-    std::atomic<uint64_t> dc_misses_{0};
+    // Plain counters — each CPU owns its MMU exclusively; stats are read only after join.
+    uint64_t dc_hits_{0};
+    uint64_t dc_misses_{0};
 #endif
 
     public:
@@ -197,7 +198,7 @@ public:
     TLB& get_itlb() {return itlb;}
     TLB& get_dtlb() {return dtlb;}
 #ifdef PERF_STATS
-    struct DCStats { std::atomic<uint64_t>& hits; std::atomic<uint64_t>& misses; };
+    struct DCStats { uint64_t& hits; uint64_t& misses; };
     DCStats get_dc_stats() { return {dc_hits_, dc_misses_}; }
 #endif
     
@@ -397,7 +398,7 @@ public:
                         dc.super == supervisor &&
                         dc.ctx   == ctx_n, 1)) {
 #ifdef PERF_STATS
-                    dc_hits_.fetch_add(1, std::memory_order_relaxed);
+                    ++dc_hits_;
 #endif
                     const u8* p = dc.page_data + (virt_addr & 0xFFF);
                     switch(size) {
@@ -409,7 +410,7 @@ public:
                     return 0;
                 }
 #ifdef PERF_STATS
-                dc_misses_.fetch_add(1, std::memory_order_relaxed);
+                ++dc_misses_;
 #endif
             }
 
