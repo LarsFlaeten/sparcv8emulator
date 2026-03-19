@@ -174,10 +174,8 @@ class CPU
         u32 cpu_id_;
         u32 fsr; // FPU state register
         u32 cwp_base_ = 0; // Cached: (psr & LOBITS5) << 3, updated whenever CWP changes
-        u32 in_base_  = 0; // Cached: next-window outs base for i-register reads, = (cwp_base_ + 8) & (NWINDOWS*8-1)
         __attribute__((always_inline)) void update_cwp_bases() {
             cwp_base_ = (psr & LOBITS5) << 3;
-            in_base_  = (cwp_base_ + 8) & (NWINDOWS * 8 - 1);
         }
         ///////////////////////
         // Registers
@@ -339,7 +337,7 @@ class CPU
             case 0: *value = globals[reg_no & LOBITS3]; break;
             case 1: *value = outs  [cwp_base_ | (reg_no & LOBITS3)]; break;
             case 2: *value = locals[cwp_base_ | (reg_no & LOBITS3)]; break;
-            case 3: *value = outs  [in_base_  | (reg_no & LOBITS3)]; break;
+            case 3: *value = outs  [((cwp_base_ + 8) & (NWINDOWS*8-1)) | (reg_no & LOBITS3)]; break;
             }
         }
 
@@ -349,7 +347,7 @@ class CPU
             case 0: globals[reg_no & LOBITS3] = value; globals[0] = 0; break;
             case 1: outs  [cwp_base_ | (reg_no & LOBITS3)] = value; break;
             case 2: locals[cwp_base_ | (reg_no & LOBITS3)] = value; break;
-            case 3: outs  [in_base_  | (reg_no & LOBITS3)] = value; break;
+            case 3: outs  [((cwp_base_ + 8) & (NWINDOWS*8-1)) | (reg_no & LOBITS3)] = value; break;
             }
         }
         
