@@ -66,6 +66,7 @@ static const std::array<uint16_t, SDL_NUM_SCANCODES>& ps2_set2_table() {
         t[SDL_SCANCODE_COMMA]        = 0x0041;
         t[SDL_SCANCODE_PERIOD]       = 0x0049;
         t[SDL_SCANCODE_SLASH]        = 0x004A;
+        t[SDL_SCANCODE_NONUSBACKSLASH] = 0x0061; // ISO key between LShift and Z (<> on Norwegian)
         t[SDL_SCANCODE_CAPSLOCK]     = 0x0058;
         t[SDL_SCANCODE_F1]           = 0x0005;
         t[SDL_SCANCODE_F2]           = 0x0006;
