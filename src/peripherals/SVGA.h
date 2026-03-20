@@ -21,6 +21,7 @@ private:
     u32 dclk2;
     u32 dclk3;
     u32 palette_[256] = {};
+    int bpp_ = 32;
 
     Display display;
     MCtrl&  mctrl;
@@ -34,7 +35,7 @@ public:
         dclk0 = 40000;
         dclk1 = 20000;
         dclk2 = 15385;
-        dclk3 = 0;
+        dclk3 = 39683; // VESA 640x480@60Hz pixclock (ps) — SDL fbcon uses this value
         vlen = 0;
         fporch = 0;
         synlen = 0;
@@ -51,6 +52,8 @@ public:
     }
 
     Display& get_display() { return display; }
+    u32 get_palette_entry(u32 idx) const { return palette_[idx & 0xFF]; }
+    int get_bpp() const { return bpp_; }
 
     u32 vendor_id() const {return VENDOR_GAISLER;}
     u32 device_id() const {return GAISLER_SVGACTRL;}
@@ -92,7 +95,8 @@ public:
                 stat = value;
                 // bits[5:4] = func: 1=8bpp, 2=16bpp, 3=32bpp
                 int func = (value >> 4) & 0x3;
-                display.set_bpp(func == 1 ? 8 : 32);
+                bpp_ = (func == 1) ? 8 : 32;
+                display.set_bpp(bpp_);
                 if (enable_req && !was_enabled) {
                     // Derive resolution from vlen register: [(yres-1)<<16 | (xres-1)]
                     // grvga driver doesn't write timing registers (leaves PROM defaults),
