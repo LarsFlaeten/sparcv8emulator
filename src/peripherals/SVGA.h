@@ -74,10 +74,10 @@ public:
             case(0xc):  return synlen;
             case(0x10): return linlen;
             case(0x14): return fbuf;
-            case(0x18): return dclk0;
-            case(0x1c): return dclk1;
-            case(0x20): return dclk2;
-            case(0x24): return dclk3;
+            case(0x18): std::cout << "[SVGA] dclk0 read: " << dclk0 << "\n"; return dclk0;
+            case(0x1c): std::cout << "[SVGA] dclk1 read: " << dclk1 << "\n"; return dclk1;
+            case(0x20): std::cout << "[SVGA] dclk2 read: " << dclk2 << "\n"; return dclk2;
+            case(0x24): std::cout << "[SVGA] dclk3 read: " << dclk3 << "\n"; return dclk3;
             case(0x28): return 0; // CLUT write-only
             default:    return 0;
         }
@@ -96,6 +96,7 @@ public:
                 // bits[5:4] = func: 1=8bpp, 2=16bpp, 3=32bpp
                 int func = (value >> 4) & 0x3;
                 bpp_ = (func == 1) ? 8 : 32;
+                std::cout << "[SVGA] stat write: func=" << func << " bpp=" << bpp_ << " val=0x" << std::hex << value << std::dec << "\n";
                 display.set_bpp(bpp_);
                 if (enable_req && !was_enabled) {
                     // Derive resolution from vlen register: [(yres-1)<<16 | (xres-1)]
