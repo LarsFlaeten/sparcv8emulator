@@ -20,7 +20,7 @@ private:
     u32 dclk1;
     u32 dclk2;
     u32 dclk3;
-    u32 clut;
+    u32 palette_[256] = {};
 
     Display display;
     MCtrl&  mctrl;
@@ -35,7 +35,6 @@ public:
         dclk1 = 20000;
         dclk2 = 15385;
         dclk3 = 0;
-        clut = 0;
         vlen = 0;
         fporch = 0;
         synlen = 0;
@@ -76,7 +75,7 @@ public:
             case(0x1c): return dclk1;
             case(0x20): return dclk2;
             case(0x24): return dclk3;
-            case(0x28): return clut;
+            case(0x28): return 0; // CLUT write-only
             default:    return 0;
         }
     }
@@ -91,6 +90,9 @@ public:
                 bool enable_req = (value & 0x1) != 0;
                 bool was_enabled = (stat & 0x1) != 0;
                 stat = value;
+                // bits[5:4] = func: 1=8bpp, 2=16bpp, 3=32bpp
+                int func = (value >> 4) & 0x3;
+                display.set_bpp(func == 1 ? 8 : 32);
                 if (enable_req && !was_enabled) {
                     // Derive resolution from vlen register: [(yres-1)<<16 | (xres-1)]
                     // grvga driver doesn't write timing registers (leaves PROM defaults),
@@ -129,7 +131,16 @@ public:
             case(0x1c): dclk1 = value; break;
             case(0x20): dclk2 = value; break;
             case(0x24): dclk3 = value; break;
-            case(0x28): clut  = value; break;
+            case(0x28): {
+                // CLUT write: bits[31:24]=index, bits[23:16]=R, bits[15:8]=G, bits[7:0]=B
+                u32 idx = (value >> 24) & 0xFF;
+                u32 r   = (value >> 16) & 0xFF;
+                u32 g   = (value >>  8) & 0xFF;
+                u32 b   =  value        & 0xFF;
+                palette_[idx] = 0xFF000000u | (r << 16) | (g << 8) | b;
+                display.set_palette(palette_);
+                break;
+            }
             default: break;
         }
     }

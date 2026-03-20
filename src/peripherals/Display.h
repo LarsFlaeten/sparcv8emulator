@@ -3,9 +3,12 @@
 #include <SDL2/SDL.h>
 #include <thread>
 #include <atomic>
+#include <array>
 #include <condition_variable>
 #include <mutex>
 #include <functional>
+#include <cstdint>
+using u32 = uint32_t;
 
 
 
@@ -22,6 +25,11 @@ public:
     void stop();        // Stop thread and destroy window
 
     void set_framebuffer(const void* fb) {framebuffer = fb;}
+    void set_bpp(int b) { bpp = b; }
+    void set_palette(const u32* pal) {
+        std::lock_guard<std::mutex> lock(mtx);
+        std::copy(pal, pal + 256, palette_.begin());
+    }
     void set_resolution(int w, int h) {
         std::lock_guard<std::mutex> lock(mtx);
         width = w;
@@ -55,6 +63,7 @@ private:
 
     std::function<void(uint8_t)> key_callback_;
     bool fullscreen_;
+    std::array<u32, 256> palette_{};
 
     // Escape sequence state (render thread only): Ctrl+A is the prefix key
     bool escape_pending_{false};

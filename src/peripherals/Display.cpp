@@ -275,10 +275,16 @@ void Display::renderLoop() {
             void* pixels;
             int pitch;
             SDL_LockTexture(texture, nullptr, &pixels, &pitch);
-            // SPARC stores pixels big-endian [A,R,G,B] in memory; SDL ARGB8888 LE
-            // reads byte[0] as B and byte[3] as A, so we must bswap each pixel.
-            // Also force A=0xFF since fbcon sets transp=0 (alpha=0) for all colors.
-            {
+            if (bpp == 8) {
+                // 8bpp palettized: each byte is a CLUT index
+                const uint8_t* src = static_cast<const uint8_t*>(framebuffer);
+                uint32_t* dst = static_cast<uint32_t*>(pixels);
+                const int stride = pitch / 4;
+                for (int y = 0; y < height; y++)
+                    for (int x = 0; x < width; x++)
+                        dst[y * stride + x] = palette_[src[y * width + x]];
+            } else {
+                // 32bpp: SPARC big-endian [A,R,G,B] → bswap to SDL ARGB8888 LE
                 const uint32_t* src = static_cast<const uint32_t*>(framebuffer);
                 uint32_t* dst = static_cast<uint32_t*>(pixels);
                 const int stride = pitch / 4;
