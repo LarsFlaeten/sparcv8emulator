@@ -71,8 +71,8 @@ TEST_F(SVGATest, DclkCoversKernelAndVesaPixclock)
 
     // Kernel boot pixclock (from grvga_modedb 640x480@60Hz)
     const u32 kernel_pixclock = 40000;
-    // SDL1 VESA table pixclock for 640x480@60Hz (choose_vesa_mode)
-    const u32 vesa_pixclock   = 39683;
+    // SDL1 fbcon choose_vesa_mode 640x480@75Hz (non-Matrox VESA table, no USE_VESA_TIMINGS)
+    const u32 vesa_pixclock   = 31746;
 
     u32 dclk[4];
     dclk[0] = svga.read(0x18);
@@ -88,7 +88,7 @@ TEST_F(SVGATest, DclkCoversKernelAndVesaPixclock)
     EXPECT_TRUE(matches_any(kernel_pixclock))
         << "Kernel boot pixclock " << kernel_pixclock << " not in dclk registers";
     EXPECT_TRUE(matches_any(vesa_pixclock))
-        << "VESA SDL pixclock " << vesa_pixclock << " not in dclk registers — "
+        << "SDL1 640x480@75Hz pixclock " << vesa_pixclock << " not in dclk registers — "
            "FBIOPUT_VSCREENINFO will fail with -EINVAL";
 }
 
