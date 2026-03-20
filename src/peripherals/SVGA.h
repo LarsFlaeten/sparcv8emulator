@@ -35,7 +35,7 @@ public:
         dclk0 = 40000;
         dclk1 = 20000;
         dclk2 = 15385;
-        dclk3 = 39683; // VESA 640x480@60Hz pixclock (ps) — SDL fbcon uses this value
+        dclk3 = 31746; // SDL1 fbcon choose_vesa_mode 640x480@75Hz (non-Matrox VESA table)
         vlen = 0;
         fporch = 0;
         synlen = 0;
