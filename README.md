@@ -97,6 +97,26 @@ The `run_until.sh` helper stops the emulator when a pattern appears in the outpu
 ./run_until.sh "Welcome to Buildroot" bin/sparcv8_leon_smp -n 2
 ```
 
+## Building the Linux Image
+
+The emulator runs a **Gaisler Buildroot** Linux image for the LEON3 target.
+The `buildroot/` folder in this repository contains all the customisations
+needed on top of the stock Gaisler release — patches, board configuration,
+and filesystem overlay. See [buildroot/SETUP.md](buildroot/SETUP.md) for
+step-by-step instructions.
+
+In short:
+
+1. Download **Gaisler Buildroot 2024.02-1.1** from the [Gaisler website](https://www.gaisler.com/index.php/downloads/linux) (free login required).
+2. Apply three Linux kernel patches from `buildroot/patches/linux/` — a null-pointer guard, an SMP deadlock fix, and an ARRAY_SIZE bugfix in the GRVGA driver.
+3. Apply one prboom patch from `buildroot/patches/prboom/` — fixes S16_LE audio sample byte order on big-endian hosts.
+4. Copy `buildroot/local.mk` into the buildroot root.
+5. Link `buildroot/br2-external/` as the buildroot external tree.
+6. Run `make my-board_defconfig && make`.
+
+The resulting ELF image (`output/images/vmlinux`) is passed to the emulator
+with the `-i` flag.
+
 ## GDB Debugging
 
 Start the emulator with `-g <port>`, then connect from a SPARC cross-GDB:

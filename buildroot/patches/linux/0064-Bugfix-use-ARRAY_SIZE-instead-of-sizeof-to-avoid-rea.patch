@@ -1,0 +1,26 @@
+From f2387de8fe154abd8a4db3d64a002afce4f9ca72 Mon Sep 17 00:00:00 2001
+From: LarsFlaeten <lars.flaeten@gmail.com>
+Date: Mon, 16 Mar 2026 06:55:22 +0100
+Subject: [PATCH] Bugfix: use ARRAY_SIZE instead of sizeof() to avoid readying
+ beyond array
+
+---
+ drivers/video/fbdev/grvga.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/video/fbdev/grvga.c b/drivers/video/fbdev/grvga.c
+index 24818b276241..e99ce297f5fc 100644
+--- a/drivers/video/fbdev/grvga.c
++++ b/drivers/video/fbdev/grvga.c
+@@ -406,7 +406,7 @@ static int grvga_probe(struct platform_device *dev)
+ 
+ 	if (mode_opt) {
+ 		retval = fb_find_mode(&info->var, info, mode_opt,
+-				      grvga_modedb, sizeof(grvga_modedb), &grvga_modedb[0], 8);
++				      grvga_modedb, ARRAY_SIZE(grvga_modedb), &grvga_modedb[0], 8);
+ 		if (!retval || retval == 4) {
+ 			retval = -EINVAL;
+ 			goto dealloc_cmap;
+-- 
+2.43.0
+

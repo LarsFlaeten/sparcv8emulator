@@ -1,0 +1,26 @@
+From ea6a61dae67555cc8d30c16d5f9996271a181b50 Mon Sep 17 00:00:00 2001
+From: LarsFlaeten <lars.flaeten@gmail.com>
+Date: Wed, 5 Nov 2025 22:13:24 +0100
+Subject: [PATCH] Guard against possible null-pointer dev->of_node
+
+Signed-off-by: LarsFlaeten <lars.flaeten@gmail.com>
+---
+ arch/sparc/kernel/ioport.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/sparc/kernel/ioport.c b/arch/sparc/kernel/ioport.c
+index 7ceae24b0ca9..e00d2b9ffc46 100644
+--- a/arch/sparc/kernel/ioport.c
++++ b/arch/sparc/kernel/ioport.c
+@@ -252,7 +252,7 @@ unsigned long sparc_dma_alloc_resource(struct device *dev, size_t len)
+ 	res = kzalloc(sizeof(*res), GFP_KERNEL);
+ 	if (!res)
+ 		return 0;
+-	res->name = dev->of_node->full_name;
++	res->name = dev->of_node ? dev->of_node->full_name : dev_name(dev);
+ 
+ 	if (allocate_resource(&_sparc_dvma, res, len, _sparc_dvma.start,
+ 			      _sparc_dvma.end, PAGE_SIZE, NULL, NULL) != 0) {
+-- 
+2.43.0
+

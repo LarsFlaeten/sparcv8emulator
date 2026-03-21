@@ -1,0 +1,59 @@
+[PATCH] i_sound: write S16LE samples correctly on big-endian hosts
+
+SDL_mixer opens the audio device with obtained=&mixer, so SDL does NOT
+build a format converter. The mix callback writes directly into the ALSA
+DMA ring buffer in the obtained format (S16_LE, the only format the
+emulated AC97/Intel8x0 advertises).
+
+The emulator's mem_read16 undoes LE byte order with std::byteswap(), so
+correct audio requires LE bytes in the DMA buffer. On a big-endian host
+(SPARC) a plain *(short*)ptr = value stores bytes big-endian, which
+mem_read16 then byte-swaps to a wrong amplitude - producing white noise.
+
+Use SDL_Swap16 to write samples as LE bytes. SDL_Swap16 is a no-op on
+little-endian platforms so this change is harmless everywhere else.
+
+---
+ src/SDL/i_sound.c | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+Index: prboom-2.5.0/src/SDL/i_sound.c
+===================================================================
+--- prboom-2.5.0.orig/src/SDL/i_sound.c
++++ prboom-2.5.0/src/SDL/i_sound.c
+@@ -454,20 +454,29 @@
+   // else if (dl < -128) *leftout = -128;
+   // else *leftout = dl;
+ 
++  // The DMA stream is S16_LE. On big-endian hosts (SPARC) we must write
++  // samples as little-endian bytes so mem_read16's byteswap yields the
++  // correct amplitude. SDL_Swap16 is a no-op on little-endian platforms.
++#if SDL_BYTEORDER == SDL_BIG_ENDIAN
++# define PUT_S16LE(ptr, v) (*((ptr)) = (signed short)SDL_Swap16((Uint16)(signed short)(v)))
++#else
++# define PUT_S16LE(ptr, v) (*((ptr)) = (signed short)(v))
++#endif
+   if (dl > SHRT_MAX)
+-      *leftout = SHRT_MAX;
++      PUT_S16LE(leftout, SHRT_MAX);
+   else if (dl < SHRT_MIN)
+-      *leftout = SHRT_MIN;
++      PUT_S16LE(leftout, SHRT_MIN);
+   else
+-      *leftout = (signed short)dl;
++      PUT_S16LE(leftout, dl);
+ 
+   // Same for right hardware channel.
+   if (dr > SHRT_MAX)
+-      *rightout = SHRT_MAX;
++      PUT_S16LE(rightout, SHRT_MAX);
+   else if (dr < SHRT_MIN)
+-      *rightout = SHRT_MIN;
++      PUT_S16LE(rightout, SHRT_MIN);
+   else
+-      *rightout = (signed short)dr;
++      PUT_S16LE(rightout, dr);
++# undef PUT_S16LE
+ 
+   // Increment current pointers in stream
+   leftout += step;

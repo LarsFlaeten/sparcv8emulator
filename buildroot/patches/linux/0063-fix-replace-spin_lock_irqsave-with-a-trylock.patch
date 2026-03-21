@@ -1,0 +1,33 @@
+From 60124ea932b8018eed873bebe1c44d4479aae98b Mon Sep 17 00:00:00 2001
+From: LarsFlaeten <lars.flaeten@gmail.com>
+Date: Sat, 7 Mar 2026 10:55:32 +0100
+Subject: [PATCH] fix: replace spin_lock_irqsave with a trylock
+
+---
+ arch/sparc/kernel/leon_smp.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/arch/sparc/kernel/leon_smp.c b/arch/sparc/kernel/leon_smp.c
+index 1eed26d423fb..88be39c11ab4 100644
+--- a/arch/sparc/kernel/leon_smp.c
++++ b/arch/sparc/kernel/leon_smp.c
+@@ -380,7 +380,15 @@ static void leon_cross_call(smpfunc_t func, cpumask_t mask, unsigned long arg1,
+ 		register int high = NR_CPUS - 1;
+ 		unsigned long flags;
+ 
+-		spin_lock_irqsave(&cross_call_lock, flags);
++		/* Add trylock loop that drops irqsave between attempts
++		so incoming IPIs can be serviced while spinning.*/
++		local_irq_save(flags);
++		while (!spin_trylock(&cross_call_lock)) {
++			local_irq_restore(flags);
++			cpu_relax();
++			local_irq_save(flags);
++		}
++		/* cross_call_lock now held with PIL=15 — safe to set up ccall_info */
+ 
+ 		{
+ 			/* If you make changes here, make sure gcc generates proper code... */
+-- 
+2.43.0
+
