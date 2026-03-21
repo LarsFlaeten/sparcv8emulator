@@ -3,7 +3,13 @@
 [![Build](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/build.yml/badge.svg)](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/build.yml)
 [![Tests](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/test.yml/badge.svg)](https://github.com/LarsFlaeten/sparcv8emulator/actions/workflows/test.yml)
 
-A functional emulator for the **SPARC V8** ISA targeting the **Gaisler LEON3** SMP processor family. It boots an unmodified Linux kernel (Gaisler Buildroot image) with up to 8 CPUs and includes a full GDB remote debugging stub.
+A functional emulator for the **SPARC V8** ISA targeting the **Gaisler LEON3** SMP processor family. It boots an unmodified Linux kernel (Gaisler Buildroot image) with up to 8 CPUs and includes a full GDB remote debugging stub. It is capable enough to run [Doom](https://en.wikipedia.org/wiki/Doom_(1993_video_game)) with sound.
+
+## Gallery
+
+![Doom running on the SPARC V8 / LEON3 SMP emulator](doom.png)
+
+*Doom (prboom 2.5.0) running under Linux on the emulated LEON3, with GRVGA framebuffer and AC97 audio.*
 
 ## Features
 
